@@ -366,8 +366,7 @@ class CustomerServiceAgent:
         if intent is None:
             return payload
 
-        if intent.intent != "unsupported":
-            state.current_intent = intent.intent
+        state.current_intent = intent.intent
         state.slots.update(intent.slots)
         state.risk_level = intent.risk_level
         state.needs_clarification = intent.needs_clarification
