@@ -12,6 +12,7 @@ export type SubIntentCode =
   | "logistics_service.query_status"
   | "handoff_service.request_human"
   | "chitchat.greeting"
+  | "chitchat.thanks"
   | "unsupported.unknown";
 
 export interface ChatRequest {

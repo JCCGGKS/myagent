@@ -315,6 +315,9 @@ class CustomerServiceAgent:
         has_greeting_keyword = any(
             token in lowered for token in ["你好", "您好", "hi", "hello", "在吗"]
         )
+        has_thanks_keyword = any(
+            token in lowered for token in ["谢谢", "感谢", "辛苦了", "thanks", "thank you"]
+        )
 
         if has_handoff_keyword:
             intent = IntentResult(
@@ -337,6 +340,13 @@ class CustomerServiceAgent:
             intent = IntentResult(
                 main_intent="chitchat",
                 sub_intent="chitchat.greeting",
+                confidence=0.95,
+                route_source="rule",
+            )
+        elif has_thanks_keyword:
+            intent = IntentResult(
+                main_intent="chitchat",
+                sub_intent="chitchat.thanks",
                 confidence=0.95,
                 route_source="rule",
             )
@@ -530,6 +540,8 @@ class CustomerServiceAgent:
             )
         elif state.current_sub_intent == "chitchat.greeting":
             state.reply = "你好，我可以帮你查询 FAQ、订单、物流，也可以为你转人工客服。"
+        elif state.current_sub_intent == "chitchat.thanks":
+            state.reply = "不客气。如果你还想查询订单、物流或退款问题，我可以继续帮你处理。"
         else:
             state.reply = "这个问题我暂时无法准确处理。你可以换一种说法，或者我可以帮你转人工。"
 
