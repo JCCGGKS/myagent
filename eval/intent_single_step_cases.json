@@ -1,0 +1,256 @@
+[
+  {
+    "id": "faq_invoice_exact",
+    "message": "发票怎么开",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_invoice_variant",
+    "message": "如何申请发票",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_payment_keyword",
+    "message": "支持哪些支付方式",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_shipping_exact",
+    "message": "多久发货",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_shipping_variant",
+    "message": "什么时候发货",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_refund_exact",
+    "message": "退款多久到账",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_refund_variant",
+    "message": "退款几天到账",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_refund_arrival_variant",
+    "message": "退款什么时候到账",
+    "expected_main_intent": "faq",
+    "expected_sub_intent": "faq.general"
+  },
+  {
+    "id": "faq_refund_policy",
+    "message": "退款规则是什么",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "faq_refund_policy_variant",
+    "message": "可以退款吗",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "refund_request_direct",
+    "message": "我要退款",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "refund_request_action",
+    "message": "帮我申请退款",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "refund_request_progress_like",
+    "message": "退款怎么处理",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "refund_request_short",
+    "message": "退款",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "order_status_basic",
+    "message": "查订单",
+    "expected_main_intent": "order_service",
+    "expected_sub_intent": "order_service.query_status"
+  },
+  {
+    "id": "order_status_with_id",
+    "message": "帮我查一下订单 A1001",
+    "expected_main_intent": "order_service",
+    "expected_sub_intent": "order_service.query_status"
+  },
+  {
+    "id": "order_status_phrase",
+    "message": "我的订单状态是什么",
+    "expected_main_intent": "order_service",
+    "expected_sub_intent": "order_service.query_status"
+  },
+  {
+    "id": "order_status_shipping_phrase",
+    "message": "订单 A1002 发货了吗",
+    "expected_main_intent": "order_service",
+    "expected_sub_intent": "order_service.query_status"
+  },
+  {
+    "id": "order_status_delivery_variant",
+    "message": "我的订单发没发",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "order_followup_id_only",
+    "message": "A1001",
+    "previous_sub_intent": "order_service.query_status",
+    "expected_main_intent": "order_service",
+    "expected_sub_intent": "order_service.query_status"
+  },
+  {
+    "id": "logistics_basic",
+    "message": "查物流",
+    "expected_main_intent": "logistics_service",
+    "expected_sub_intent": "logistics_service.query_status"
+  },
+  {
+    "id": "logistics_express_phrase",
+    "message": "快递到哪了",
+    "expected_main_intent": "logistics_service",
+    "expected_sub_intent": "logistics_service.query_status"
+  },
+  {
+    "id": "logistics_delivery_phrase",
+    "message": "配送进度怎么看",
+    "expected_main_intent": "logistics_service",
+    "expected_sub_intent": "logistics_service.query_status"
+  },
+  {
+    "id": "logistics_variant_package",
+    "message": "包裹到哪了",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "logistics_with_id",
+    "message": "物流到哪了 订单号 A1002",
+    "expected_main_intent": "logistics_service",
+    "expected_sub_intent": "logistics_service.query_status"
+  },
+  {
+    "id": "logistics_followup_id_only",
+    "message": "A1002",
+    "previous_sub_intent": "logistics_service.query_status",
+    "expected_main_intent": "logistics_service",
+    "expected_sub_intent": "logistics_service.query_status"
+  },
+  {
+    "id": "handoff_basic",
+    "message": "转人工",
+    "expected_main_intent": "handoff_service",
+    "expected_sub_intent": "handoff_service.request_human"
+  },
+  {
+    "id": "handoff_phrase",
+    "message": "我要人工客服",
+    "expected_main_intent": "handoff_service",
+    "expected_sub_intent": "handoff_service.request_human"
+  },
+  {
+    "id": "greeting_basic",
+    "message": "你好",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.greeting"
+  },
+  {
+    "id": "greeting_variant",
+    "message": "您好",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.greeting"
+  },
+  {
+    "id": "greeting_presence",
+    "message": "在吗",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.greeting"
+  },
+  {
+    "id": "greeting_english",
+    "message": "hello",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.greeting"
+  },
+  {
+    "id": "thanks_basic",
+    "message": "谢谢",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.thanks"
+  },
+  {
+    "id": "thanks_variant",
+    "message": "辛苦了",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.thanks"
+  },
+  {
+    "id": "thanks_english",
+    "message": "thanks",
+    "expected_main_intent": "chitchat",
+    "expected_sub_intent": "chitchat.thanks"
+  },
+  {
+    "id": "unsupported_complaint",
+    "message": "我要投诉",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_goodbye",
+    "message": "再见",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_smalltalk",
+    "message": "你会做什么",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_account",
+    "message": "帮我查一下优惠券",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_shipping_variant",
+    "message": "什么时候能收到货",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_invoice_change",
+    "message": "发票可以修改吗",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  },
+  {
+    "id": "unsupported_coupon_question",
+    "message": "优惠券怎么用",
+    "expected_main_intent": "unsupported",
+    "expected_sub_intent": "unsupported.unknown"
+  }
+]
