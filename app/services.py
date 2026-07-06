@@ -24,26 +24,71 @@ class KnowledgeBaseService:
     def search(self, query: str) -> dict | None:
         normalized = query.casefold()
         best_match = None
-        best_score = 0
+        best_score = 0.0
 
         for item in self._faqs:
-            score = 0
+            score = 0.0
+
             for keyword in item["keywords"]:
-                if keyword.casefold() in normalized:
-                    score += 3
+                keyword_normalized = keyword.casefold()
+                if keyword_normalized in normalized:
+                    if len(keyword_normalized) >= 3:
+                        score += 3.0
+                    else:
+                        score += 1.0
+
             for question in item["questions"]:
-                if question.casefold() in normalized:
-                    score += 5
-            for token in set(normalized.split()):
-                if token and token in item["answer"].casefold():
-                    score += 1
+                question_normalized = question.casefold()
+                if question_normalized in normalized or normalized in question_normalized:
+                    score += 5.0
+                else:
+                    score += self._question_similarity(normalized, question_normalized) * 2.0
+
             if score > best_score:
                 best_score = score
                 best_match = item
 
-        if best_score < 3:
+        if best_match is None:
             return None
-        return {"score": best_score, **best_match}
+
+        if best_score < 3.5:
+            return None
+
+        if not self._has_strong_match(normalized, best_match):
+            return None
+
+        return {"score": round(best_score, 3), **best_match}
+
+    def _has_strong_match(self, query: str, item: dict) -> bool:
+        for keyword in item["keywords"]:
+            keyword_normalized = keyword.casefold()
+            if len(keyword_normalized) >= 3 and keyword_normalized in query:
+                return True
+
+        for question in item["questions"]:
+            question_normalized = question.casefold()
+            if question_normalized in query or query in question_normalized:
+                return True
+            if self._question_similarity(query, question_normalized) >= 0.65:
+                return True
+
+        return False
+
+    def _question_similarity(self, query: str, question: str) -> float:
+        query_bigrams = self._bigrams(query)
+        question_bigrams = self._bigrams(question)
+        if not query_bigrams or not question_bigrams:
+            return 0.0
+
+        overlap = len(query_bigrams & question_bigrams)
+        union = len(query_bigrams | question_bigrams)
+        return overlap / union if union else 0.0
+
+    def _bigrams(self, text: str) -> set[str]:
+        compact = re.sub(r"\s+", "", text)
+        if len(compact) < 2:
+            return {compact} if compact else set()
+        return {compact[index : index + 2] for index in range(len(compact) - 1)}
 
 
 class OrderService:

@@ -271,6 +271,16 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
         message = " ".join(request.message.strip().split())
+
+        # Reset per-turn transient fields so the current request cannot reuse
+        # the previous turn's reply or intermediate results.
+        state.reply = ""
+        state.intent_result = None
+        state.retrieved_faq = None
+        state.tool_result = None
+        state.handoff = False
+        state.needs_clarification = False
+
         state.last_user_message = message
         state.channel = request.channel
         state.user_id = request.user_id
