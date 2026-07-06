@@ -1,9 +1,18 @@
-export type IntentCode =
+export type MainIntentCode =
   | "faq"
-  | "query_order"
-  | "query_logistics"
-  | "handoff_human"
+  | "order_service"
+  | "logistics_service"
+  | "handoff_service"
+  | "chitchat"
   | "unsupported";
+
+export type SubIntentCode =
+  | "faq.general"
+  | "order_service.query_status"
+  | "logistics_service.query_status"
+  | "handoff_service.request_human"
+  | "chitchat.greeting"
+  | "unsupported.unknown";
 
 export interface ChatRequest {
   session_id: string;
@@ -14,7 +23,8 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   reply: string;
-  intent: IntentCode;
+  main_intent: MainIntentCode;
+  sub_intent: SubIntentCode;
   stage: string;
   needs_clarification: boolean;
   handoff: boolean;
@@ -30,7 +40,8 @@ export interface ConversationState {
   session_id: string;
   user_id: string;
   channel: string;
-  current_intent: IntentCode;
+  current_main_intent: MainIntentCode;
+  current_sub_intent: SubIntentCode;
   stage: string;
   slots: Record<string, string>;
   missing_slots: string[];
@@ -80,7 +91,8 @@ export interface MessageItem {
 
 export interface TurnItem {
   id: string;
-  intent: IntentCode;
+  mainIntent: MainIntentCode;
+  subIntent: SubIntentCode;
   stage: string;
   summary: string;
   trace: string[];
@@ -109,7 +121,8 @@ export interface ChatSocketStatusEvent {
 
 export interface ChatSocketIntentEvent {
   type: "intent";
-  intent: IntentCode;
+  main_intent: MainIntentCode;
+  sub_intent: SubIntentCode;
   confidence: number;
   slots: Record<string, string>;
   needs_clarification: boolean;
@@ -118,7 +131,8 @@ export interface ChatSocketIntentEvent {
 export interface ChatSocketStateEvent {
   type: "state";
   stage: string;
-  current_intent: IntentCode;
+  current_main_intent: MainIntentCode;
+  current_sub_intent: SubIntentCode;
   slots: Record<string, string>;
   missing_slots: string[];
   needs_clarification: boolean;

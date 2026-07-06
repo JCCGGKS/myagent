@@ -5,12 +5,23 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-IntentCode = Literal[
+MainIntentCode = Literal[
     "faq",
-    "query_order",
-    "query_logistics",
-    "handoff_human",
+    "order_service",
+    "logistics_service",
+    "handoff_service",
+    "chitchat",
     "unsupported",
+]
+
+
+SubIntentCode = Literal[
+    "faq.general",
+    "order_service.query_status",
+    "logistics_service.query_status",
+    "handoff_service.request_human",
+    "chitchat.greeting",
+    "unsupported.unknown",
 ]
 
 
@@ -22,7 +33,8 @@ class ChatRequest(BaseModel):
 
 
 class IntentResult(BaseModel):
-    intent: IntentCode
+    main_intent: MainIntentCode
+    sub_intent: SubIntentCode
     confidence: float = 0.0
     slots: dict[str, str] = Field(default_factory=dict)
     candidate_intents: list[str] = Field(default_factory=list)
@@ -36,7 +48,8 @@ class ConversationState(BaseModel):
     session_id: str
     user_id: str
     channel: str
-    current_intent: IntentCode = "unsupported"
+    current_main_intent: MainIntentCode = "unsupported"
+    current_sub_intent: SubIntentCode = "unsupported.unknown"
     stage: str = "new"
     slots: dict[str, str] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
@@ -54,7 +67,8 @@ class ConversationState(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    intent: IntentCode
+    main_intent: MainIntentCode
+    sub_intent: SubIntentCode
     stage: str
     needs_clarification: bool
     handoff: bool

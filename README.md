@@ -1,6 +1,6 @@
 # myagent
 
-客服 Agent MVP 骨架，提供基于 `FastAPI` 的对话接口，以及 `FAQ / 订单查询 / 物流查询 / 转人工` 四条最小闭环能力。当前仓库已拆分为 `FastAPI` 后端和 `Vue 3 + Vite + TypeScript` 前端。
+客服 Agent MVP 骨架，提供基于 `FastAPI` 的对话接口，以及 `FAQ / 订单查询 / 物流查询 / 转人工 / 问候` 五条最小闭环能力。当前仓库已拆分为 `FastAPI` 后端和 `Vue 3 + Vite + TypeScript` 前端。
 
 ## Quick Start
 
@@ -51,7 +51,17 @@ curl -X POST http://127.0.0.1:8000/chat \
 - 订单状态查询
 - 物流状态查询
 - 转人工
+- 问候闲聊
 - 多轮槽位补齐
+
+当前后端意图结构已升级为“主意图 + 子意图”，例如：
+
+- `faq` -> `faq.general`
+- `order_service` -> `order_service.query_status`
+- `logistics_service` -> `logistics_service.query_status`
+- `handoff_service` -> `handoff_service.request_human`
+- `chitchat` -> `chitchat.greeting`
+- `unsupported` -> `unsupported.unknown`
 
 当前版本使用本地 mock 数据，不依赖真实数据库、Redis 或外部业务系统。
 

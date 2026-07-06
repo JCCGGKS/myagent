@@ -42,7 +42,8 @@ function getHandoffData(result: ToolResult | null): HandoffToolData | null {
       <article v-for="turn in turns" :key="turn.id" class="turn-card">
         <div class="turn-meta">
           <span>{{ turn.createdAt }}</span>
-          <span>{{ turn.intent }}</span>
+          <span>{{ turn.mainIntent }}</span>
+          <span>{{ turn.subIntent }}</span>
           <span>{{ turn.stage }}</span>
         </div>
         <p class="turn-summary">{{ turn.summary || "本轮未生成摘要" }}</p>

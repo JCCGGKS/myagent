@@ -112,7 +112,8 @@ export const useChatStore = defineStore("chat", () => {
   const session = computed(() => activeSession.value.session);
 
   const sessionSnapshot = computed(() => ({
-    intent: session.value?.current_intent ?? "-",
+    mainIntent: session.value?.current_main_intent ?? "-",
+    subIntent: session.value?.current_sub_intent ?? "-",
     stage: session.value?.stage ?? "-",
     clarify: session.value?.needs_clarification ? "yes" : "no",
     slots: session.value?.slots ?? {},
@@ -207,12 +208,6 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  function updateSessionTitle(message: string) {
-    if (activeSession.value.title === "新会话" || activeSession.value.title === "客服咨询") {
-      activeSession.value.title = message.slice(0, 12) || "新会话";
-    }
-  }
-
   function handleSocketEvent(event: ChatSocketEvent) {
     if (event.type === "status") {
       liveStage.value = event.stage;
@@ -222,9 +217,9 @@ export const useChatStore = defineStore("chat", () => {
     }
 
     if (event.type === "intent") {
-      liveIntent.value = event.intent;
+      liveIntent.value = `${event.main_intent} / ${event.sub_intent}`;
       liveTrace.value.push(
-        `识别意图=${event.intent}，clarify=${event.needs_clarification}，slots=${JSON.stringify(event.slots)}`,
+        `识别主意图=${event.main_intent}，子意图=${event.sub_intent}，clarify=${event.needs_clarification}，slots=${JSON.stringify(event.slots)}`,
       );
       return;
     }
@@ -232,7 +227,7 @@ export const useChatStore = defineStore("chat", () => {
     if (event.type === "state") {
       liveStage.value = event.stage;
       liveTrace.value.push(
-        `进入阶段=${event.stage}，missing_slots=${JSON.stringify(event.missing_slots)}`,
+        `进入阶段=${event.stage}，主意图=${event.current_main_intent}，子意图=${event.current_sub_intent}，missing_slots=${JSON.stringify(event.missing_slots)}`,
       );
       return;
     }
@@ -273,12 +268,13 @@ export const useChatStore = defineStore("chat", () => {
         id: `system-${Date.now()}`,
         role: "system",
         tone: "meta",
-        content: `intent=${response.intent} | stage=${response.stage} | clarify=${response.needs_clarification} | slots=${JSON.stringify(response.slots)}`,
+        content: `main_intent=${response.main_intent} | sub_intent=${response.sub_intent} | stage=${response.stage} | clarify=${response.needs_clarification} | slots=${JSON.stringify(response.slots)}`,
       });
       activeSession.value.session = response.session_state;
       activeSession.value.turns.unshift({
         id: `turn-${Date.now()}`,
-        intent: response.intent,
+        mainIntent: response.main_intent,
+        subIntent: response.sub_intent,
         stage: response.stage,
         summary: response.summary,
         trace: [...liveTrace.value, ...response.turn_trace],
@@ -330,7 +326,6 @@ export const useChatStore = defineStore("chat", () => {
       return;
     }
 
-    updateSessionTitle(message);
     appendMessage({
       id: `user-${Date.now()}`,
       role: "user",

@@ -122,9 +122,8 @@ onMounted(async () => {
             <p class="eyebrow">Current Chat</p>
             <h2>{{ store.activeSession.title }}</h2>
             <p class="chat-subtitle">
-              {{ store.sessionSnapshot.intent }} / {{ store.sessionSnapshot.stage }} / {{
-                store.sessionSnapshot.clarify
-              }}
+              {{ store.sessionSnapshot.mainIntent }} / {{ store.sessionSnapshot.subIntent }} /
+              {{ store.sessionSnapshot.stage }} / {{ store.sessionSnapshot.clarify }}
             </p>
           </div>
           <div class="identity-grid">
@@ -150,14 +149,6 @@ onMounted(async () => {
             {{ prompt }}
           </button>
         </div>
-
-        <section v-if="store.messages.length <= 1" class="welcome-state">
-          <p class="eyebrow">Ready</p>
-          <h3>新会话已创建</h3>
-          <p>
-            从左侧保留历史，从这里开始新的问题。你可以直接输入消息，或者先点下面的快捷提问。
-          </p>
-        </section>
 
         <section class="message-list" aria-live="polite">
           <article
