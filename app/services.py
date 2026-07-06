@@ -25,15 +25,19 @@ class KnowledgeBaseService:
         normalized = query.casefold()
 
         for item in self._faqs:
-            for keyword in item["keywords"]:
-                keyword_normalized = keyword.casefold()
-                if keyword_normalized in normalized:
-                    return item
-
             for question in item["questions"]:
                 question_normalized = question.casefold()
                 if question_normalized in normalized or normalized in question_normalized:
                     return item
+
+            keyword_hits = 0
+            for keyword in item["keywords"]:
+                keyword_normalized = keyword.casefold()
+                if keyword_normalized in normalized:
+                    keyword_hits += 1
+
+            if keyword_hits >= 2:
+                return item
 
         return None
 

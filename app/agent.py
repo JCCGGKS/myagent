@@ -312,6 +312,9 @@ class CustomerServiceAgent:
         has_order_keyword = any(
             token in lowered for token in ["查订单", "订单", "订单状态", "发货了吗", "我的订单"]
         )
+        has_refund_keyword = "退款" in lowered
+        has_refund_rule_keyword = any(token in lowered for token in ["规则", "退吗", "可以退款", "怎么处理"])
+        has_refund_action_keyword = any(token in lowered for token in ["我要退款", "申请退款", "帮我退款"])
         has_greeting_keyword = any(
             token in lowered for token in ["你好", "您好", "hi", "hello", "在吗"]
         )
@@ -350,14 +353,6 @@ class CustomerServiceAgent:
                 confidence=0.95,
                 route_source="rule",
             )
-        elif faq:
-            intent = IntentResult(
-                main_intent="faq",
-                sub_intent="faq.general",
-                confidence=0.95,
-                route_source="rule",
-                candidate_intents=["faq"],
-            )
         elif has_order_keyword:
             slots = {"order_id": order_id} if order_id else {}
             intent = IntentResult(
@@ -383,6 +378,22 @@ class CustomerServiceAgent:
                 confidence=0.88,
                 slots={"order_id": order_id},
                 route_source="slot_followup",
+            )
+        elif has_refund_keyword and (has_refund_rule_keyword or has_refund_action_keyword or "到账" not in lowered):
+            intent = IntentResult(
+                main_intent="unsupported",
+                sub_intent="unsupported.unknown",
+                confidence=0.9,
+                route_source="rule",
+                needs_clarification=True,
+            )
+        elif faq:
+            intent = IntentResult(
+                main_intent="faq",
+                sub_intent="faq.general",
+                confidence=0.95,
+                route_source="rule",
+                candidate_intents=["faq"],
             )
         else:
             intent = IntentResult(
