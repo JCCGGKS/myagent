@@ -88,6 +88,19 @@ export interface TurnItem {
   createdAt: string;
 }
 
+export interface ChatSessionItem {
+  id: string;
+  title: string;
+  preview: string;
+  createdDay: string;
+  createdAt: string;
+  updatedDay: string;
+  updatedAt: string;
+  messages: MessageItem[];
+  turns: TurnItem[];
+  session: ConversationState | null;
+}
+
 export interface ChatSocketStatusEvent {
   type: "status";
   stage: string;

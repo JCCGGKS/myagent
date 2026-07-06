@@ -4,6 +4,7 @@ import { defineStore } from "pinia";
 import { getHealth, getSession, postChat } from "@/lib/api";
 import { ChatWebSocketClient } from "@/lib/websocket";
 import type {
+  ChatSessionItem,
   ChatSocketEvent,
   ConversationState,
   MessageItem,
@@ -11,32 +12,91 @@ import type {
   TurnItem,
 } from "@/types/chat";
 
-const SESSION_ID = `web-${Date.now()}`;
+function createSessionId() {
+  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
-const INITIAL_MESSAGES: MessageItem[] = [
-  {
-    id: "assistant-initial",
+function nowLabel() {
+  return new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString("zh-CN");
+}
+
+function createInitialMessage(): MessageItem {
+  return {
+    id: `assistant-initial-${Date.now()}`,
     role: "assistant",
     content: "输入一个问题开始演示。支持 FAQ、订单查询、物流查询和转人工。",
-  },
-];
+  };
+}
+
+function createSession(title = "新会话"): ChatSessionItem {
+  const timestamp = nowLabel();
+  const day = todayLabel();
+  return {
+    id: createSessionId(),
+    title,
+    preview: "等待开始对话",
+    createdDay: day,
+    createdAt: timestamp,
+    updatedDay: day,
+    updatedAt: timestamp,
+    messages: [createInitialMessage()],
+    turns: [],
+    session: null,
+  };
+}
 
 export const useChatStore = defineStore("chat", () => {
-  const sessionId = ref(SESSION_ID);
+  const sessions = ref<ChatSessionItem[]>([createSession("客服咨询")]);
+  const activeSessionId = ref(sessions.value[0].id);
+  const sessionSearch = ref("");
   const userId = ref("user-001");
   const channel = ref("web");
   const draft = ref("");
+  const renameDraft = ref("");
+  const renamingSessionId = ref<string | null>(null);
   const statusText = ref("等待发送");
   const pending = ref(false);
   const backendReady = ref<boolean | null>(null);
   const socketConnected = ref(false);
-  const session = ref<ConversationState | null>(null);
-  const messages = ref<MessageItem[]>([...INITIAL_MESSAGES]);
-  const turns = ref<TurnItem[]>([]);
   const liveTrace = ref<string[]>([]);
   const liveToolResult = ref<ToolResult | null>(null);
   const liveIntent = ref<string | null>(null);
   const liveStage = ref<string | null>(null);
+
+  const activeSession = computed(
+    () => sessions.value.find((session) => session.id === activeSessionId.value) ?? sessions.value[0],
+  );
+  const filteredSessions = computed(() => {
+    const keyword = sessionSearch.value.trim().toLowerCase();
+    if (!keyword) {
+      return sessions.value;
+    }
+    return sessions.value.filter((session) => {
+      return `${session.title} ${session.preview}`.toLowerCase().includes(keyword);
+    });
+  });
+  const groupedSessions = computed(() => {
+    const groups: Array<{ label: string; items: ChatSessionItem[] }> = [];
+    const today = todayLabel();
+    const todayItems = filteredSessions.value.filter((session) => session.updatedDay === today);
+    const olderItems = filteredSessions.value.filter(
+      (session) => !todayItems.some((item) => item.id === session.id),
+    );
+    if (todayItems.length) {
+      groups.push({ label: "今天", items: todayItems });
+    }
+    if (olderItems.length) {
+      groups.push({ label: "更早", items: olderItems });
+    }
+    return groups;
+  });
 
   const client = new ChatWebSocketClient({
     onEvent: handleSocketEvent,
@@ -45,6 +105,11 @@ export const useChatStore = defineStore("chat", () => {
       backendReady.value = connected;
     },
   });
+
+  const sessionId = computed(() => activeSession.value.id);
+  const messages = computed(() => activeSession.value.messages);
+  const turns = computed(() => activeSession.value.turns);
+  const session = computed(() => activeSession.value.session);
 
   const sessionSnapshot = computed(() => ({
     intent: session.value?.current_intent ?? "-",
@@ -55,8 +120,23 @@ export const useChatStore = defineStore("chat", () => {
     summary: session.value?.summary || "等待会话开始...",
   }));
 
+  function touchTargetSession(target: ChatSessionItem, preview?: string) {
+    target.updatedDay = todayLabel();
+    target.updatedAt = nowLabel();
+    if (preview) {
+      target.preview = preview;
+    }
+  }
+
+  function touchSession(preview?: string) {
+    touchTargetSession(activeSession.value, preview);
+  }
+
   function appendMessage(message: MessageItem) {
-    messages.value.push(message);
+    activeSession.value.messages.push(message);
+    if (message.role !== "system") {
+      touchSession(message.content);
+    }
   }
 
   function resetLiveTurn() {
@@ -64,6 +144,73 @@ export const useChatStore = defineStore("chat", () => {
     liveToolResult.value = null;
     liveIntent.value = null;
     liveStage.value = null;
+  }
+
+  function createNewSession() {
+    const newSession = createSession();
+    sessions.value.unshift(newSession);
+    activeSessionId.value = newSession.id;
+    draft.value = "";
+    statusText.value = "已新建会话";
+    resetLiveTurn();
+  }
+
+  function startRenameSession(id: string) {
+    const target = sessions.value.find((session) => session.id === id);
+    if (!target) {
+      return;
+    }
+    renamingSessionId.value = id;
+    renameDraft.value = target.title;
+  }
+
+  function cancelRenameSession() {
+    renamingSessionId.value = null;
+    renameDraft.value = "";
+  }
+
+  function submitRenameSession(id: string) {
+    const target = sessions.value.find((session) => session.id === id);
+    const nextTitle = renameDraft.value.trim();
+    if (!target || !nextTitle) {
+      cancelRenameSession();
+      return;
+    }
+    target.title = nextTitle.slice(0, 20);
+    touchTargetSession(target, target.preview);
+    cancelRenameSession();
+  }
+
+  function removeSession(id: string) {
+    if (sessions.value.length === 1) {
+      createNewSession();
+    }
+    sessions.value = sessions.value.filter((session) => session.id !== id);
+    if (!sessions.value.some((session) => session.id === activeSessionId.value)) {
+      activeSessionId.value = sessions.value[0].id;
+    }
+    statusText.value = "已删除会话";
+  }
+
+  async function switchSession(id: string) {
+    activeSessionId.value = id;
+    draft.value = "";
+    statusText.value = "已切换会话";
+    resetLiveTurn();
+
+    if (!activeSession.value.session) {
+      try {
+        activeSession.value.session = await getSession(id);
+      } catch (error) {
+        // Ignore 404 for brand new local sessions.
+      }
+    }
+  }
+
+  function updateSessionTitle(message: string) {
+    if (activeSession.value.title === "新会话" || activeSession.value.title === "客服咨询") {
+      activeSession.value.title = message.slice(0, 12) || "新会话";
+    }
   }
 
   function handleSocketEvent(event: ChatSocketEvent) {
@@ -128,8 +275,8 @@ export const useChatStore = defineStore("chat", () => {
         tone: "meta",
         content: `intent=${response.intent} | stage=${response.stage} | clarify=${response.needs_clarification} | slots=${JSON.stringify(response.slots)}`,
       });
-      session.value = response.session_state;
-      turns.value.unshift({
+      activeSession.value.session = response.session_state;
+      activeSession.value.turns.unshift({
         id: `turn-${Date.now()}`,
         intent: response.intent,
         stage: response.stage,
@@ -142,6 +289,7 @@ export const useChatStore = defineStore("chat", () => {
           second: "2-digit",
         }),
       });
+      touchSession(response.reply);
       statusText.value = "发送成功";
       pending.value = false;
       draft.value = "";
@@ -168,7 +316,8 @@ export const useChatStore = defineStore("chat", () => {
 
   async function refreshSession() {
     try {
-      session.value = await getSession(sessionId.value);
+      activeSession.value.session = await getSession(sessionId.value);
+      touchSession(activeSession.value.preview);
       statusText.value = "状态已刷新";
     } catch (error) {
       statusText.value = "当前还没有会话状态";
@@ -181,6 +330,7 @@ export const useChatStore = defineStore("chat", () => {
       return;
     }
 
+    updateSessionTitle(message);
     appendMessage({
       id: `user-${Date.now()}`,
       role: "user",
@@ -222,8 +372,13 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   return {
+    activeSession,
+    activeSessionId,
     backendReady,
+    cancelRenameSession,
     channel,
+    connectSocket,
+    createNewSession,
     draft,
     liveIntent,
     liveStage,
@@ -231,14 +386,22 @@ export const useChatStore = defineStore("chat", () => {
     liveTrace,
     messages,
     pending,
-    connectSocket,
     refreshHealth,
     refreshSession,
+    removeSession,
+    renameDraft,
+    renamingSessionId,
     sendMessage,
     sessionId,
+    sessionSearch,
     sessionSnapshot,
+    sessions,
+    startRenameSession,
+    groupedSessions,
     socketConnected,
     statusText,
+    submitRenameSession,
+    switchSession,
     turns,
     userId,
   };
