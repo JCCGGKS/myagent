@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Literal
 
 from pydantic import BaseModel
@@ -40,8 +41,10 @@ class LLMIntentFallbackService:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self.client = None
+        self.last_debug: dict[str, str] = {}
 
         if OpenAI is None or not config.is_usable:
+            self.last_debug = {"status": "disabled_or_sdk_missing"}
             return
 
         client_kwargs: dict[str, object] = {
@@ -51,6 +54,7 @@ class LLMIntentFallbackService:
         if config.base_url:
             client_kwargs["base_url"] = config.base_url
         self.client = OpenAI(**client_kwargs)
+        self.last_debug = {"status": "ready"}
 
     @property
     def enabled(self) -> bool:
@@ -58,22 +62,14 @@ class LLMIntentFallbackService:
 
     def classify(self, message: str, previous_sub_intent: str) -> IntentResult | None:
         if self.client is None:
+            self.last_debug = {"status": "client_unavailable"}
             return None
 
         prompt = self._build_prompt(message, previous_sub_intent)
-        try:
-            response = self.client.responses.parse(
-                model=self.config.model,
-                input=[
-                    {"role": "system", "content": self._system_prompt()},
-                    {"role": "user", "content": prompt},
-                ],
-                text_format=LLMIntentDecision,
-            )
-        except Exception:
-            return None
+        parsed = self._classify_with_responses_api(prompt)
+        if parsed is None:
+            parsed = self._classify_with_chat_completions(prompt)
 
-        parsed = response.output_parsed
         if parsed is None:
             return None
 
@@ -88,12 +84,85 @@ class LLMIntentFallbackService:
             route_source="llm_fallback",
         )
 
+    def _classify_with_responses_api(self, prompt: str) -> LLMIntentDecision | None:
+        try:
+            response = self.client.responses.parse(
+                model=self.config.model,
+                input=[
+                    {"role": "system", "content": self._system_prompt()},
+                    {"role": "user", "content": prompt},
+                ],
+                text_format=LLMIntentDecision,
+            )
+        except Exception as exc:
+            self.last_debug = {
+                "status": "responses_api_error",
+                "error": repr(exc),
+            }
+            return None
+
+        parsed = response.output_parsed
+        if parsed is None:
+            self.last_debug = {
+                "status": "responses_api_empty",
+                "raw": self._safe_dump(response),
+            }
+            return None
+
+        self.last_debug = {
+            "status": "responses_api_success",
+            "raw": self._safe_dump(response),
+        }
+        return parsed
+
+    def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": self._system_prompt()},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            self.last_debug = {
+                "status": "chat_completions_error",
+                "error": repr(exc),
+            }
+            return None
+
+        content = response.choices[0].message.content if response.choices else None
+        if not content:
+            self.last_debug = {
+                "status": "chat_completions_empty",
+                "raw": self._safe_dump(response),
+            }
+            return None
+
+        try:
+            data = json.loads(content)
+            parsed = LLMIntentDecision(**data)
+            self.last_debug = {
+                "status": "chat_completions_success",
+                "raw": content,
+            }
+            return parsed
+        except Exception as exc:
+            self.last_debug = {
+                "status": "chat_completions_parse_error",
+                "error": repr(exc),
+                "raw": content,
+            }
+            return None
+
     def _system_prompt(self) -> str:
         return (
             "你是客服意图分类器。"
             "只能从给定的主意图和子意图中选择一个结果。"
             "如果用户表达不明确、超出当前系统能力，返回 unsupported.unknown。"
             "不要编造不存在的意图。"
+            "输出必须是合法 JSON。"
         )
 
     def _build_prompt(self, message: str, previous_sub_intent: str) -> str:
@@ -129,3 +198,11 @@ class LLMIntentFallbackService:
 上一轮子意图：{previous_sub_intent}
 当前用户输入：{message}
 """.strip()
+
+    def _safe_dump(self, response: object) -> str:
+        if hasattr(response, "model_dump_json"):
+            try:
+                return response.model_dump_json(indent=2)
+            except Exception:
+                pass
+        return repr(response)
