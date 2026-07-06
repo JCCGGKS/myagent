@@ -19,6 +19,11 @@ export interface ChatResponse {
   needs_clarification: boolean;
   handoff: boolean;
   slots: Record<string, string>;
+  missing_slots: string[];
+  summary: string;
+  tool_result: ToolResult | null;
+  session_state: ConversationState;
+  turn_trace: string[];
 }
 
 export interface ConversationState {
@@ -38,9 +43,99 @@ export interface ConversationState {
   reply: string;
 }
 
+export interface OrderToolData {
+  order_id: string;
+  status: string;
+  product_name: string;
+  amount: number;
+}
+
+export interface LogisticsEvent {
+  time: string;
+  status: string;
+}
+
+export interface LogisticsToolData {
+  order_id: string;
+  tracking_status: string;
+  timeline: LogisticsEvent[];
+}
+
+export interface HandoffToolData {
+  ticket_id: string;
+  summary: string;
+}
+
+export interface ToolResult {
+  kind: "order" | "logistics" | "handoff";
+  data: OrderToolData | LogisticsToolData | HandoffToolData | null;
+}
+
 export interface MessageItem {
   id: string;
   role: "assistant" | "user" | "system";
   content: string;
   tone?: "normal" | "meta";
 }
+
+export interface TurnItem {
+  id: string;
+  intent: IntentCode;
+  stage: string;
+  summary: string;
+  trace: string[];
+  toolResult: ToolResult | null;
+  createdAt: string;
+}
+
+export interface ChatSocketStatusEvent {
+  type: "status";
+  stage: string;
+  message: string;
+}
+
+export interface ChatSocketIntentEvent {
+  type: "intent";
+  intent: IntentCode;
+  confidence: number;
+  slots: Record<string, string>;
+  needs_clarification: boolean;
+}
+
+export interface ChatSocketStateEvent {
+  type: "state";
+  stage: string;
+  current_intent: IntentCode;
+  slots: Record<string, string>;
+  missing_slots: string[];
+  needs_clarification: boolean;
+}
+
+export interface ChatSocketTraceEvent {
+  type: "trace";
+  message: string;
+}
+
+export interface ChatSocketToolResultEvent {
+  type: "tool_result";
+  tool_result: ToolResult | null;
+}
+
+export interface ChatSocketFinalEvent {
+  type: "final";
+  response: ChatResponse;
+}
+
+export interface ChatSocketErrorEvent {
+  type: "error";
+  message: string;
+}
+
+export type ChatSocketEvent =
+  | ChatSocketStatusEvent
+  | ChatSocketIntentEvent
+  | ChatSocketStateEvent
+  | ChatSocketTraceEvent
+  | ChatSocketToolResultEvent
+  | ChatSocketFinalEvent
+  | ChatSocketErrorEvent;

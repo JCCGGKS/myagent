@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent import CustomerServiceAgent
@@ -39,6 +39,27 @@ def health() -> dict[str, str]:
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     return agent.chat(request)
+
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            request = ChatRequest(**payload)
+            for event in agent.chat_events(request):
+                await websocket.send_json(event)
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:
+        await websocket.send_json(
+            {
+                "type": "error",
+                "message": str(exc),
+            }
+        )
+        await websocket.close()
 
 
 @app.get("/session/{session_id}", response_model=ConversationState)

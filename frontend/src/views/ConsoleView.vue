@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 
+import TurnTracePanel from "@/components/TurnTracePanel.vue";
 import { useChatStore } from "@/stores/chat";
 
 const store = useChatStore();
@@ -14,6 +15,7 @@ const prompts = [
 
 onMounted(async () => {
   await store.refreshHealth();
+  await store.connectSocket();
 });
 </script>
 
@@ -87,6 +89,10 @@ onMounted(async () => {
             <pre>{{ JSON.stringify(store.sessionSnapshot.slots, null, 2) }}</pre>
           </article>
           <article class="slot-card">
+            <p class="panel-label">Missing Slots</p>
+            <pre>{{ JSON.stringify(store.sessionSnapshot.missingSlots, null, 2) }}</pre>
+          </article>
+          <article class="slot-card slot-card-wide">
             <p class="panel-label">摘要</p>
             <pre>{{ store.sessionSnapshot.summary }}</pre>
           </article>
@@ -114,7 +120,8 @@ onMounted(async () => {
 
       <div class="backend-state" :class="{ offline: store.backendReady === false }">
         <span class="status-dot"></span>
-        <p v-if="store.backendReady === true">后端 API 已连接</p>
+        <p v-if="store.socketConnected">WebSocket 已连接</p>
+        <p v-else-if="store.backendReady === true">后端 API 可用，WebSocket 尚未建立</p>
         <p v-else-if="store.backendReady === false">后端 API 未连接，请先启动 FastAPI</p>
         <p v-else>正在探测后端状态</p>
       </div>
@@ -160,5 +167,7 @@ onMounted(async () => {
         </div>
       </form>
     </section>
+
+    <TurnTracePanel class="trace-shell" :turns="store.turns" />
   </main>
 </template>

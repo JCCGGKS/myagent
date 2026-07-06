@@ -59,6 +59,11 @@ class ChatResponse(BaseModel):
     needs_clarification: bool
     handoff: bool
     slots: dict[str, str]
+    missing_slots: list[str] = Field(default_factory=list)
+    summary: str = ""
+    tool_result: dict[str, Any] | None = None
+    session_state: dict[str, Any] = Field(default_factory=dict)
+    turn_trace: list[str] = Field(default_factory=list)
 
 
 class OrderInfo(BaseModel):

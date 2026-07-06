@@ -58,5 +58,9 @@ curl -X POST http://127.0.0.1:8000/chat \
 ## Frontend Notes
 
 - `frontend/` 使用 `Vue 3 + Vite + TypeScript + Pinia + Vue Router`
-- Vite 开发服务通过 `/api` 代理到 `http://127.0.0.1:8000`
+- Vite 开发服务通过 `/api` 和 `/ws` 代理到 `http://127.0.0.1:8000`
 - 后端已开放 `http://127.0.0.1:5173` 和 `http://localhost:5173` 的 CORS
+- 前端控制台包含消息流、会话状态面板、轮次 Trace 历史，以及订单/物流/转人工的结构化详情卡片
+- `/chat` 返回除了文本回复外，还包含 `tool_result`、`session_state` 和 `turn_trace`，便于前端直接渲染调试信息
+- Web 端对话默认优先使用 `WebSocket /ws/chat`，由 Vite 转发到后端，实时接收 `status / intent / state / trace / tool_result / final` 事件
+- `POST /chat` 仍然保留，作为 WebSocket 不可用时的回退通道

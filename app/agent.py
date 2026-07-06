@@ -78,6 +78,109 @@ class CustomerServiceAgent:
         return builder.compile()
 
     def chat(self, request: ChatRequest) -> ChatResponse:
+        state = self._execute_request(request)
+        return self._build_chat_response(state)
+
+    def chat_events(self, request: ChatRequest) -> list[dict[str, Any]]:
+        state = self.store.get(request.session_id) or ConversationState(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            channel=request.channel,
+        )
+        payload = {"state": state, "request": request}
+        events: list[dict[str, Any]] = []
+
+        payload = self.input_normalizer(payload)
+        state = payload["state"]
+        events.append(
+            {
+                "type": "status",
+                "stage": "input_normalizer",
+                "message": "已接收用户消息",
+            }
+        )
+
+        payload = self.intent_router(payload)
+        state = payload["state"]
+        events.append(
+            {
+                "type": "intent",
+                "intent": state.intent_result.intent if state.intent_result else "unsupported",
+                "confidence": state.intent_result.confidence if state.intent_result else 0.0,
+                "slots": state.intent_result.slots if state.intent_result else {},
+                "needs_clarification": (
+                    state.intent_result.needs_clarification if state.intent_result else False
+                ),
+            }
+        )
+
+        payload = self.state_tracker(payload)
+        state = payload["state"]
+        events.append(
+            {
+                "type": "state",
+                "stage": state.stage,
+                "current_intent": state.current_intent,
+                "slots": state.slots,
+                "missing_slots": state.missing_slots,
+                "needs_clarification": state.needs_clarification,
+            }
+        )
+
+        route = self.route_after_tracking(payload)
+        events.append(
+            {
+                "type": "trace",
+                "message": f"路由到 {route}",
+            }
+        )
+
+        if route == "faq_retriever":
+            payload = self.faq_retriever(payload)
+            events.append(
+                {
+                    "type": "trace",
+                    "message": "已命中 FAQ 检索",
+                }
+            )
+        elif route == "business_tool_executor":
+            payload = self.business_tool_executor(payload)
+            state = payload["state"]
+            events.append(
+                {
+                    "type": "tool_result",
+                    "tool_result": state.tool_result,
+                }
+            )
+        elif route == "clarification_handler":
+            payload = self.clarification_handler(payload)
+            events.append(
+                {
+                    "type": "trace",
+                    "message": "进入澄清追问流程",
+                }
+            )
+        elif route == "handoff_handler":
+            payload = self.handoff_handler(payload)
+            state = payload["state"]
+            events.append(
+                {
+                    "type": "tool_result",
+                    "tool_result": state.tool_result,
+                }
+            )
+
+        payload = self.response_generator(payload)
+        state = self._finalize_state(payload["state"])
+        events.append(
+            {
+                "type": "final",
+                "response": self._build_chat_response(state).model_dump(),
+            }
+        )
+        return events
+
+    def _execute_request(self, request: ChatRequest) -> ConversationState:
         current_state = self.store.get(request.session_id) or ConversationState(
             session_id=request.session_id,
             user_id=request.user_id,
@@ -90,9 +193,15 @@ class CustomerServiceAgent:
         else:
             result = self.graph.invoke(payload)
 
-        state: ConversationState = result["state"]
+        return self._finalize_state(result["state"])
+
+    def _finalize_state(self, state: ConversationState) -> ConversationState:
         state.message_history.append({"role": "assistant", "content": state.reply})
         self.store.save(state)
+        return state
+
+    def _build_chat_response(self, state: ConversationState) -> ChatResponse:
+        turn_trace = self._build_turn_trace(state)
         return ChatResponse(
             reply=state.reply,
             intent=state.current_intent,
@@ -100,7 +209,47 @@ class CustomerServiceAgent:
             needs_clarification=state.needs_clarification,
             handoff=state.handoff,
             slots=state.slots,
+            missing_slots=state.missing_slots,
+            summary=state.summary,
+            tool_result=state.tool_result,
+            session_state=self._build_session_snapshot(state),
+            turn_trace=turn_trace,
         )
+
+    def _build_session_snapshot(self, state: ConversationState) -> dict[str, Any]:
+        return {
+            "session_id": state.session_id,
+            "user_id": state.user_id,
+            "channel": state.channel,
+            "current_intent": state.current_intent,
+            "stage": state.stage,
+            "slots": state.slots,
+            "missing_slots": state.missing_slots,
+            "needs_clarification": state.needs_clarification,
+            "handoff": state.handoff,
+            "summary": state.summary,
+            "risk_level": state.risk_level,
+            "last_user_message": state.last_user_message,
+            "message_history": state.message_history,
+            "reply": state.reply,
+        }
+
+    def _build_turn_trace(self, state: ConversationState) -> list[str]:
+        trace = [
+            f"识别意图: {state.current_intent}",
+            f"当前阶段: {state.stage}",
+        ]
+        if state.slots:
+            trace.append(f"已填槽位: {state.slots}")
+        if state.missing_slots:
+            trace.append(f"缺失槽位: {state.missing_slots}")
+        if state.tool_result:
+            trace.append(f"工具调用结果: {state.tool_result.get('kind', 'unknown')}")
+        if state.handoff:
+            trace.append("触发转人工流程")
+        if state.needs_clarification:
+            trace.append("需要继续追问补齐信息")
+        return trace
 
     def _run_without_langgraph(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = self.input_normalizer(payload)
