@@ -350,12 +350,12 @@ class CustomerServiceAgent:
                 confidence=0.95,
                 route_source="rule",
             )
-        elif faq and not has_order_keyword:
+        elif faq:
             intent = IntentResult(
                 main_intent="faq",
                 sub_intent="faq.general",
-                confidence=0.8,
-                route_source="faq_match",
+                confidence=0.95,
+                route_source="rule",
                 candidate_intents=["faq"],
             )
         elif has_order_keyword:
@@ -383,14 +383,6 @@ class CustomerServiceAgent:
                 confidence=0.88,
                 slots={"order_id": order_id},
                 route_source="slot_followup",
-            )
-        elif faq:
-            intent = IntentResult(
-                main_intent="faq",
-                sub_intent="faq.general",
-                confidence=0.8,
-                route_source="faq_match",
-                candidate_intents=["faq"],
             )
         else:
             intent = IntentResult(
