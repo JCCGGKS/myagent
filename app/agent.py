@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.models import ChatRequest, ChatResponse, ConversationState, IntentResult
+from app.llm import LLMIntentFallbackService
 from app.services import (
     HandoffService,
     KnowledgeBaseService,
@@ -34,12 +35,14 @@ class CustomerServiceAgent:
         order_service: OrderService,
         logistics_service: LogisticsService,
         handoff_service: HandoffService,
+        llm_fallback_service: LLMIntentFallbackService | None = None,
     ) -> None:
         self.store = store
         self.knowledge_base = knowledge_base
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
+        self.llm_fallback_service = llm_fallback_service
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -396,7 +399,7 @@ class CustomerServiceAgent:
                 candidate_intents=["faq"],
             )
         else:
-            intent = IntentResult(
+            intent = self._route_with_llm_fallback(message, previous_sub_intent) or IntentResult(
                 main_intent="unsupported",
                 sub_intent="unsupported.unknown",
                 confidence=0.2,
@@ -411,6 +414,13 @@ class CustomerServiceAgent:
         state.intent_result = intent
         payload["state"] = state
         return payload
+
+    def _route_with_llm_fallback(
+        self, message: str, previous_sub_intent: str
+    ) -> IntentResult | None:
+        if self.llm_fallback_service is None or not self.llm_fallback_service.enabled:
+            return None
+        return self.llm_fallback_service.classify(message, previous_sub_intent)
 
     def state_tracker(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]

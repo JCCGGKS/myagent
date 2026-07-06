@@ -65,6 +65,30 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 当前版本使用本地 mock 数据，不依赖真实数据库、Redis 或外部业务系统。
 
+## LLM Fallback Config
+
+LLM 兜底配置按环境拆分：
+
+- `config/llm_config.test.json`
+- `config/llm_config.prod.json`
+- `config/llm_config.local.json`
+
+加载顺序：
+
+1. 读取 `APP_ENV` 对应的基线配置，默认 `test`
+2. 如果存在 `config/llm_config.local.json`，再用本地配置覆盖
+
+`llm_config.local.json` 已加入 `.gitignore`，适合放本机 key 和中转站地址。
+
+示例字段：
+
+- `enabled`
+- `api_key`
+- `model`
+- `base_url`
+- `timeout_seconds`
+- `confidence_threshold`
+
 ## Frontend Notes
 
 - `frontend/` 使用 `Vue 3 + Vite + TypeScript + Pinia + Vue Router`
