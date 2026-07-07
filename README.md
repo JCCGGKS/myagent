@@ -1,6 +1,6 @@
 # myagent
 
-客服 Agent MVP 骨架，提供基于 `FastAPI` 的对话接口，以及 `FAQ / 订单查询 / 物流查询 / 转人工 / 问候` 五条最小闭环能力。当前仓库已拆分为 `FastAPI` 后端和 `Vue 3 + Vite + TypeScript` 前端。
+客服 Agent MVP 骨架，提供基于 `FastAPI` 的对话接口，以及 `FAQ / 订单查询 / 物流查询 / 退款咨询 / 转人工 / 问候` 六条最小闭环能力。当前仓库已拆分为 `FastAPI` 后端和 `Vue 3 + Vite + TypeScript` 前端。
 
 ## Quick Start
 
@@ -30,6 +30,7 @@ npm run dev
 
 - `GET /health`
 - `POST /chat`
+- `WS /ws/chat`
 - `GET /session/{session_id}`
 
 示例请求：
@@ -50,37 +51,49 @@ curl -X POST http://127.0.0.1:8000/chat \
 - FAQ 问答
 - 订单状态查询
 - 物流状态查询
+- 退款规则咨询
 - 转人工
 - 问候闲聊
 - 多轮槽位补齐
+- 主意图切换后的状态冻结与槽位继承
+- 结构化上下文压缩与工具审计日志
 
 当前后端意图结构已升级为“主意图 + 子意图”，例如：
 
 - `faq` -> `faq.general`
 - `order_service` -> `order_service.query_status`
 - `logistics_service` -> `logistics_service.query_status`
+- `refund_service` -> `refund_service.consult_policy`
+- `refund_service` -> `refund_service.request_refund`
 - `handoff_service` -> `handoff_service.request_human`
 - `chitchat` -> `chitchat.greeting`
+- `chitchat` -> `chitchat.thanks`
 - `unsupported` -> `unsupported.unknown`
 
 当前版本使用本地 mock 数据，不依赖真实数据库、Redis 或外部业务系统。
+
+当前后端执行链与 `template/06.1-06.4`、`template/07` 对齐为：
+
+`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / knowledge / tool / handoff -> response_generator -> context_compressor -> memory_writer`
 
 ## Project Structure
 
 ```text
 myagent/
 ├── app/
-│   ├── agents/      # 客服主 Agent、状态流转、路由编排
+│   ├── agents/      # 客服主 Agent，仅负责编排节点
 │   ├── api/         # FastAPI / WebSocket 入口
 │   ├── config/      # 配置加载
 │   ├── mock_data/   # FAQ、订单、物流 mock 数据
 │   ├── models/      # 请求、响应、会话、领域模型
 │   ├── prompts/     # LLM prompt 定义
-│   ├── services/    # FAQ / 订单 / 物流 / 转人工 / LLM 兜底服务
-│   └── store/       # 会话状态存储
+│   ├── services/    # FAQ / 订单 / 物流 / 转人工 / 路由 / 状态 / 策略服务
+│   ├── store/       # 会话状态存储、工具审计、handoff 记录
+│   └── utils/       # 文件与文本工具函数
 ├── config/          # test / prod / local yml 配置文件
 ├── eval/            # 单点评估脚本、样本、评估报告
 ├── frontend/        # Vue 3 前端
+├── tests/           # 后端单元测试
 ├── wiki/            # 设计文档
 ├── template/        # 调研与草稿材料
 ├── main.py          # 后端启动入口
@@ -90,12 +103,29 @@ myagent/
 后端模块职责：
 
 - `app/api`: 对外暴露 HTTP 和 WebSocket 接口，负责应用装配
-- `app/agents`: 串联意图识别、状态更新、FAQ/工具路由、澄清与回复生成
+- `app/agents`: 串联意图识别、状态更新、策略分发、FAQ/工具路由、澄清与回复生成
 - `app/models`: 统一维护 `ChatRequest`、`ChatResponse`、`ConversationState` 等数据结构
-- `app/services`: 承载 FAQ 检索、订单查询、物流查询、转人工、LLM fallback 等能力
+- `app/services/domain`: FAQ 检索、订单查询、物流查询、转人工能力
+- `app/services/routing`: 意图路由、状态跟踪、策略层
 - `app/config`: 负责读取 `APP_ENV` 对应配置并叠加本地覆盖
 - `app/prompts`: 独立管理 LLM 相关 prompt，便于查看和迭代
-- `app/store`: 当前使用内存会话存储，后续可替换为 Redis 或数据库
+- `app/store`: 当前使用内存版 `sessions / messages / state_snapshots / tool_calls / handoff_records`
+
+## State Model
+
+当前 `ConversationState` 已覆盖两层上下文：
+
+- 业务状态：`current_main_intent / current_sub_intent / stage / slots / missing_slots / confirmed_slots`
+- 执行状态：`current_action / latest_action_result / action_history / running_summary / archived_states`
+
+当前 `ws/chat` 会持续输出：
+
+- `status`
+- `intent`
+- `state`
+- `trace`
+- `tool_result`
+- `final`
 
 ## LLM Fallback Config
 
