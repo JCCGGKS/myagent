@@ -1,8 +1,13 @@
 import unittest
 
 from app.models import ChatRequest, ConversationState, ToolExecutionResult
-from app.services.dialog import ClarificationPromptRegistry
-from app.services.dialog import ClarificationService, MemoryService, ResponseService
+from app.services.dialog import (
+    ClarificationPromptRegistry,
+    ClarificationService,
+    MemoryService,
+    ResponsePromptRegistry,
+    ResponseService,
+)
 from app.store import SessionStore
 
 
@@ -32,6 +37,14 @@ class DialogServicesTestCase(unittest.TestCase):
         self.assertIn("订单号", updated.reply)
         self.assertEqual(updated.latest_action_name, "clarification_node")
 
+    def test_response_prompt_registry_should_load_default_yaml_prompts(self) -> None:
+        registry = ResponsePromptRegistry()
+
+        prompts = registry.get()
+
+        self.assertIn("greeting", prompts)
+        self.assertIn("unknown_fallback", prompts)
+
     def test_response_service_should_render_order_reply_from_tool_result(self) -> None:
         service = ResponseService()
         state = ConversationState(
@@ -56,6 +69,21 @@ class DialogServicesTestCase(unittest.TestCase):
         updated = service.generate(state)
 
         self.assertIn("订单 A1001 当前状态为 PAID", updated.reply)
+
+    def test_response_service_should_use_yaml_greeting_prompt(self) -> None:
+        service = ResponseService()
+        state = ConversationState(
+            session_id="s2b",
+            user_id="u1",
+            channel="web",
+            current_main_intent="chitchat",
+            current_sub_intent="chitchat.greeting",
+        )
+
+        updated = service.generate(state)
+
+        self.assertIn("你好", updated.reply)
+        self.assertIn("退款规则", updated.reply)
 
     def test_memory_service_should_record_messages_and_tool_calls(self) -> None:
         store = SessionStore()

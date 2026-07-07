@@ -138,6 +138,8 @@ myagent/
 
 - `config/intent_schemas.yml`
 - `config/intent_rules.yml`
+- `config/clarification_prompts.yml`
+- `config/response_prompts.yml`
 
 当前 `StateTrackerService` 会通过 `IntentSchemaRegistry` 读取 `intent_schemas.yml`，用于：
 
@@ -150,6 +152,18 @@ myagent/
 - 主意图规则关键词命中
 - `refund_action / refund_rule / greeting / thanks` 等子分支规则
 - 情绪规则关键词命中
+
+当前 `ClarificationService` 会通过 `ClarificationPromptRegistry` 读取 `clarification_prompts.yml`，用于：
+
+- 意图澄清统一文案
+- 不同主意图的缺槽追问文案
+- 通用 fallback 澄清文案
+
+当前 `ResponseService` 会通过 `ResponsePromptRegistry` 读取 `response_prompts.yml`，用于：
+
+- 闲聊和兜底客服话术
+- 退款确认文案
+- 订单 / 物流 / 转人工模板化回复
 
 ## LLM Fallback Config
 

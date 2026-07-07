@@ -10,6 +10,7 @@ from app.utils import build_action_record, load_yaml_file
 DEFAULT_CLARIFICATION_PROMPT_PATH = (
     Path(__file__).resolve().parents[2] / "config" / "clarification_prompts.yml"
 )
+DEFAULT_RESPONSE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "config" / "response_prompts.yml"
 
 
 class ClarificationPromptRegistry:
@@ -25,6 +26,22 @@ class ClarificationPromptRegistry:
         prompts = data.get("clarification_prompts", {})
         if not isinstance(prompts, dict):
             raise ValueError(f"Invalid clarification prompt config: {self.prompt_path}")
+        return prompts
+
+
+class ResponsePromptRegistry:
+    def __init__(self, prompt_path: Path | None = None) -> None:
+        self.prompt_path = prompt_path or DEFAULT_RESPONSE_PROMPT_PATH
+        self._prompts = self._load()
+
+    def get(self) -> dict:
+        return self._prompts
+
+    def _load(self) -> dict:
+        data = load_yaml_file(self.prompt_path)
+        prompts = data.get("response_prompts", {})
+        if not isinstance(prompts, dict):
+            raise ValueError(f"Invalid response prompt config: {self.prompt_path}")
         return prompts
 
 
@@ -50,7 +67,11 @@ class ClarificationService:
 
 
 class ResponseService:
+    def __init__(self, prompt_registry: ResponsePromptRegistry | None = None) -> None:
+        self.prompt_registry = prompt_registry or ResponsePromptRegistry()
+
     def generate(self, state: ConversationState) -> ConversationState:
+        prompts = self.prompt_registry.get()
         if state.reply:
             return state
 
@@ -58,47 +79,50 @@ class ResponseService:
             state.reply = (
                 state.tool_result.user_facing_summary
                 if state.tool_result and state.tool_result.user_facing_summary
-                else "我暂时没有检索到明确规则，你可以换一种说法，或者我帮你转人工。"
+                else prompts["faq_fallback"]
             )
         elif state.current_sub_intent == "refund_service.consult_policy":
             state.reply = (
                 state.tool_result.user_facing_summary
                 if state.tool_result and state.tool_result.user_facing_summary
-                else "退款规则我暂时没有准确命中，你可以补充订单号或具体问题。"
+                else prompts["refund_policy_fallback"]
             )
         elif state.current_sub_intent == "refund_service.request_refund":
-            state.reply = "已收到你的退款诉求。请提供订单号后，我可以继续帮你确认下一步处理方式。"
+            state.reply = prompts["refund_request_ack"]
         elif state.current_sub_intent == "order_service.query_status":
             tool_data = state.tool_result.sanitized_result if state.tool_result else None
             if tool_data:
-                state.reply = (
-                    f"订单 {tool_data['order_id']} 当前状态为 {tool_data['status']}，"
-                    f"商品是 {tool_data['product_name']}，金额 {tool_data['amount']} 元。"
+                state.reply = prompts["order_template"].format(
+                    order_id=tool_data["order_id"],
+                    status=tool_data["status"],
+                    product_name=tool_data["product_name"],
+                    amount=tool_data["amount"],
                 )
             else:
-                state.reply = "没有查到这个订单号，请确认后重试，或者我可以帮你转人工。"
+                state.reply = prompts["order_not_found"]
         elif state.current_sub_intent == "logistics_service.query_status":
             tool_data = state.tool_result.sanitized_result if state.tool_result else None
             if tool_data and tool_data.get("timeline"):
                 latest = tool_data["timeline"][-1]
-                state.reply = (
-                    f"订单 {tool_data['order_id']} 当前物流状态为 {tool_data['tracking_status']}，"
-                    f"最近一条记录是 {latest['time']} {latest['status']}。"
+                state.reply = prompts["logistics_template"].format(
+                    order_id=tool_data["order_id"],
+                    tracking_status=tool_data["tracking_status"],
+                    latest_time=latest["time"],
+                    latest_status=latest["status"],
                 )
             else:
-                state.reply = "没有查到该订单的物流信息，请确认订单号是否正确。"
+                state.reply = prompts["logistics_not_found"]
         elif state.current_main_intent == "handoff_service":
             handoff_data = state.tool_result.sanitized_result if state.tool_result else {}
-            state.reply = (
-                f"已为你转人工客服，服务单号 {handoff_data.get('ticket_id', 'N/A')}。"
-                "人工客服会基于当前会话上下文继续处理。"
+            state.reply = prompts["handoff_template"].format(
+                ticket_id=handoff_data.get("ticket_id", "N/A")
             )
         elif state.current_sub_intent == "chitchat.greeting":
-            state.reply = "你好，我可以帮你查询 FAQ、订单、物流、退款规则，也可以为你转人工客服。"
+            state.reply = prompts["greeting"]
         elif state.current_sub_intent == "chitchat.thanks":
-            state.reply = "不客气。如果你还想查询订单、物流或退款问题，我可以继续帮你处理。"
+            state.reply = prompts["thanks"]
         else:
-            state.reply = "这个问题我暂时无法准确处理。你可以换一种说法，或者我可以帮你转人工。"
+            state.reply = prompts["unknown_fallback"]
 
         state.latest_action_name = state.latest_action_name or "response_generator"
         state.latest_action_result = {"reply": state.reply}

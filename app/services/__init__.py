@@ -3,6 +3,7 @@ from app.services.dialog import (
     ClarificationPromptRegistry,
     ClarificationService,
     MemoryService,
+    ResponsePromptRegistry,
     ResponseService,
 )
 from app.services.domain import (
@@ -35,6 +36,7 @@ __all__ = [
     "LLMIntentFallbackService",
     "LogisticsService",
     "MemoryService",
+    "ResponsePromptRegistry",
     "OrderService",
     "ResponseService",
     "StateTrackerService",
