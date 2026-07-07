@@ -1,7 +1,8 @@
 import unittest
 
 from app.models import ConversationState
-from app.services import HandoffService, KnowledgeBaseService, LogisticsService, OrderService
+from app.rag import KnowledgeBaseService
+from app.services import HandoffService, LogisticsService, OrderService
 from app.services.execution import ExecutionService
 
 

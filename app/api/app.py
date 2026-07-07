@@ -6,9 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agents import CustomerServiceAgent
 from app.config import load_llm_config
 from app.models import ChatRequest, ChatResponse, ConversationState
+from app.rag import KnowledgeBaseService
 from app.services import (
     HandoffService,
-    KnowledgeBaseService,
     LLMIntentFallbackService,
     LogisticsService,
     OrderService,

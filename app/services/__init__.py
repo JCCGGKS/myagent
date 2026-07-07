@@ -8,7 +8,6 @@ from app.services.dialog import (
 )
 from app.services.domain import (
     HandoffService,
-    KnowledgeBaseService,
     LogisticsService,
     OrderService,
     extract_order_id,
@@ -32,7 +31,6 @@ __all__ = [
     "IntentRouterService",
     "IntentRuleRegistry",
     "IntentSchemaRegistry",
-    "KnowledgeBaseService",
     "LLMIntentFallbackService",
     "LogisticsService",
     "MemoryService",

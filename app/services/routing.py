@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.models import ConversationState, IntentResult
-from app.services.domain import KnowledgeBaseService, extract_order_id
+from app.rag import KnowledgeBaseService
+from app.services.domain import extract_order_id
 from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.llm_fallback import LLMIntentFallbackService
 

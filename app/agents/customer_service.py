@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.models import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
+from app.rag import KnowledgeBaseService
 from app.services import (
     ClarificationService,
     ContextService,
@@ -11,7 +12,6 @@ from app.services import (
     HandoffService,
     IntentRouterService,
     IntentSchemaRegistry,
-    KnowledgeBaseService,
     LLMIntentFallbackService,
     LogisticsService,
     MemoryService,

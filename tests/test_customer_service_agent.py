@@ -2,7 +2,8 @@ import unittest
 
 from app.agents import CustomerServiceAgent
 from app.models import ChatRequest
-from app.services import HandoffService, KnowledgeBaseService, LogisticsService, OrderService
+from app.rag import KnowledgeBaseService
+from app.services import HandoffService, LogisticsService, OrderService
 from app.store import SessionStore
 
 

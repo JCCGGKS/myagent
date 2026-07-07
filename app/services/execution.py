@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from app.models import ConversationState, ToolExecutionResult
-from app.services.domain import HandoffService, KnowledgeBaseService, LogisticsService, OrderService
+from app.rag import KnowledgeBaseService
+from app.services.domain import HandoffService, LogisticsService, OrderService
 from app.utils import build_action_record
 
 

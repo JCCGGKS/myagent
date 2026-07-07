@@ -1,7 +1,7 @@
 import unittest
 
 from app.models import ConversationState, IntentResult
-from app.services import KnowledgeBaseService
+from app.rag import KnowledgeBaseService
 from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.routing import (
     HandoffClarificationPolicy,
