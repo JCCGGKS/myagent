@@ -87,6 +87,7 @@ myagent/
 │   ├── mock_data/   # FAQ、订单、物流 mock 数据
 │   ├── models/      # 请求、响应、会话、领域模型
 │   ├── prompts/     # LLM prompt 定义
+│   ├── rag/         # 知识检索与 FAQ/RAG 相关模块
 │   ├── services/    # FAQ / 路由 / 状态 / 策略 / 对话 / 执行 / 上下文服务
 │   ├── store/       # 会话状态存储、工具审计、handoff 记录
 │   └── utils/       # 文件与文本工具函数
@@ -105,7 +106,8 @@ myagent/
 - `app/api`: 对外暴露 HTTP 和 WebSocket 接口，负责应用装配
 - `app/agents`: 串联意图识别、状态更新、策略分发、FAQ/工具路由、澄清与回复生成
 - `app/models`: 统一维护 `ChatRequest`、`ChatResponse`、`ConversationState` 等数据结构
-- `app/services/domain`: FAQ 检索、订单查询、物流查询、转人工能力
+- `app/rag`: 承载 FAQ 检索与后续 RAG 演进入口，当前包含 `KnowledgeBaseService`
+- `app/services/domain`: 订单查询、物流查询、转人工等领域服务
 - `app/services/routing`: 意图路由、状态跟踪、策略层
 - `app/services/dialog`: 澄清回复、最终回复、memory 持久化
 - `app/services/execution`: 知识检索、业务工具调用、转人工执行
