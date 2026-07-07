@@ -2,6 +2,7 @@ import unittest
 
 from app.models import ConversationState, IntentResult
 from app.services import KnowledgeBaseService
+from app.services.intent_schema import IntentSchemaRegistry
 from app.services.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
@@ -10,6 +11,14 @@ from app.services.routing import (
 
 
 class RoutingServicesTestCase(unittest.TestCase):
+    def test_intent_schema_registry_should_load_default_yaml_schema(self) -> None:
+        registry = IntentSchemaRegistry()
+
+        schema = registry.get("refund_service")
+
+        self.assertEqual(schema["required_slots"], ["order_id"])
+        self.assertIn("refund_reason", schema["optional_slots"])
+
     def test_intent_router_should_detect_refund_faq_and_emotion(self) -> None:
         router = IntentRouterService(knowledge_base=KnowledgeBaseService(), llm_fallback_service=None)
         state = ConversationState(session_id="s1", user_id="u1", channel="web")
@@ -21,7 +30,7 @@ class RoutingServicesTestCase(unittest.TestCase):
         self.assertEqual(intent.emotion.primary, "neutral")
 
     def test_state_tracker_should_archive_previous_intent_and_inherit_slots(self) -> None:
-        tracker = StateTrackerService()
+        tracker = StateTrackerService(schema_registry=IntentSchemaRegistry())
         state = ConversationState(
             session_id="s2",
             user_id="u1",

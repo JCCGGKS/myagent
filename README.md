@@ -87,7 +87,7 @@ myagent/
 │   ├── mock_data/   # FAQ、订单、物流 mock 数据
 │   ├── models/      # 请求、响应、会话、领域模型
 │   ├── prompts/     # LLM prompt 定义
-│   ├── services/    # FAQ / 订单 / 物流 / 转人工 / 路由 / 状态 / 策略服务
+│   ├── services/    # FAQ / 路由 / 状态 / 策略 / 对话 / 执行 / 上下文服务
 │   ├── store/       # 会话状态存储、工具审计、handoff 记录
 │   └── utils/       # 文件与文本工具函数
 ├── config/          # test / prod / local yml 配置文件
@@ -107,9 +107,14 @@ myagent/
 - `app/models`: 统一维护 `ChatRequest`、`ChatResponse`、`ConversationState` 等数据结构
 - `app/services/domain`: FAQ 检索、订单查询、物流查询、转人工能力
 - `app/services/routing`: 意图路由、状态跟踪、策略层
+- `app/services/dialog`: 澄清回复、最终回复、memory 持久化
+- `app/services/execution`: 知识检索、业务工具调用、转人工执行
+- `app/services/context`: 最近消息窗口和 `running_summary` 压缩
+- `app/services/intent_schema`: 主意图对应的 `slot schema registry`，默认从 `config/intent_schemas.yml` 加载
 - `app/config`: 负责读取 `APP_ENV` 对应配置并叠加本地覆盖
 - `app/prompts`: 独立管理 LLM 相关 prompt，便于查看和迭代
 - `app/store`: 当前使用内存版 `sessions / messages / state_snapshots / tool_calls / handoff_records`
+- `app/utils/state`: `action_history` 等状态辅助函数
 
 ## State Model
 
@@ -126,6 +131,18 @@ myagent/
 - `trace`
 - `tool_result`
 - `final`
+
+## Intent Schema Config
+
+主意图对应的 `slot schema` 已外置到：
+
+- `config/intent_schemas.yml`
+
+当前 `StateTrackerService` 会通过 `IntentSchemaRegistry` 读取该 YAML，用于：
+
+- 计算 `required_slots`
+- 控制 `inheritable` 槽位继承
+- 统一 `clarification_order` 等配置入口
 
 ## LLM Fallback Config
 

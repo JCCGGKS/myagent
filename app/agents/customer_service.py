@@ -5,9 +5,12 @@ from typing import Any
 from app.models import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
 from app.services import (
     ClarificationService,
+    ContextService,
+    ExecutionService,
     HandoffClarificationPolicy,
     HandoffService,
     IntentRouterService,
+    IntentSchemaRegistry,
     KnowledgeBaseService,
     LLMIntentFallbackService,
     LogisticsService,
@@ -17,7 +20,7 @@ from app.services import (
     StateTrackerService,
 )
 from app.store import SessionStore
-from app.utils import build_action_record, normalize_whitespace
+from app.utils import normalize_whitespace
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -25,10 +28,6 @@ except ImportError:  # pragma: no cover
     END = "END"
     START = "START"
     StateGraph = None
-
-
-MAX_RECENT_MESSAGES = 6
-SOFT_SUMMARY_TURNS = 8
 
 
 class CustomerServiceAgent:
@@ -46,10 +45,18 @@ class CustomerServiceAgent:
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
+        self.intent_schema_registry = IntentSchemaRegistry()
         self.intent_router_service = IntentRouterService(knowledge_base, llm_fallback_service)
-        self.state_tracker_service = StateTrackerService()
+        self.state_tracker_service = StateTrackerService(schema_registry=self.intent_schema_registry)
         self.policy_service = HandoffClarificationPolicy()
         self.clarification_service = ClarificationService()
+        self.execution_service = ExecutionService(
+            knowledge_base=knowledge_base,
+            order_service=order_service,
+            logistics_service=logistics_service,
+            handoff_service=handoff_service,
+        )
+        self.context_service = ContextService(state_tracker=self.state_tracker_service)
         self.response_service = ResponseService()
         self.memory_service = MemoryService(store)
         self.graph = self._build_graph()
@@ -263,73 +270,17 @@ class CustomerServiceAgent:
 
     def knowledge_retriever(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        hits = self.knowledge_base.search(state.last_user_message)
-        state.retrieved_knowledge = hits
-        summary = hits[0].answer if hits else "未命中知识库答案"
-        state.tool_result = ToolExecutionResult(
-            kind="knowledge",
-            raw_result={"hits": [hit.model_dump() for hit in hits]},
-            sanitized_result=hits[0].model_dump() if hits else None,
-            user_facing_summary=summary,
-        )
-        state.latest_action_name = "knowledge_retriever"
-        state.latest_action_result = state.tool_result.sanitized_result
-        state.action_history.append(build_action_record("knowledge_retriever", summary))
-        payload["state"] = state
+        payload["state"] = self.execution_service.retrieve_knowledge(state)
         return payload
 
     def business_tool_executor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        order_id = state.slots["order_id"]
-
-        if state.current_sub_intent == "order_service.query_status":
-            order = self.order_service.get_order_status(order_id)
-            raw = order.model_dump() if order else None
-            summary = f"订单 {order_id} 当前状态为 {order.status}" if order else "没有查到这个订单号"
-            state.tool_result = ToolExecutionResult(
-                kind="order",
-                raw_result=raw,
-                sanitized_result=raw,
-                user_facing_summary=summary,
-            )
-            tool_name = "query_order"
-        else:
-            logistics = self.logistics_service.get_logistics(order_id)
-            raw = logistics.model_dump() if logistics else None
-            latest_status = logistics.timeline[-1].status if logistics and logistics.timeline else "无"
-            summary = (
-                f"订单 {order_id} 当前物流状态为 {logistics.tracking_status}，最近节点 {latest_status}"
-                if logistics
-                else "没有查到物流信息"
-            )
-            state.tool_result = ToolExecutionResult(
-                kind="logistics",
-                raw_result=raw,
-                sanitized_result=raw,
-                user_facing_summary=summary,
-            )
-            tool_name = "query_logistics"
-
-        state.latest_action_name = "business_tool_executor"
-        state.latest_action_result = state.tool_result.sanitized_result
-        state.action_history.append(build_action_record(tool_name, state.tool_result.user_facing_summary))
-        payload["state"] = state
+        payload["state"] = self.execution_service.execute_business_tool(state)
         return payload
 
     def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        handoff = self.handoff_service.create_handoff(state.session_id, state.summary)
-        state.tool_result = ToolExecutionResult(
-            kind="handoff",
-            raw_result=handoff.model_dump(),
-            sanitized_result=handoff.model_dump(),
-            user_facing_summary=f"已创建人工服务单 {handoff.ticket_id}",
-        )
-        state.handoff = True
-        state.latest_action_name = "handoff_node"
-        state.latest_action_result = state.tool_result.sanitized_result
-        state.action_history.append(build_action_record("handoff_node", state.tool_result.user_facing_summary))
-        payload["state"] = state
+        payload["state"] = self.execution_service.create_handoff(state)
         return payload
 
     def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -339,25 +290,7 @@ class CustomerServiceAgent:
 
     def context_compressor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        state.message_history.append({"role": "assistant", "content": state.reply})
-        state.recent_messages.append({"role": "assistant", "content": state.reply})
-
-        if len(state.recent_messages) > MAX_RECENT_MESSAGES:
-            overflow = state.recent_messages[:-MAX_RECENT_MESSAGES]
-            state.recent_messages = state.recent_messages[-MAX_RECENT_MESSAGES:]
-            overflow_summary = " ".join(
-                f"{item['role']}:{item['content']}" for item in overflow if item.get("content")
-            )
-            if overflow_summary:
-                state.running_summary = " ".join(
-                    item for item in [state.running_summary, overflow_summary] if item
-                ).strip()
-
-        if len(state.message_history) >= SOFT_SUMMARY_TURNS * 2 and not state.running_summary:
-            state.running_summary = self.state_tracker_service.build_state_summary(state)
-
-        state.summary = self.state_tracker_service.build_state_summary(state)
-        payload["state"] = state
+        payload["state"] = self.context_service.compress(state)
         return payload
 
     def memory_writer(self, payload: dict[str, Any]) -> dict[str, Any]:

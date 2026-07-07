@@ -4,7 +4,7 @@ from typing import Any
 
 from app.models import ConversationState, IntentResult
 from app.services.domain import KnowledgeBaseService, extract_order_id
-from app.services.intent_schema import get_intent_slot_schema
+from app.services.intent_schema import IntentSchemaRegistry
 from app.services.llm_fallback import LLMIntentFallbackService
 
 
@@ -187,6 +187,9 @@ class IntentRouterService:
 
 
 class StateTrackerService:
+    def __init__(self, schema_registry: IntentSchemaRegistry | None = None) -> None:
+        self.schema_registry = schema_registry or IntentSchemaRegistry()
+
     def apply(self, state: ConversationState, intent: IntentResult) -> ConversationState:
         previous_main_intent = state.current_main_intent
         previous_sub_intent = state.current_sub_intent
@@ -226,7 +229,7 @@ class StateTrackerService:
         state.handoff = intent.main_intent == "handoff_service"
         state.handoff_reason = intent.handoff_reason
 
-        schema = get_intent_slot_schema(state.current_main_intent)
+        schema = self.schema_registry.get(state.current_main_intent)
         required_slots = schema["required_slots"]
         state.missing_slots = [slot for slot in required_slots if not state.slots.get(slot)]
         state.current_form_name = state.current_main_intent
@@ -266,7 +269,7 @@ class StateTrackerService:
     def _inherit_slots(
         self, previous_intent: str, next_intent: str, previous_slots: dict[str, str]
     ) -> dict[str, str]:
-        next_schema = get_intent_slot_schema(next_intent)
+        next_schema = self.schema_registry.get(next_intent)
         inheritable = set(next_schema.get("inheritable", []))
         if previous_intent == next_intent:
             inheritable |= set(previous_slots.keys())

@@ -1,0 +1,58 @@
+intent_schemas:
+  faq:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
+  order_service:
+    required_slots:
+      - order_id
+    optional_slots: []
+    inheritable:
+      - order_id
+    overwritable:
+      - order_id
+    clarification_order:
+      - order_id
+  logistics_service:
+    required_slots:
+      - order_id
+    optional_slots: []
+    inheritable:
+      - order_id
+    overwritable:
+      - order_id
+    clarification_order:
+      - order_id
+  refund_service:
+    required_slots:
+      - order_id
+    optional_slots:
+      - refund_reason
+    inheritable:
+      - order_id
+    overwritable:
+      - order_id
+      - refund_reason
+    clarification_order:
+      - order_id
+      - refund_reason
+  handoff_service:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
+  chitchat:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
+  unsupported:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
