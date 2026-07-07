@@ -65,6 +65,38 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 当前版本使用本地 mock 数据，不依赖真实数据库、Redis 或外部业务系统。
 
+## Project Structure
+
+```text
+myagent/
+├── app/
+│   ├── agents/      # 客服主 Agent、状态流转、路由编排
+│   ├── api/         # FastAPI / WebSocket 入口
+│   ├── config/      # 配置加载
+│   ├── mock_data/   # FAQ、订单、物流 mock 数据
+│   ├── models/      # 请求、响应、会话、领域模型
+│   ├── prompts/     # LLM prompt 定义
+│   ├── services/    # FAQ / 订单 / 物流 / 转人工 / LLM 兜底服务
+│   └── store/       # 会话状态存储
+├── config/          # test / prod / local 配置文件
+├── eval/            # 单点评估脚本、样本、评估报告
+├── frontend/        # Vue 3 前端
+├── wiki/            # 设计文档
+├── template/        # 调研与草稿材料
+├── main.py          # 后端启动入口
+└── README.md
+```
+
+后端模块职责：
+
+- `app/api`: 对外暴露 HTTP 和 WebSocket 接口，负责应用装配
+- `app/agents`: 串联意图识别、状态更新、FAQ/工具路由、澄清与回复生成
+- `app/models`: 统一维护 `ChatRequest`、`ChatResponse`、`ConversationState` 等数据结构
+- `app/services`: 承载 FAQ 检索、订单查询、物流查询、转人工、LLM fallback 等能力
+- `app/config`: 负责读取 `APP_ENV` 对应配置并叠加本地覆盖
+- `app/prompts`: 独立管理 LLM 相关 prompt，便于查看和迭代
+- `app/store`: 当前使用内存会话存储，后续可替换为 Redis 或数据库
+
 ## LLM Fallback Config
 
 LLM 兜底配置按环境拆分：

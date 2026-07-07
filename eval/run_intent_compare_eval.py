@@ -36,7 +36,7 @@ def classify_rule_plus_llm(
 
     try:
         from app.config import load_llm_config
-        from app.llm import LLMIntentFallbackService
+        from app.services import LLMIntentFallbackService
     except Exception as exc:
         return rule_result, f"llm_import_unavailable: {exc!r}", None
 

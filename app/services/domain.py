@@ -7,7 +7,7 @@ from pathlib import Path
 from app.models import HandoffResult, LogisticsEvent, LogisticsInfo, OrderInfo
 
 
-DATA_DIR = Path(__file__).resolve().parent / "mock_data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "mock_data"
 ORDER_ID_PATTERN = re.compile(r"\b[A-Z]\d{4}\b")
 
 

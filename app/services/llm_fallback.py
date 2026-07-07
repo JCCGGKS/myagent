@@ -6,8 +6,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.config import LLMConfig
-from app.llm_prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
 from app.models import IntentResult
+from app.prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
 
 try:
     from openai import OpenAI

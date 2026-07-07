@@ -3,11 +3,16 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agent import CustomerServiceAgent
+from app.agents import CustomerServiceAgent
 from app.config import load_llm_config
-from app.llm import LLMIntentFallbackService
 from app.models import ChatRequest, ChatResponse, ConversationState
-from app.services import HandoffService, KnowledgeBaseService, LogisticsService, OrderService
+from app.services import (
+    HandoffService,
+    KnowledgeBaseService,
+    LLMIntentFallbackService,
+    LogisticsService,
+    OrderService,
+)
 from app.store import SessionStore
 
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.models import ChatRequest, ChatResponse, ConversationState, IntentResult
-from app.llm import LLMIntentFallbackService
 from app.services import (
     HandoffService,
     KnowledgeBaseService,
+    LLMIntentFallbackService,
     LogisticsService,
     OrderService,
     extract_order_id,
@@ -286,8 +286,6 @@ class CustomerServiceAgent:
         request: ChatRequest = payload["request"]
         message = " ".join(request.message.strip().split())
 
-        # Reset per-turn transient fields so the current request cannot reuse
-        # the previous turn's reply or intermediate results.
         state.reply = ""
         state.intent_result = None
         state.retrieved_faq = None
@@ -382,7 +380,9 @@ class CustomerServiceAgent:
                 slots={"order_id": order_id},
                 route_source="slot_followup",
             )
-        elif has_refund_keyword and (has_refund_rule_keyword or has_refund_action_keyword or "到账" not in lowered):
+        elif has_refund_keyword and (
+            has_refund_rule_keyword or has_refund_action_keyword or "到账" not in lowered
+        ):
             intent = IntentResult(
                 main_intent="unsupported",
                 sub_intent="unsupported.unknown",
