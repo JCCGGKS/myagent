@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-from app.models import ActionRecord, ChatRequest, ConversationState
+from app.models import ChatRequest, ConversationState
 from app.store import SessionStore
+from app.utils import build_action_record
 
 
 class ClarificationService:
@@ -23,7 +22,7 @@ class ClarificationService:
             state.reply = "我需要更多信息才能继续处理，或者可以直接帮你转人工。"
         state.latest_action_name = "clarification_node"
         state.latest_action_result = {"reply": state.reply}
-        state.action_history.append(_action_record("clarification_node", state.reply))
+        state.action_history.append(build_action_record("clarification_node", state.reply))
         return state
 
 
@@ -81,7 +80,7 @@ class ResponseService:
         state.latest_action_name = state.latest_action_name or "response_generator"
         state.latest_action_result = {"reply": state.reply}
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
-            state.action_history.append(_action_record("response_generator", state.reply))
+            state.action_history.append(build_action_record("response_generator", state.reply))
         return state
 
 
@@ -134,11 +133,3 @@ def _tool_category(state: ConversationState) -> str:
     if state.current_action == "handoff_human":
         return "workflow"
     return "query"
-
-
-def _action_record(action_name: str, summary: str) -> ActionRecord:
-    return ActionRecord(
-        action_name=action_name,
-        summary=summary,
-        created_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-    )
