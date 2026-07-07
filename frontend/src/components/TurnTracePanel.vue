@@ -15,17 +15,21 @@ defineProps<{
 }>();
 
 function getOrderData(result: ToolResult | null): OrderToolData | null {
-  return result?.kind === "order" && result.data ? (result.data as OrderToolData) : null;
+  return result?.kind === "order" && result.sanitized_result
+    ? (result.sanitized_result as OrderToolData)
+    : null;
 }
 
 function getLogisticsData(result: ToolResult | null): LogisticsToolData | null {
-  return result?.kind === "logistics" && result.data
-    ? (result.data as LogisticsToolData)
+  return result?.kind === "logistics" && result.sanitized_result
+    ? (result.sanitized_result as LogisticsToolData)
     : null;
 }
 
 function getHandoffData(result: ToolResult | null): HandoffToolData | null {
-  return result?.kind === "handoff" && result.data ? (result.data as HandoffToolData) : null;
+  return result?.kind === "handoff" && result.sanitized_result
+    ? (result.sanitized_result as HandoffToolData)
+    : null;
 }
 </script>
 

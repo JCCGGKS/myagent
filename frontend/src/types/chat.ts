@@ -2,6 +2,7 @@ export type MainIntentCode =
   | "faq"
   | "order_service"
   | "logistics_service"
+  | "refund_service"
   | "handoff_service"
   | "chitchat"
   | "unsupported";
@@ -10,10 +11,25 @@ export type SubIntentCode =
   | "faq.general"
   | "order_service.query_status"
   | "logistics_service.query_status"
+  | "refund_service.consult_policy"
+  | "refund_service.request_refund"
   | "handoff_service.request_human"
   | "chitchat.greeting"
   | "chitchat.thanks"
   | "unsupported.unknown";
+
+export interface EmotionState {
+  primary: "neutral" | "confused" | "anxious" | "angry" | "urgent" | "happy";
+  confidence: number;
+  trend: "stable" | "escalating" | "deescalating";
+}
+
+export interface ActionRecord {
+  action_name: string;
+  status: string;
+  summary: string;
+  created_at: string;
+}
 
 export interface ChatRequest {
   session_id: string;
@@ -32,6 +48,9 @@ export interface ChatResponse {
   slots: Record<string, string>;
   missing_slots: string[];
   summary: string;
+  emotion: EmotionState;
+  current_action: string;
+  running_summary: string;
   tool_result: ToolResult | null;
   session_state: ConversationState;
   turn_trace: string[];
@@ -46,13 +65,25 @@ export interface ConversationState {
   stage: string;
   slots: Record<string, string>;
   missing_slots: string[];
+  confirmed_slots?: string[];
+  candidate_intents?: string[];
   risk_level: "low" | "medium" | "high";
+  emotion?: EmotionState;
   needs_clarification: boolean;
+  topic_changed?: boolean;
+  current_action?: string;
+  latest_action_name?: string;
+  latest_action_result?: Record<string, unknown> | null;
+  action_history?: ActionRecord[];
   summary: string;
+  running_summary?: string;
   message_history: Array<Record<string, string>>;
+  recent_messages?: Array<Record<string, string>>;
   last_user_message: string;
   handoff: boolean;
+  handoff_reason?: string;
   reply: string;
+  archived_states?: Array<Record<string, unknown>>;
 }
 
 export interface OrderToolData {
@@ -78,9 +109,24 @@ export interface HandoffToolData {
   summary: string;
 }
 
+export interface KnowledgeToolData {
+  faq_key: string;
+  question: string;
+  answer: string;
+  score: number;
+  doc_type: string;
+}
+
 export interface ToolResult {
-  kind: "order" | "logistics" | "handoff";
-  data: OrderToolData | LogisticsToolData | HandoffToolData | null;
+  kind: "knowledge" | "order" | "logistics" | "handoff";
+  raw_result?: Record<string, unknown> | null;
+  sanitized_result?:
+    | OrderToolData
+    | LogisticsToolData
+    | HandoffToolData
+    | KnowledgeToolData
+    | null;
+  user_facing_summary?: string;
 }
 
 export interface MessageItem {
