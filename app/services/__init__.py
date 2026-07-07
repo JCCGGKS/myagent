@@ -1,3 +1,4 @@
+from app.services.dialog import ClarificationService, MemoryService, ResponseService
 from app.services.domain import (
     HandoffService,
     KnowledgeBaseService,
@@ -13,13 +14,16 @@ from app.services.routing import (
 )
 
 __all__ = [
+    "ClarificationService",
     "HandoffService",
     "HandoffClarificationPolicy",
     "IntentRouterService",
     "KnowledgeBaseService",
     "LLMIntentFallbackService",
     "LogisticsService",
+    "MemoryService",
     "OrderService",
+    "ResponseService",
     "StateTrackerService",
     "extract_order_id",
 ]
