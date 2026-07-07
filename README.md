@@ -110,7 +110,7 @@ myagent/
 - `app/services/dialog`: 澄清回复、最终回复、memory 持久化
 - `app/services/execution`: 知识检索、业务工具调用、转人工执行
 - `app/services/context`: 最近消息窗口和 `running_summary` 压缩
-- `app/services/intent_schema`: 主意图对应的 `slot schema registry`，默认从 `config/intent_schemas.yml` 加载
+- `app/services/intent_schema`: 主意图 `slot schema` 和规则关键词 registry，默认从 YAML 加载
 - `app/config`: 负责读取 `APP_ENV` 对应配置并叠加本地覆盖
 - `app/prompts`: 独立管理 LLM 相关 prompt，便于查看和迭代
 - `app/store`: 当前使用内存版 `sessions / messages / state_snapshots / tool_calls / handoff_records`
@@ -137,12 +137,19 @@ myagent/
 主意图对应的 `slot schema` 已外置到：
 
 - `config/intent_schemas.yml`
+- `config/intent_rules.yml`
 
-当前 `StateTrackerService` 会通过 `IntentSchemaRegistry` 读取该 YAML，用于：
+当前 `StateTrackerService` 会通过 `IntentSchemaRegistry` 读取 `intent_schemas.yml`，用于：
 
 - 计算 `required_slots`
 - 控制 `inheritable` 槽位继承
 - 统一 `clarification_order` 等配置入口
+
+当前 `IntentRouterService` 会通过 `IntentRuleRegistry` 读取 `intent_rules.yml`，用于：
+
+- 主意图规则关键词命中
+- `refund_action / refund_rule / greeting / thanks` 等子分支规则
+- 情绪规则关键词命中
 
 ## LLM Fallback Config
 

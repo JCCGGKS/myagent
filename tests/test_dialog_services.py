@@ -1,11 +1,20 @@
 import unittest
 
 from app.models import ChatRequest, ConversationState, ToolExecutionResult
+from app.services.dialog import ClarificationPromptRegistry
 from app.services.dialog import ClarificationService, MemoryService, ResponseService
 from app.store import SessionStore
 
 
 class DialogServicesTestCase(unittest.TestCase):
+    def test_clarification_prompt_registry_should_load_default_yaml_prompts(self) -> None:
+        registry = ClarificationPromptRegistry()
+
+        prompts = registry.get()
+
+        self.assertIn("intent_clarification", prompts)
+        self.assertIn("refund_service", prompts["slot_clarification"])
+
     def test_clarification_service_should_generate_refund_order_id_prompt(self) -> None:
         service = ClarificationService()
         state = ConversationState(

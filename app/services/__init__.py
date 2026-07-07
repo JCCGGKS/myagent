@@ -1,5 +1,10 @@
 from app.services.context import ContextService
-from app.services.dialog import ClarificationService, MemoryService, ResponseService
+from app.services.dialog import (
+    ClarificationPromptRegistry,
+    ClarificationService,
+    MemoryService,
+    ResponseService,
+)
 from app.services.domain import (
     HandoffService,
     KnowledgeBaseService,
@@ -8,7 +13,7 @@ from app.services.domain import (
     extract_order_id,
 )
 from app.services.execution import ExecutionService
-from app.services.intent_schema import IntentSchemaRegistry
+from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.llm_fallback import LLMIntentFallbackService
 from app.services.routing import (
     HandoffClarificationPolicy,
@@ -17,12 +22,14 @@ from app.services.routing import (
 )
 
 __all__ = [
+    "ClarificationPromptRegistry",
     "ClarificationService",
     "ContextService",
     "ExecutionService",
     "HandoffService",
     "HandoffClarificationPolicy",
     "IntentRouterService",
+    "IntentRuleRegistry",
     "IntentSchemaRegistry",
     "KnowledgeBaseService",
     "LLMIntentFallbackService",

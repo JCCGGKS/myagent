@@ -4,7 +4,7 @@ from typing import Any
 
 from app.models import ConversationState, IntentResult
 from app.services.domain import KnowledgeBaseService, extract_order_id
-from app.services.intent_schema import IntentSchemaRegistry
+from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.llm_fallback import LLMIntentFallbackService
 
 
@@ -13,29 +13,30 @@ class IntentRouterService:
         self,
         knowledge_base: KnowledgeBaseService,
         llm_fallback_service: LLMIntentFallbackService | None = None,
+        rule_registry: IntentRuleRegistry | None = None,
     ) -> None:
         self.knowledge_base = knowledge_base
         self.llm_fallback_service = llm_fallback_service
+        self.rule_registry = rule_registry or IntentRuleRegistry()
 
     def route(self, state: ConversationState, message: str) -> IntentResult:
         lowered = message.casefold()
         order_id = extract_order_id(message)
         previous_main_intent = state.current_main_intent
         previous_sub_intent = state.current_sub_intent
+        rules = self.rule_registry.get()
 
         knowledge_hits = self.knowledge_base.search(message)
         candidate_intents: list[str] = []
         emotion = self._detect_emotion(lowered, state)
-        has_handoff_keyword = any(token in lowered for token in ["转人工", "人工客服", "找人工", "投诉"])
-        has_logistics_keyword = any(token in lowered for token in ["物流", "快递", "配送", "到哪了"])
-        has_order_keyword = any(
-            token in lowered for token in ["查订单", "订单状态", "我的订单", "发货了吗", "订单"]
-        )
-        has_refund_keyword = "退款" in lowered or "退货" in lowered or "售后" in lowered
-        has_refund_action_keyword = any(token in lowered for token in ["我要退款", "申请退款", "帮我退款"])
-        has_refund_rule_keyword = any(token in lowered for token in ["多久到账", "规则", "怎么退", "多久到"])
-        has_greeting_keyword = any(token in lowered for token in ["你好", "您好", "hi", "hello", "在吗"])
-        has_thanks_keyword = any(token in lowered for token in ["谢谢", "感谢", "thanks", "thank you"])
+        has_handoff_keyword = self._contains_any(lowered, rules.get("handoff_keywords", []))
+        has_logistics_keyword = self._contains_any(lowered, rules.get("logistics_keywords", []))
+        has_order_keyword = self._contains_any(lowered, rules.get("order_keywords", []))
+        has_refund_keyword = self._contains_any(lowered, rules.get("refund_keywords", []))
+        has_refund_action_keyword = self._contains_any(lowered, rules.get("refund_action_keywords", []))
+        has_refund_rule_keyword = self._contains_any(lowered, rules.get("refund_rule_keywords", []))
+        has_greeting_keyword = self._contains_any(lowered, rules.get("greeting_keywords", []))
+        has_thanks_keyword = self._contains_any(lowered, rules.get("thanks_keywords", []))
 
         if has_handoff_keyword or emotion.primary in {"angry", "urgent"}:
             intent = IntentResult(
@@ -156,25 +157,26 @@ class IntentRouterService:
     def _detect_emotion(self, lowered_message: str, state: ConversationState):
         from app.models.schemas import EmotionState
 
+        rules = self.rule_registry.get()
         primary = "neutral"
         confidence = 0.6
         trend = "stable"
 
-        if any(token in lowered_message for token in ["投诉", "生气", "差评", "太慢了", "没人处理"]):
+        if self._contains_any(lowered_message, rules.get("angry_keywords", [])):
             primary = "angry"
             confidence = 0.9
             trend = "escalating"
-        elif any(token in lowered_message for token in ["急", "尽快", "马上", "现在就"]):
+        elif self._contains_any(lowered_message, rules.get("urgent_keywords", [])):
             primary = "urgent"
             confidence = 0.85
             trend = "escalating"
-        elif any(token in lowered_message for token in ["不明白", "什么意思", "没懂", "看不懂"]):
+        elif self._contains_any(lowered_message, rules.get("confused_keywords", [])):
             primary = "confused"
             confidence = 0.82
-        elif any(token in lowered_message for token in ["担心", "焦虑", "怎么办", "还没到"]):
+        elif self._contains_any(lowered_message, rules.get("anxious_keywords", [])):
             primary = "anxious"
             confidence = 0.8
-        elif any(token in lowered_message for token in ["谢谢", "感谢"]):
+        elif self._contains_any(lowered_message, rules.get("happy_keywords", [])):
             primary = "happy"
             confidence = 0.75
             trend = "deescalating"
@@ -184,6 +186,9 @@ class IntentRouterService:
             confidence = max(confidence, state.emotion.confidence - 0.05)
 
         return EmotionState(primary=primary, confidence=confidence, trend=trend)
+
+    def _contains_any(self, text: str, keywords: list[str]) -> bool:
+        return any(keyword.casefold() in text for keyword in keywords)
 
 
 class StateTrackerService:

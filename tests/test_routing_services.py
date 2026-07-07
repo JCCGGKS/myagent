@@ -2,7 +2,7 @@ import unittest
 
 from app.models import ConversationState, IntentResult
 from app.services import KnowledgeBaseService
-from app.services.intent_schema import IntentSchemaRegistry
+from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
@@ -19,6 +19,14 @@ class RoutingServicesTestCase(unittest.TestCase):
         self.assertEqual(schema["required_slots"], ["order_id"])
         self.assertIn("refund_reason", schema["optional_slots"])
 
+    def test_intent_rule_registry_should_load_default_yaml_rules(self) -> None:
+        registry = IntentRuleRegistry()
+
+        rules = registry.get()
+
+        self.assertIn("handoff_keywords", rules)
+        self.assertIn("转人工", rules["handoff_keywords"])
+
     def test_intent_router_should_detect_refund_faq_and_emotion(self) -> None:
         router = IntentRouterService(knowledge_base=KnowledgeBaseService(), llm_fallback_service=None)
         state = ConversationState(session_id="s1", user_id="u1", channel="web")
@@ -28,6 +36,16 @@ class RoutingServicesTestCase(unittest.TestCase):
         self.assertEqual(intent.main_intent, "refund_service")
         self.assertEqual(intent.sub_intent, "refund_service.consult_policy")
         self.assertEqual(intent.emotion.primary, "neutral")
+
+    def test_intent_router_should_detect_handoff_and_greeting_from_yaml_rules(self) -> None:
+        router = IntentRouterService(knowledge_base=KnowledgeBaseService(), llm_fallback_service=None)
+        state = ConversationState(session_id="s1b", user_id="u1", channel="web")
+
+        handoff_intent = router.route(state, "我要转人工")
+        greeting_intent = router.route(state, "hello")
+
+        self.assertEqual(handoff_intent.main_intent, "handoff_service")
+        self.assertEqual(greeting_intent.sub_intent, "chitchat.greeting")
 
     def test_state_tracker_should_archive_previous_intent_and_inherit_slots(self) -> None:
         tracker = StateTrackerService(schema_registry=IntentSchemaRegistry())

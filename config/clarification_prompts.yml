@@ -1,0 +1,8 @@
+clarification_prompts:
+  intent_clarification: "我还不能准确判断你的诉求。你是想查订单、查物流、咨询退款，还是转人工？"
+  generic_slot_clarification: "我还需要更多信息，麻烦补充一下你的问题。"
+  generic_fallback: "我需要更多信息才能继续处理，或者可以直接帮你转人工。"
+  slot_clarification:
+    order_service: "请提供订单号，我来帮你查询订单状态。"
+    logistics_service: "请提供订单号，我来帮你查询物流进度。"
+    refund_service: "请先提供订单号，我再帮你看退款规则或继续处理退款。"

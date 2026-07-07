@@ -1,0 +1,65 @@
+intent_rules:
+  handoff_keywords:
+    - 转人工
+    - 人工客服
+    - 找人工
+    - 投诉
+  logistics_keywords:
+    - 物流
+    - 快递
+    - 配送
+    - 到哪了
+  order_keywords:
+    - 查订单
+    - 订单状态
+    - 我的订单
+    - 发货了吗
+    - 订单
+  refund_keywords:
+    - 退款
+    - 退货
+    - 售后
+  refund_action_keywords:
+    - 我要退款
+    - 申请退款
+    - 帮我退款
+  refund_rule_keywords:
+    - 多久到账
+    - 规则
+    - 怎么退
+    - 多久到
+  greeting_keywords:
+    - 你好
+    - 您好
+    - hi
+    - hello
+    - 在吗
+  thanks_keywords:
+    - 谢谢
+    - 感谢
+    - thanks
+    - thank you
+  angry_keywords:
+    - 投诉
+    - 生气
+    - 差评
+    - 太慢了
+    - 没人处理
+  urgent_keywords:
+    - 急
+    - 尽快
+    - 马上
+    - 现在就
+  confused_keywords:
+    - 不明白
+    - 什么意思
+    - 没懂
+    - 看不懂
+  anxious_keywords:
+    - 担心
+    - 焦虑
+    - 怎么办
+    - 还没到
+  happy_keywords:
+    - 谢谢
+    - 感谢

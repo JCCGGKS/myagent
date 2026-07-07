@@ -7,6 +7,7 @@ from app.utils import load_yaml_file
 
 
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "config" / "intent_schemas.yml"
+DEFAULT_RULE_PATH = Path(__file__).resolve().parents[2] / "config" / "intent_rules.yml"
 
 
 class IntentSchemaRegistry:
@@ -27,3 +28,24 @@ class IntentSchemaRegistry:
 
 def get_intent_slot_schema(main_intent: str) -> dict[str, Any]:
     return IntentSchemaRegistry().get(main_intent)
+
+
+class IntentRuleRegistry:
+    def __init__(self, rule_path: Path | None = None) -> None:
+        self.rule_path = rule_path or DEFAULT_RULE_PATH
+        self._rules = self._load()
+
+    def get(self) -> dict[str, list[str]]:
+        return self._rules
+
+    def _load(self) -> dict[str, list[str]]:
+        data = load_yaml_file(self.rule_path)
+        rules = data.get("intent_rules", {})
+        if not isinstance(rules, dict):
+            raise ValueError(f"Invalid intent rule config: {self.rule_path}")
+        normalized: dict[str, list[str]] = {}
+        for key, value in rules.items():
+            if not isinstance(value, list):
+                raise ValueError(f"Intent rule {key} must be a list: {self.rule_path}")
+            normalized[key] = [str(item) for item in value]
+        return normalized
