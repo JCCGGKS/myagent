@@ -1,25 +1,48 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.models import ChatRequest, ConversationState
 from app.store import SessionStore
-from app.utils import build_action_record
+from app.utils import build_action_record, load_yaml_file
+
+
+DEFAULT_CLARIFICATION_PROMPT_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "clarification_prompts.yml"
+)
+
+
+class ClarificationPromptRegistry:
+    def __init__(self, prompt_path: Path | None = None) -> None:
+        self.prompt_path = prompt_path or DEFAULT_CLARIFICATION_PROMPT_PATH
+        self._prompts = self._load()
+
+    def get(self) -> dict:
+        return self._prompts
+
+    def _load(self) -> dict:
+        data = load_yaml_file(self.prompt_path)
+        prompts = data.get("clarification_prompts", {})
+        if not isinstance(prompts, dict):
+            raise ValueError(f"Invalid clarification prompt config: {self.prompt_path}")
+        return prompts
 
 
 class ClarificationService:
+    def __init__(self, prompt_registry: ClarificationPromptRegistry | None = None) -> None:
+        self.prompt_registry = prompt_registry or ClarificationPromptRegistry()
+
     def generate(self, state: ConversationState) -> ConversationState:
+        prompts = self.prompt_registry.get()
         if state.current_action == "ask_intent_clarification":
-            state.reply = "我还不能准确判断你的诉求。你是想查订单、查物流、咨询退款，还是转人工？"
+            state.reply = prompts["intent_clarification"]
         elif "order_id" in state.missing_slots:
-            if state.current_main_intent == "logistics_service":
-                state.reply = "请提供订单号，我来帮你查询物流进度。"
-            elif state.current_main_intent == "order_service":
-                state.reply = "请提供订单号，我来帮你查询订单状态。"
-            elif state.current_main_intent == "refund_service":
-                state.reply = "请先提供订单号，我再帮你看退款规则或继续处理退款。"
-            else:
-                state.reply = "我还需要更多信息，麻烦补充一下你的问题。"
+            state.reply = prompts.get("slot_clarification", {}).get(
+                state.current_main_intent,
+                prompts["generic_slot_clarification"],
+            )
         else:
-            state.reply = "我需要更多信息才能继续处理，或者可以直接帮你转人工。"
+            state.reply = prompts["generic_fallback"]
         state.latest_action_name = "clarification_node"
         state.latest_action_result = {"reply": state.reply}
         state.action_history.append(build_action_record("clarification_node", state.reply))
