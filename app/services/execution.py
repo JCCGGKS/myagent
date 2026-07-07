@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from app.models import ConversationState, ToolExecutionResult
-from app.rag import KnowledgeBaseService
 from app.services.domain import HandoffService, LogisticsService, OrderService
 from app.utils import build_action_record
 
@@ -9,30 +8,13 @@ from app.utils import build_action_record
 class ExecutionService:
     def __init__(
         self,
-        knowledge_base: KnowledgeBaseService | None,
         order_service: OrderService,
         logistics_service: LogisticsService,
         handoff_service: HandoffService,
     ) -> None:
-        self.knowledge_base = knowledge_base
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
-
-    def retrieve_knowledge(self, state: ConversationState) -> ConversationState:
-        hits = self.knowledge_base.search(state.last_user_message) if self.knowledge_base else []
-        state.retrieved_knowledge = hits
-        summary = hits[0].answer if hits else "未命中知识库答案"
-        state.tool_result = ToolExecutionResult(
-            kind="knowledge",
-            raw_result={"hits": [hit.model_dump() for hit in hits]},
-            sanitized_result=hits[0].model_dump() if hits else None,
-            user_facing_summary=summary,
-        )
-        state.latest_action_name = "knowledge_retriever"
-        state.latest_action_result = state.tool_result.sanitized_result
-        state.action_history.append(build_action_record("knowledge_retriever", summary))
-        return state
 
     def execute_business_tool(self, state: ConversationState) -> ConversationState:
         order_id = state.slots["order_id"]

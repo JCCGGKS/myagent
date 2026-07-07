@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.models import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
-from app.rag import KnowledgeBaseService
+from app.rag import KnowledgeBaseService, RagRetrievalService
 from app.services import (
     ClarificationService,
     ContextService,
@@ -50,8 +50,8 @@ class CustomerServiceAgent:
         self.state_tracker_service = StateTrackerService(schema_registry=self.intent_schema_registry)
         self.policy_service = HandoffClarificationPolicy()
         self.clarification_service = ClarificationService()
+        self.rag_retrieval_service = RagRetrievalService(knowledge_base=knowledge_base)
         self.execution_service = ExecutionService(
-            knowledge_base=knowledge_base,
             order_service=order_service,
             logistics_service=logistics_service,
             handoff_service=handoff_service,
@@ -270,7 +270,7 @@ class CustomerServiceAgent:
 
     def knowledge_retriever(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        payload["state"] = self.execution_service.retrieve_knowledge(state)
+        payload["state"] = self.rag_retrieval_service.retrieve(state)
         return payload
 
     def business_tool_executor(self, payload: dict[str, Any]) -> dict[str, Any]:
