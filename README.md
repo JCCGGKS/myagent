@@ -78,7 +78,7 @@ myagent/
 │   ├── prompts/     # LLM prompt 定义
 │   ├── services/    # FAQ / 订单 / 物流 / 转人工 / LLM 兜底服务
 │   └── store/       # 会话状态存储
-├── config/          # test / prod / local 配置文件
+├── config/          # test / prod / local yml 配置文件
 ├── eval/            # 单点评估脚本、样本、评估报告
 ├── frontend/        # Vue 3 前端
 ├── wiki/            # 设计文档
@@ -101,16 +101,16 @@ myagent/
 
 LLM 兜底配置按环境拆分：
 
-- `config/llm_config.test.json`
-- `config/llm_config.prod.json`
-- `config/llm_config.local.json`
+- `config/llm_config.test.yml`
+- `config/llm_config.prod.yml`
+- `config/llm_config.local.yml`
 
 加载顺序：
 
 1. 读取 `APP_ENV` 对应的基线配置，默认 `test`
-2. 如果存在 `config/llm_config.local.json`，再用本地配置覆盖
+2. 如果存在 `config/llm_config.local.yml`，再用本地配置覆盖
 
-`llm_config.local.json` 已加入 `.gitignore`，适合放本机 key 和中转站地址。
+`llm_config.local.yml` 已加入 `.gitignore`，适合放本机 key 和中转站地址。
 
 示例字段：
 

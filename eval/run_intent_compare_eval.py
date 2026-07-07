@@ -180,7 +180,7 @@ def write_compare_outputs(
                 "建议检查：",
                 "",
                 "- 是否已安装 `openai`、`pydantic` 等依赖",
-                "- `config/llm_config.local.json` 是否存在且 `enabled=true`",
+                "- `config/llm_config.local.yml` 是否存在且 `enabled=true`",
                 "- `api_key`、`base_url`、`model` 是否可用",
                 "- 中转站是否兼容 `responses.parse` 或 `chat.completions` 的 JSON 结构化输出",
                 "",

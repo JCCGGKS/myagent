@@ -12,6 +12,7 @@ from app.services import (
     extract_order_id,
 )
 from app.store import SessionStore
+from app.utils import normalize_whitespace
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -284,7 +285,7 @@ class CustomerServiceAgent:
     def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
-        message = " ".join(request.message.strip().split())
+        message = normalize_whitespace(request.message)
 
         state.reply = ""
         state.intent_result = None

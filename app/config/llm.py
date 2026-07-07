@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+from app.utils import load_json_file, load_yaml_file
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -30,22 +31,31 @@ def load_llm_config(path: Path | None = None) -> LLMConfig:
     if path is not None:
         if not path.exists():
             return LLMConfig()
-        with path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
+        data = _load_config_file(path)
         return LLMConfig(**data)
 
     env_name = os.getenv("APP_ENV", DEFAULT_APP_ENV).strip().lower() or DEFAULT_APP_ENV
-    base_config_path = CONFIG_DIR / f"llm_config.{env_name}.json"
-    local_override_path = CONFIG_DIR / "llm_config.local.json"
+    base_config_path = CONFIG_DIR / f"llm_config.{env_name}.yml"
+    local_override_path = CONFIG_DIR / "llm_config.local.yml"
+    legacy_local_override_path = CONFIG_DIR / "llm_config.local.json"
 
     data: dict[str, object] = {}
 
     if base_config_path.exists():
-        with base_config_path.open("r", encoding="utf-8") as file:
-            data.update(json.load(file))
+        data.update(_load_config_file(base_config_path))
 
     if local_override_path.exists():
-        with local_override_path.open("r", encoding="utf-8") as file:
-            data.update(json.load(file))
+        data.update(_load_config_file(local_override_path))
+    elif legacy_local_override_path.exists():
+        data.update(_load_config_file(legacy_local_override_path))
 
     return LLMConfig(**data)
+
+
+def _load_config_file(path: Path) -> dict[str, object]:
+    if path.suffix == ".json":
+        data = load_json_file(path)
+        if not isinstance(data, dict):
+            raise ValueError(f"JSON config must be a mapping: {path}")
+        return data
+    return load_yaml_file(path)

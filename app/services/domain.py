@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 from app.models import HandoffResult, LogisticsEvent, LogisticsInfo, OrderInfo
+from app.utils import load_json_file as load_json_path
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "mock_data"
@@ -13,8 +13,7 @@ ORDER_ID_PATTERN = re.compile(r"\b[A-Z]\d{4}\b")
 
 def load_json_file(filename: str) -> list[dict]:
     file_path = DATA_DIR / filename
-    with file_path.open("r", encoding="utf-8") as file:
-        return json.load(file)
+    return load_json_path(file_path)
 
 
 class KnowledgeBaseService:
