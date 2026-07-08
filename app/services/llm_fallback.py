@@ -45,6 +45,12 @@ class LLMIntentDecision(BaseModel):
 
 
 class LLMIntentFallbackService:
+    @classmethod
+    def from_env(cls) -> LLMIntentFallbackService:
+        from app.config import load_llm_config
+        config = load_llm_config()
+        return cls(config)
+
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self.client = None

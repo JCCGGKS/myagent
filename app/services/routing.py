@@ -13,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class IntentRouterService:
+    @classmethod
+    def from_env(cls, use_llm: bool = True) -> IntentRouterService:
+        from app.config import load_llm_config
+        from app.rag import KnowledgeBaseService
+        from app.services.llm_fallback import LLMIntentFallbackService
+
+        config = load_llm_config()
+        kb = KnowledgeBaseService()
+        llm_fallback = LLMIntentFallbackService(config) if (config.enabled and use_llm) else None
+        return cls(kb, llm_fallback_service=llm_fallback)
+
     def __init__(
         self,
         knowledge_base: KnowledgeBaseService,
