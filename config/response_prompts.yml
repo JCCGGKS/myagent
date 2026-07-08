@@ -5,7 +5,6 @@ response_prompts:
   order_not_found: "没有查到这个订单号，请确认后重试，或者我可以帮你转人工。"
   logistics_not_found: "没有查到该订单的物流信息，请确认订单号是否正确。"
   greeting: "你好，我可以帮你查询 FAQ、订单、物流、退款规则，也可以为你转人工客服。"
-  thanks: "不客气。如果你还想查询订单、物流或退款问题，我可以继续帮你处理。"
   unknown_fallback: "这个问题我暂时无法准确处理。你可以换一种说法，或者我可以帮你转人工。"
   handoff_template: "已为你转人工客服，服务单号 {ticket_id}。人工客服会基于当前会话上下文继续处理。"
   order_template: "订单 {order_id} 当前状态为 {status}，商品是 {product_name}，金额 {amount} 元。"

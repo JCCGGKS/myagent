@@ -51,15 +51,14 @@ class IntentRouterService:
         has_refund_action_keyword = self._contains_any(lowered, rules.get("refund_action_keywords", []))
         has_refund_rule_keyword = self._contains_any(lowered, rules.get("refund_rule_keywords", []))
         has_greeting_keyword = self._contains_any(lowered, rules.get("greeting_keywords", []))
-        has_thanks_keyword = self._contains_any(lowered, rules.get("thanks_keywords", []))
 
         logger.debug(
             "Routing message session=%s previous_intent=%s order_id=%s "
-            "handoff_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s greeting_kw=%s thanks_kw=%s "
+            "handoff_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s greeting_kw=%s "
             "emotion=%s",
             state.session_id, previous_main_intent, order_id,
             has_handoff_keyword, has_logistics_keyword, has_order_keyword,
-            has_refund_keyword, has_greeting_keyword, has_thanks_keyword,
+            has_refund_keyword, has_greeting_keyword,
             emotion.primary,
         )
 
@@ -141,16 +140,6 @@ class IntentRouterService:
             )
             candidate_intents = ["chitchat"]
             logger.info("Routed intent=chitchat.greeting session=%s", state.session_id)
-        elif has_thanks_keyword:
-            intent = IntentResult(
-                main_intent="chitchat",
-                sub_intent="chitchat.thanks",
-                confidence=0.95,
-                route_source="rule",
-                emotion=emotion,
-            )
-            candidate_intents = ["chitchat"]
-            logger.info("Routed intent=chitchat.thanks session=%s", state.session_id)
         elif order_id and previous_sub_intent in {
             "order_service.query_status",
             "logistics_service.query_status",

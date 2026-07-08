@@ -35,11 +35,6 @@ intent_rules:
     - hi
     - hello
     - 在吗
-  thanks_keywords:
-    - 谢谢
-    - 感谢
-    - thanks
-    - thank you
   angry_keywords:
     - 投诉
     - 生气
