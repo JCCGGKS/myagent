@@ -217,7 +217,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="prompt-row" v-if="store.messages.length <= 1">
+          <div class="prompt-row">
             <button
               v-for="prompt in prompts"
               :key="prompt"
