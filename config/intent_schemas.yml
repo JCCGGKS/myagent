@@ -1,11 +1,5 @@
 intent_schemas:
-  faq:
-    required_slots: []
-    optional_slots: []
-    inheritable: []
-    overwritable: []
-    clarification_order: []
-  order_service:
+  order_query:
     required_slots:
       - order_id
     optional_slots: []
@@ -15,7 +9,7 @@ intent_schemas:
       - order_id
     clarification_order:
       - order_id
-  logistics_service:
+  logistics:
     required_slots:
       - order_id
     optional_slots: []
@@ -25,7 +19,7 @@ intent_schemas:
       - order_id
     clarification_order:
       - order_id
-  refund_service:
+  after_sale_refund:
     required_slots:
       - order_id
     optional_slots:
@@ -38,6 +32,12 @@ intent_schemas:
     clarification_order:
       - order_id
       - refund_reason
+  complaint:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
   handoff_service:
     required_slots: []
     optional_slots: []
@@ -50,7 +50,13 @@ intent_schemas:
     inheritable: []
     overwritable: []
     clarification_order: []
-  unsupported:
+  unrecognize:
+    required_slots: []
+    optional_slots: []
+    inheritable: []
+    overwritable: []
+    clarification_order: []
+  unsupported_biz:
     required_slots: []
     optional_slots: []
     inheritable: []

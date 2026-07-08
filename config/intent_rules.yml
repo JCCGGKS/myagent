@@ -3,32 +3,35 @@ intent_rules:
     - 转人工
     - 人工客服
     - 找人工
+  complaint_keywords:
     - 投诉
+    - 差评
+    - 赔付
+    - 赔偿
+    - 太差了
   logistics_keywords:
     - 物流
     - 快递
     - 配送
     - 到哪了
-  order_keywords:
+    - 丢件
+    - 延迟
+  order_query_keywords:
     - 查订单
     - 订单状态
     - 我的订单
     - 发货了吗
     - 订单
-  refund_keywords:
+  after_sale_refund_keywords:
     - 退货
     - 售后
     - 退换
     - 换货
-  refund_action_keywords:
+    - 退款
+  after_sale_refund_action_keywords:
     - 我要退款
     - 申请退款
     - 帮我退款
-  refund_rule_keywords:
-    - 多久到账
-    - 规则
-    - 怎么退
-    - 多久到
   greeting_keywords:
     - 你好
     - 您好
@@ -36,7 +39,6 @@ intent_rules:
     - hello
     - 在吗
   angry_keywords:
-    - 投诉
     - 生气
     - 差评
     - 太慢了
@@ -56,6 +58,3 @@ intent_rules:
     - 焦虑
     - 怎么办
     - 还没到
-  happy_keywords:
-    - 谢谢
-    - 感谢

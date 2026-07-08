@@ -29,12 +29,12 @@ class ExecutionService:
             )
             return state
 
-        if state.current_sub_intent == "order_service.query_status":
+        if state.current_sub_intent == "order_query.query_status":
             order = self.order_service.get_order_status(order_id)
             raw = order.model_dump() if order else None
             summary = f"订单 {order_id} 当前状态为 {order.status}" if order else "没有查到这个订单号"
             state.tool_result = ToolExecutionResult(
-                kind="order",
+                kind="order_query",
                 raw_result=raw,
                 sanitized_result=raw,
                 user_facing_summary=summary,

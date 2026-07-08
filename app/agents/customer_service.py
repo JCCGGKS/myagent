@@ -49,7 +49,7 @@ class CustomerServiceAgent:
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
         self.intent_schema_registry = IntentSchemaRegistry()
-        self.intent_router_service = IntentRouterService(knowledge_base, llm_fallback_service)
+        self.intent_router_service = IntentRouterService(llm_fallback_service=llm_fallback_service)
         self.state_tracker_service = StateTrackerService(schema_registry=self.intent_schema_registry)
         self.policy_service = HandoffClarificationPolicy()
         self.clarification_service = ClarificationService()
@@ -182,8 +182,8 @@ class CustomerServiceAgent:
             events.append(
                 {
                     "type": "intent",
-                    "main_intent": intent.main_intent if intent else "unsupported",
-                    "sub_intent": intent.sub_intent if intent else "unsupported.unknown",
+                    "main_intent": intent.main_intent if intent else "unrecognize",
+                    "sub_intent": intent.sub_intent if intent else "unrecognize.unknown",
                     "confidence": intent.confidence if intent else 0.0,
                     "slots": intent.slots if intent else {},
                     "needs_clarification": intent.needs_clarification if intent else False,

@@ -16,12 +16,12 @@ class IntentSchemaRegistry:
         self._schemas = self._load()
 
     def get(self, main_intent: str) -> dict[str, Any]:
-        return self._schemas.get(main_intent, self._schemas["unsupported"])
+        return self._schemas.get(main_intent, self._schemas["unrecognize"])
 
     def _load(self) -> dict[str, dict[str, Any]]:
         data = load_yaml_file(self.schema_path)
         schemas = data.get("intent_schemas", {})
-        if not isinstance(schemas, dict) or "unsupported" not in schemas:
+        if not isinstance(schemas, dict) or "unrecognize" not in schemas:
             raise ValueError(f"Invalid intent schema config: {self.schema_path}")
         return schemas
 

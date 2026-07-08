@@ -9,7 +9,7 @@
 - **父意图（main_intent）**：当前应进入哪条主处理链路？
 - **子意图（sub_intent）**：进入该链路后，具体走哪个分支？
 
-示例：`order_service` -> `order_service.query_status`
+示例：`order_query` -> `order_query.query_status`
 
 ---
 
@@ -21,7 +21,7 @@
 
 ### 2.2 符合工程分层
 
-父意图对应"模块边界"（FAQ / 订单 / 物流 / 售后 / 人工），子意图对应"模块内部动作"，使路由、service 设计、后续扩展更自然。
+父意图对应"模块边界"（订单查询 / 物流 / 售后 / 投诉 / 人工），子意图对应"模块内部动作"，使路由、service 设计、后续扩展更自然。
 
 ### 2.3 适合多轮对话
 
@@ -37,14 +37,16 @@
 
 | 父意图 | 子意图 | 说明 |
 |---|---|---|
-| `faq` | `faq.general` | FAQ 检索，不调用业务工具 |
-| `order_service` | `order_service.query_status` | 需 `order_id`，缺位时追问 |
-| `logistics_service` | `logistics_service.query_status` | 需 `order_id`，缺位时追问 |
+| `order_query` | `order_query.query_status` | 需 `order_id`，缺位时追问 |
+| `logistics` | `logistics.not_received` | 需 `order_id`，缺位时追问 |
+| `aftersale_refund` | `aftersale_refund.consult_policy` / `aftersale_refund.request_refund` | 需 `order_id` |
+| `complaint` | `complaint.service_complaint` | 投诉维权，先安抚 |
 | `handoff_service` | `handoff_service.request_human` | 直接进入 handoff，无需复杂槽位 |
 | `chitchat` | `chitchat.greeting` | 模板化回复，不进入业务工具链 |
-| `unsupported` | `unsupported.unknown` | 兜底，不沿用上一轮业务意图 |
+| `unrecognize` | `unrecognize.unknown` | 兜底，不沿用上一轮业务意图 |
+| `unsupported_biz` | `unsupported_biz.out_of_scope` | 超出业务范围，标准话术告知 |
 
-> 未识别时必须显式回到 `unsupported`，不能沿用上一轮状态。
+> `sub_intent` 字段保留，但当前（Single Agent 架构）不用于路由判断，仅作为 metadata 供回复生成参考。后续 Multi-Agent 扩展时赋予路由逻辑。
 
 ---
 
@@ -52,10 +54,10 @@
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| 数据模型 | `app/models.py` | `IntentResult.main_intent/sub_intent`、`ConversationState.current_main_intent/sub_intent` |
-| 路由层 | `app/agent.py` `intent_router()` | 输出主/子意图、槽位、是否需要澄清 |
-| 状态跟踪层 | `state_tracker()` | 写入父子意图，决定 stage / 缺槽位 / 是否转人工（父意图为主） |
-| 执行层 | — | 按父意图分流：`faq`→FAQ检索，`order_service`→订单工具，`handoff_service`→转人工， etc. |
+| 数据模型 | `app/models/schemas.py` | `IntentResult.main_intent/sub_intent`、`ConversationState.current_main_intent/sub_intent` |
+| 路由层 | `app/services/routing.py` `intent_router()` | 输出主/子意图、槽位、是否需要澄清 |
+| 状态跟踪层 | `app/services/routing.py` `state_tracker()` | 写入父子意图，决定 stage / 缺槽位 / 是否转人工（父意图为主） |
+| 执行层 | — | 按父意图分流：`order_query`→订单工具，`logistics`→物流工具，`aftersale_refund`→待接入 RefundService，`complaint`→直接回复 |
 
 ---
 
@@ -64,7 +66,7 @@
 推荐四层顺序决策链：
 
 1. **输入标准化层**：清洗输入、抽取显式标识（如订单号）。对应 `input_normalizer()` / `extract_order_id()`。
-2. **高确定性规则层**：用显式规则快速命中高频场景（转人工 > 物流 > 问候 > 订单 > FAQ）。这是当前主路由骨架。
+2. **高确定性规则层**：用显式规则快速命中高频场景（转人工 > 投诉 > 物流 > 订单 > 售后 > 问候）。这是当前主路由骨架。
 3. **LLM 兜底层**：仅当规则层落到 `fallback` 时触发，处理口语化/省略/弱歧义输入。LLM 是二级兜底，非常规分类器。
 4. **DST / 状态决策层**：消费上层结果，写入状态，决定进入执行/追问/转人工/直接回复。
 
@@ -75,16 +77,16 @@
 **规则优先，LLM 兜底。** 原因：成本更低、稳定性更好、可解释性更强、便于单点评估。
 
 - 适合 LLM：口语化、省略、轻歧义、边界模糊的输入
-- 不适合 LLM（应用规则）：`你好`、`谢谢`、`转人工`、显式订单号/物流查询
+- 不适合 LLM（应用规则）：`你好`、`转人工`、显式订单号/物流查询
 
 ---
 
 ## 7. 设计原则
 
-1. **父意图不要过细**：父意图对应主链路（如 `order_service`），不是小功能点（如 `query_order_status`）。
+1. **父意图不要过细**：父意图对应主链路（如 `order_query`），不是小功能点（如 `query_order_status`）。
 2. **子意图必须有差异**：仅在槽位/工具/回复策略/风险等级/澄清方式有明显差异时才拆子意图。
 3. **优先保证父意图正确**：主链路走错的成本 >> 子分支不够细。
-4. **未识别时回到 `unsupported`**：避免沿用上一轮状态导致误判。
+4. **未识别时回到 `unrecognize`**：避免沿用上一轮状态导致误判。
 
 ---
 
@@ -106,7 +108,7 @@
 
 - **高优先级打断**（转人工/投诉/安全风险）：立即切换主链路
 - **同域切换**（查订单→查物流）：可继承 `order_id`
-- **跨域切换**（FAQ→订单）：重置不相关槽位
+- **跨域切换**（订单→投诉）：重置不相关槽位
 
 当前项目通过 `is_intent_shift` 判断切换（新子意图与上一轮不同即切换）。
 
@@ -120,9 +122,10 @@
 
 ## 9. 后续扩展建议
 
-1. 新增父意图 `after_sales_service`，子意图：`refund_consult`、`refund_status`、`complaint`
-2. 补充 `chitchat.thanks`、`chitchat.goodbye`
+1. 接入 `RefundService`，完善 `aftersale_refund` 执行链路
+2. 扩展 `complaint` 子意图，支持投诉工单创建
 3. 扩展 slot schema 支持多槽位抽取
 4. 增加状态冻结/存档持久化
 5. 完善人机转换上下文，接入真实人工工作台
 6. 规则层稳定后，增强 LLM 兜底与相似度召回
+7. 拆分为 Multi-Agent 架构，一级意图做 Agent 分发

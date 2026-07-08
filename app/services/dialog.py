@@ -75,21 +75,17 @@ class ResponseService:
         if state.reply:
             return state
 
-        if state.current_main_intent == "faq":
-            state.reply = (
-                state.tool_result.user_facing_summary
-                if state.tool_result and state.tool_result.user_facing_summary
-                else prompts["faq_fallback"]
-            )
-        elif state.current_sub_intent == "refund_service.consult_policy":
+        if state.current_main_intent == "complaint":
+            state.reply = prompts.get("complaint_ack", "非常抱歉给你带来不好的体验。")
+        elif state.current_sub_intent == "after_sale_refund.consult_policy":
             state.reply = (
                 state.tool_result.user_facing_summary
                 if state.tool_result and state.tool_result.user_facing_summary
                 else prompts["refund_policy_fallback"]
             )
-        elif state.current_sub_intent == "refund_service.request_refund":
+        elif state.current_sub_intent == "after_sale_refund.request_refund":
             state.reply = prompts["refund_request_ack"]
-        elif state.current_sub_intent == "order_service.query_status":
+        elif state.current_sub_intent == "order_query.query_status":
             tool_data = state.tool_result.sanitized_result if state.tool_result else None
             if tool_data:
                 state.reply = prompts["order_template"].format(
@@ -100,7 +96,7 @@ class ResponseService:
                 )
             else:
                 state.reply = prompts["order_not_found"]
-        elif state.current_sub_intent == "logistics_service.query_status":
+        elif state.current_sub_intent == "logistics.not_received":
             tool_data = state.tool_result.sanitized_result if state.tool_result else None
             if tool_data and tool_data.get("timeline"):
                 latest = tool_data["timeline"][-1]
@@ -119,8 +115,8 @@ class ResponseService:
             )
         elif state.current_sub_intent == "chitchat.greeting":
             state.reply = prompts["greeting"]
-        elif state.current_sub_intent == "chitchat.thanks":
-            state.reply = prompts["thanks"]
+        elif state.current_main_intent == "unsupported_biz":
+            state.reply = prompts["unsupported_biz"]
         else:
             state.reply = prompts["unknown_fallback"]
 
@@ -175,8 +171,6 @@ class MemoryService:
 
 
 def _tool_category(state: ConversationState) -> str:
-    if state.current_action == "retrieve_knowledge":
-        return "retrieval"
     if state.current_action == "handoff_human":
         return "workflow"
     return "query"

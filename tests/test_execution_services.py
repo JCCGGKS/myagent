@@ -16,13 +16,13 @@ class ExecutionServicesTestCase(unittest.TestCase):
             session_id="s2",
             user_id="u1",
             channel="web",
-            current_sub_intent="order_service.query_status",
+            current_sub_intent="order_query.query_status",
             slots={"order_id": "A1001"},
         )
 
         updated = service.execute_business_tool(state)
 
-        self.assertEqual(updated.tool_result.kind, "order")
+        self.assertEqual(updated.tool_result.kind, "order_query")
         self.assertEqual(updated.tool_result.sanitized_result["order_id"], "A1001")
 
     def test_execution_service_should_create_handoff_ticket(self) -> None:

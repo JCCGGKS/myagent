@@ -18,7 +18,7 @@ class DialogServicesTestCase(unittest.TestCase):
         prompts = registry.get()
 
         self.assertIn("intent_clarification", prompts)
-        self.assertIn("refund_service", prompts["slot_clarification"])
+        self.assertIn("after_sale_refund", prompts["slot_clarification"])
 
     def test_clarification_service_should_generate_refund_order_id_prompt(self) -> None:
         service = ClarificationService()
@@ -26,8 +26,8 @@ class DialogServicesTestCase(unittest.TestCase):
             session_id="s1",
             user_id="u1",
             channel="web",
-            current_main_intent="refund_service",
-            current_sub_intent="refund_service.request_refund",
+            current_main_intent="after_sale_refund",
+            current_sub_intent="after_sale_refund.request_refund",
             current_action="ask_slot_clarification",
             missing_slots=["order_id"],
         )
@@ -51,10 +51,10 @@ class DialogServicesTestCase(unittest.TestCase):
             session_id="s2",
             user_id="u1",
             channel="web",
-            current_main_intent="order_service",
-            current_sub_intent="order_service.query_status",
+            current_main_intent="order_query",
+            current_sub_intent="order_query.query_status",
             tool_result=ToolExecutionResult(
-                kind="order",
+                kind="order_query",
                 raw_result=None,
                 sanitized_result={
                     "order_id": "A1001",
@@ -83,7 +83,7 @@ class DialogServicesTestCase(unittest.TestCase):
         updated = service.generate(state)
 
         self.assertIn("你好", updated.reply)
-        self.assertIn("退款规则", updated.reply)
+        self.assertIn("订单", updated.reply)
 
     def test_memory_service_should_record_messages_and_tool_calls(self) -> None:
         store = SessionStore()
@@ -92,8 +92,8 @@ class DialogServicesTestCase(unittest.TestCase):
             session_id="s3",
             user_id="u1",
             channel="web",
-            current_main_intent="faq",
-            current_sub_intent="faq.general",
+            current_main_intent="unrecognize",
+            current_sub_intent="unrecognize.unknown",
             current_action="retrieve_knowledge",
             reply="退款到账时间通常为 1 到 5 个工作日。",
             tool_result=ToolExecutionResult(

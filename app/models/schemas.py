@@ -6,26 +6,33 @@ from pydantic import BaseModel, Field
 
 
 MainIntentCode = Literal[
-    "faq",
-    "order_service",
-    "logistics_service",
-    "refund_service",
+    "order_query",
+    "logistics",
+    "after_sale_refund",
+    "complaint",
     "handoff_service",
     "chitchat",
-    "unsupported",
+    "unrecognize",
+    "unsupported_biz",
 ]
 
 
 SubIntentCode = Literal[
-    "faq.general",
-    "order_service.query_status",
-    "logistics_service.query_status",
-    "refund_service.consult_policy",
-    "refund_service.request_refund",
-    "handoff_service.request_human",
-    "chitchat.greeting",
-    "chitchat.thanks",
-    "unsupported.unknown",
+    "order_query.query_status",
+    "order_query.modify_address",
+        "order_query.apply_invoice",
+        "logistics.lost_package",
+        "logistics.delayed",
+        "logistics.not_received",
+        "after_sale_refund.request_refund",
+        "after_sale_refund.consult_policy",
+        "after_sale_refund.wrong_goods",
+        "complaint.compensate",
+        "complaint.service_complaint",
+        "handoff_service.request_human",
+        "chitchat.greeting",
+        "unrecognize.unknown",
+        "unsupported_biz.out_of_scope",
 ]
 
 
@@ -64,7 +71,7 @@ class KnowledgeHit(BaseModel):
 
 
 class ToolExecutionResult(BaseModel):
-    kind: Literal["knowledge", "order", "logistics", "handoff"]
+    kind: Literal["knowledge", "order_query", "logistics", "aftersale_refund", "handoff"]
     raw_result: dict[str, Any] | None = None
     sanitized_result: dict[str, Any] | None = None
     user_facing_summary: str = ""
