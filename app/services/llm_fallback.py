@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import LLMConfig
 from app.models import IntentResult
@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class LLMIntentDecision(BaseModel):
+    model_config = {"populate_by_name": True}
+
     main_intent: Literal[
         "faq",
         "order_service",
@@ -155,6 +157,12 @@ class LLMIntentFallbackService:
 
         try:
             data = json.loads(content)
+            # 兼容 Qwen 返回的字段名（intent/sub_intent）
+            if isinstance(data, dict):
+                if "intent" in data and "main_intent" not in data:
+                    data["main_intent"] = data.pop("intent")
+                if "sub_intent" in data and "sub_intent" not in data:
+                    data["sub_intent"] = data.pop("sub_intent")
             parsed = LLMIntentDecision(**data)
             logger.debug("chat.completions success: %s", content)
             return parsed

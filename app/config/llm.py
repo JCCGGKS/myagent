@@ -21,7 +21,6 @@ class LLMConfig(BaseModel):
     base_url: str | None = None
     timeout_seconds: float = 20.0
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
-    fallback_on_unsupported_only: bool = True
     logging: LoggingConfig = LoggingConfig()
 
     @property

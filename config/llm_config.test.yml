@@ -18,9 +18,6 @@ llm:
   # LLM 意图识别的最低置信度阈值（低于此值的结果会被丢弃）
   confidence_threshold: 0.7
 
-  # 仅当规则路由结果为 unsupported 时才调用 LLM 兜底
-  fallback_on_unsupported_only: true
-
 # 日志配置
 logging:
   # 日志级别：DEBUG | INFO | WARNING | ERROR

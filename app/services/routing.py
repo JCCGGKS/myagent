@@ -184,19 +184,38 @@ class IntentRouterService:
                 knowledge_hits[0].score, state.session_id,
             )
         else:
-            intent = self._route_with_llm_fallback(message, previous_sub_intent) or IntentResult(
-                main_intent="unsupported",
-                sub_intent="unsupported.unknown",
-                confidence=0.2,
-                route_source="fallback",
-                needs_clarification=True,
-                emotion=emotion,
-            )
-            candidate_intents = [intent.main_intent, previous_main_intent]
+            # 规则未命中，尝试 LLM 兜底
+            llm_intent = self._route_with_llm_fallback(message, previous_sub_intent)
+            if llm_intent is not None:
+                intent = llm_intent
+                candidate_intents = [intent.main_intent, previous_main_intent]
+            else:
+                intent = IntentResult(
+                    main_intent="unsupported",
+                    sub_intent="unsupported.unknown",
+                    confidence=0.2,
+                    route_source="fallback",
+                    needs_clarification=True,
+                    emotion=emotion,
+                )
+                candidate_intents = ["unsupported", previous_main_intent]
+
             logger.info(
                 "Routed intent=%s source=%s session=%s",
                 intent.main_intent, intent.route_source, state.session_id,
             )
+
+        # 规则置信度低时，尝试用 LLM 结果覆盖
+        if intent.route_source == "rule" and intent.confidence < 0.8:
+            llm_intent = self._route_with_llm_fallback(message, previous_sub_intent)
+            if llm_intent is not None:
+                logger.info(
+                    "Rule result overridden by LLM: %s.%s -> %s.%s session=%s",
+                    intent.main_intent, intent.sub_intent,
+                    llm_intent.main_intent, llm_intent.sub_intent,
+                    state.session_id,
+                )
+                intent = llm_intent
 
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unsupported", intent.main_intent}

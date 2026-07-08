@@ -16,9 +16,10 @@ intent_rules:
     - 发货了吗
     - 订单
   refund_keywords:
-    - 退款
     - 退货
     - 售后
+    - 退换
+    - 换货
   refund_action_keywords:
     - 我要退款
     - 申请退款
