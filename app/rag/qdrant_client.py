@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 from pathlib import Path
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantClient:
@@ -73,6 +76,29 @@ class QdrantClient:
                 "score": 0.75,
             }
         ]
+
+    def create_collection(self, vector_size: int, distance: str = "Cosine") -> None:
+        """创建 Collection（模拟实现：仅记录参数）。"""
+        # TODO: 接入真实 Qdrant
+        # self.client.create_collection(
+        #     collection_name=self.collection_name,
+        #     vectors_config=VectorParams(size=vector_size, distance=distance),
+        # )
+        self._memory: dict[str, Any] = {}  # 模拟存储
+        logger.info("Mock create_collection: %s size=%d", self.collection_name, vector_size)
+
+    def upsert(self, points: list[dict[str, Any]]) -> None:
+        """写入向量点（模拟实现：存到内存字典）。
+
+        points 每项: {"id": str, "vector": list[float], "payload": dict}
+        """
+        # TODO: 接入真实 Qdrant
+        # self.client.upsert(collection_name=self.collection_name, points=points)
+        if not hasattr(self, "_memory"):
+            self._memory = {}
+        for p in points:
+            self._memory[p["id"]] = p
+        logger.info("Mock upsert %d points into %s", len(points), self.collection_name)
 
 
 def get_qdrant_client() -> QdrantClient:
