@@ -15,7 +15,7 @@ def load_rag_json_file(filename: str) -> list[dict]:
 
 class KnowledgeBaseService:
     def __init__(self) -> None:
-        self._faqs = load_rag_json_file("faqs.json")
+        self._faqs = load_rag_json_file("rag.json")
 
     def search(self, query: str) -> list[KnowledgeHit]:
         normalized = query.casefold()
