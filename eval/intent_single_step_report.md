@@ -1,52 +1,51 @@
-# 意图识别单点评估报告
+# 意图识别单点评估报告（规则 + LLM 兜底）
 
 ## 评估方式
 
-参考 LangSmith `evaluate-complex-agent` 中的 single-step evaluation 思路，本次只评估“意图识别节点”本身，不评估回复生成、工具调用和多步轨迹。
+评估 `IntentRouterService` 的完整路由链路，包括：
 
-当前被评估方案为“纯规则匹配”：
-
-- 意图路由只依赖显式关键词规则
-- FAQ 命中只依赖 `faqs.json` 中的关键词和问题短语包含匹配
-- 保留订单号补槽位续接规则
-- 不包含相似度、向量检索或 LLM 判断
+- 规则匹配（关键词、FAQ 知识库、slot 跟随）
+- LLM 兜底（规则未匹配时调用 LLM 做意图分类）
 
 ## 总体结果
 
 - 样本总数：42
-- 命中样本：41
-- 准确率：97.62%
-- 路由来源分布：{"rule": 32, "slot_followup": 2, "fallback": 8}
+- 命中样本：25
+- 准确率：59.52%
+- 路由来源分布：
+  - `rule`: 35
+  - `fallback`: 7
 
 ## 按主意图统计
 
-- `chitchat`: 7 / 7 = 100.00%
-- `faq`: 8 / 8 = 100.00%
+- `chitchat`: 6 / 7 = 85.71%
+- `faq`: 5 / 8 = 62.50%
 - `handoff_service`: 2 / 2 = 100.00%
-- `logistics_service`: 5 / 5 = 100.00%
-- `order_service`: 5 / 5 = 100.00%
-- `unsupported`: 14 / 15 = 93.33%
+- `logistics_service`: 4 / 5 = 80.00%
+- `order_service`: 4 / 5 = 80.00%
+- `unsupported`: 4 / 15 = 26.67%
 
 ## 未覆盖/误判样本
 
-- `order_status_delivery_variant`: `我的订单发没发` -> expected `unsupported / unsupported.unknown`, actual `order_service / order_service.query_status`
+- `faq_refund_exact`: `退款多久到账` -> expected `faq / faq.general`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `faq_refund_variant`: `退款几天到账` -> expected `faq / faq.general`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `faq_refund_arrival_variant`: `退款什么时候到账` -> expected `faq / faq.general`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `faq_refund_policy`: `退款规则是什么` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `faq_refund_policy_variant`: `可以退款吗` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `refund_request_direct`: `我要退款` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.request_refund` (source=rule)
+- `refund_request_action`: `帮我申请退款` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.request_refund` (source=rule)
+- `refund_request_progress_like`: `退款怎么处理` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `refund_request_short`: `退款` -> expected `unsupported / unsupported.unknown`, actual `refund_service / refund_service.consult_policy` (source=rule)
+- `order_status_delivery_variant`: `我的订单发没发` -> expected `unsupported / unsupported.unknown`, actual `order_service / order_service.query_status` (source=rule)
+- `order_followup_id_only`: `A1001` -> expected `order_service / order_service.query_status`, actual `unsupported / unsupported.unknown` (source=fallback)
+- `logistics_variant_package`: `包裹到哪了` -> expected `unsupported / unsupported.unknown`, actual `logistics_service / logistics_service.query_status` (source=rule)
+- `logistics_followup_id_only`: `A1002` -> expected `logistics_service / logistics_service.query_status`, actual `unsupported / unsupported.unknown` (source=fallback)
+- `thanks_variant`: `辛苦了` -> expected `chitchat / chitchat.thanks`, actual `unsupported / unsupported.unknown` (source=fallback)
+- `unsupported_complaint`: `我要投诉` -> expected `unsupported / unsupported.unknown`, actual `handoff_service / handoff_service.request_human` (source=rule)
+- `unsupported_shipping_variant`: `什么时候能收到货` -> expected `unsupported / unsupported.unknown`, actual `faq / faq.general` (source=rule)
+- `unsupported_invoice_change`: `发票可以修改吗` -> expected `unsupported / unsupported.unknown`, actual `faq / faq.general` (source=rule)
 
 ## 结论
 
-规则匹配可以稳定覆盖显式表达、短句、固定问法和少量多轮补槽位，但对口语化变体、售后动作类请求、账户类请求和同义表达覆盖仍然有限。
-
-## 是否建议引入第二层相似度检索
-
-当前更建议先继续收紧规则层，再决定是否引入第二层相似度检索。
-
-原因：
-
-- 如果失败样本主要是显式边界冲突，例如 FAQ 吞掉订单/退款动作，应优先改规则
-- 如果失败样本主要变成同义表达、口语化和轻省略表达，再考虑加第二层相似度检索
-
-下一步如果继续做单点评估，建议按下面三类扩样本：
-
-- 同义表达：例如 `什么时候能收到货`、`帮我看下快递到哪`、`包裹在哪`
-- 新业务域：例如退款申请、投诉、优惠券、发票修改
-- 多轮补充：例如上一轮查订单、下一轮只回复订单号或手机号
+规则层优先处理显式表达，LLM 兜底覆盖规则未匹配的口语化、同义表达。
 

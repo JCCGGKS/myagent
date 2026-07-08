@@ -1,23 +1,22 @@
 {
   "metrics": {
     "total_cases": 42,
-    "matched_cases": 41,
-    "accuracy": 0.9762,
+    "matched_cases": 25,
+    "accuracy": 0.5952,
     "route_source_distribution": {
-      "rule": 32,
-      "slot_followup": 2,
-      "fallback": 8
+      "rule": 35,
+      "fallback": 7
     },
     "per_main_intent": {
       "chitchat": {
         "total": 7,
-        "matched": 7,
-        "accuracy": 1.0
+        "matched": 6,
+        "accuracy": 0.8571
       },
       "faq": {
         "total": 8,
-        "matched": 8,
-        "accuracy": 1.0
+        "matched": 5,
+        "accuracy": 0.625
       },
       "handoff_service": {
         "total": 2,
@@ -26,21 +25,120 @@
       },
       "logistics_service": {
         "total": 5,
-        "matched": 5,
-        "accuracy": 1.0
+        "matched": 4,
+        "accuracy": 0.8
       },
       "order_service": {
         "total": 5,
-        "matched": 5,
-        "accuracy": 1.0
+        "matched": 4,
+        "accuracy": 0.8
       },
       "unsupported": {
         "total": 15,
-        "matched": 14,
-        "accuracy": 0.9333
+        "matched": 4,
+        "accuracy": 0.2667
       }
     },
     "failed_cases": [
+      {
+        "id": "faq_refund_exact",
+        "message": "退款多久到账",
+        "expected_main_intent": "faq",
+        "expected_sub_intent": "faq.general",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.88,
+        "matched": false
+      },
+      {
+        "id": "faq_refund_variant",
+        "message": "退款几天到账",
+        "expected_main_intent": "faq",
+        "expected_sub_intent": "faq.general",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "faq_refund_arrival_variant",
+        "message": "退款什么时候到账",
+        "expected_main_intent": "faq",
+        "expected_sub_intent": "faq.general",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "faq_refund_policy",
+        "message": "退款规则是什么",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.88,
+        "matched": false
+      },
+      {
+        "id": "faq_refund_policy_variant",
+        "message": "可以退款吗",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "refund_request_direct",
+        "message": "我要退款",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.request_refund",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "refund_request_action",
+        "message": "帮我申请退款",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.request_refund",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "refund_request_progress_like",
+        "message": "退款怎么处理",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "refund_request_short",
+        "message": "退款",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "refund_service",
+        "actual_sub_intent": "refund_service.consult_policy",
+        "route_source": "rule",
+        "confidence": 0.8,
+        "matched": false
+      },
       {
         "id": "order_status_delivery_variant",
         "message": "我的订单发没发",
@@ -49,6 +147,86 @@
         "actual_main_intent": "order_service",
         "actual_sub_intent": "order_service.query_status",
         "route_source": "rule",
+        "confidence": 0.76,
+        "matched": false
+      },
+      {
+        "id": "order_followup_id_only",
+        "message": "A1001",
+        "previous_sub_intent": "order_service.query_status",
+        "expected_main_intent": "order_service",
+        "expected_sub_intent": "order_service.query_status",
+        "actual_main_intent": "unsupported",
+        "actual_sub_intent": "unsupported.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
+        "id": "logistics_variant_package",
+        "message": "包裹到哪了",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "logistics_service",
+        "actual_sub_intent": "logistics_service.query_status",
+        "route_source": "rule",
+        "confidence": 0.78,
+        "matched": false
+      },
+      {
+        "id": "logistics_followup_id_only",
+        "message": "A1002",
+        "previous_sub_intent": "logistics_service.query_status",
+        "expected_main_intent": "logistics_service",
+        "expected_sub_intent": "logistics_service.query_status",
+        "actual_main_intent": "unsupported",
+        "actual_sub_intent": "unsupported.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
+        "id": "thanks_variant",
+        "message": "辛苦了",
+        "expected_main_intent": "chitchat",
+        "expected_sub_intent": "chitchat.thanks",
+        "actual_main_intent": "unsupported",
+        "actual_sub_intent": "unsupported.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
+        "id": "unsupported_complaint",
+        "message": "我要投诉",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "handoff_service",
+        "actual_sub_intent": "handoff_service.request_human",
+        "route_source": "rule",
+        "confidence": 0.99,
+        "matched": false
+      },
+      {
+        "id": "unsupported_shipping_variant",
+        "message": "什么时候能收到货",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "faq",
+        "actual_sub_intent": "faq.general",
+        "route_source": "rule",
+        "confidence": 0.65,
+        "matched": false
+      },
+      {
+        "id": "unsupported_invoice_change",
+        "message": "发票可以修改吗",
+        "expected_main_intent": "unsupported",
+        "expected_sub_intent": "unsupported.unknown",
+        "actual_main_intent": "faq",
+        "actual_sub_intent": "faq.general",
+        "route_source": "rule",
+        "confidence": 0.65,
         "matched": false
       }
     ]
@@ -62,6 +240,7 @@
       "actual_main_intent": "faq",
       "actual_sub_intent": "faq.general",
       "route_source": "rule",
+      "confidence": 1.0,
       "matched": true
     },
     {
@@ -72,6 +251,7 @@
       "actual_main_intent": "faq",
       "actual_sub_intent": "faq.general",
       "route_source": "rule",
+      "confidence": 1.0,
       "matched": true
     },
     {
@@ -82,6 +262,7 @@
       "actual_main_intent": "faq",
       "actual_sub_intent": "faq.general",
       "route_source": "rule",
+      "confidence": 1.0,
       "matched": true
     },
     {
@@ -92,6 +273,7 @@
       "actual_main_intent": "faq",
       "actual_sub_intent": "faq.general",
       "route_source": "rule",
+      "confidence": 1.0,
       "matched": true
     },
     {
@@ -102,6 +284,7 @@
       "actual_main_intent": "faq",
       "actual_sub_intent": "faq.general",
       "route_source": "rule",
+      "confidence": 1.0,
       "matched": true
     },
     {
@@ -109,90 +292,99 @@
       "message": "退款多久到账",
       "expected_main_intent": "faq",
       "expected_sub_intent": "faq.general",
-      "actual_main_intent": "faq",
-      "actual_sub_intent": "faq.general",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.88,
+      "matched": false
     },
     {
       "id": "faq_refund_variant",
       "message": "退款几天到账",
       "expected_main_intent": "faq",
       "expected_sub_intent": "faq.general",
-      "actual_main_intent": "faq",
-      "actual_sub_intent": "faq.general",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "faq_refund_arrival_variant",
       "message": "退款什么时候到账",
       "expected_main_intent": "faq",
       "expected_sub_intent": "faq.general",
-      "actual_main_intent": "faq",
-      "actual_sub_intent": "faq.general",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "faq_refund_policy",
       "message": "退款规则是什么",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.88,
+      "matched": false
     },
     {
       "id": "faq_refund_policy_variant",
       "message": "可以退款吗",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "refund_request_direct",
       "message": "我要退款",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.request_refund",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "refund_request_action",
       "message": "帮我申请退款",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.request_refund",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "refund_request_progress_like",
       "message": "退款怎么处理",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "refund_request_short",
       "message": "退款",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
+      "actual_main_intent": "refund_service",
+      "actual_sub_intent": "refund_service.consult_policy",
       "route_source": "rule",
-      "matched": true
+      "confidence": 0.8,
+      "matched": false
     },
     {
       "id": "order_status_basic",
@@ -202,6 +394,7 @@
       "actual_main_intent": "order_service",
       "actual_sub_intent": "order_service.query_status",
       "route_source": "rule",
+      "confidence": 0.76,
       "matched": true
     },
     {
@@ -212,6 +405,7 @@
       "actual_main_intent": "order_service",
       "actual_sub_intent": "order_service.query_status",
       "route_source": "rule",
+      "confidence": 0.9,
       "matched": true
     },
     {
@@ -222,6 +416,7 @@
       "actual_main_intent": "order_service",
       "actual_sub_intent": "order_service.query_status",
       "route_source": "rule",
+      "confidence": 0.76,
       "matched": true
     },
     {
@@ -232,6 +427,7 @@
       "actual_main_intent": "order_service",
       "actual_sub_intent": "order_service.query_status",
       "route_source": "rule",
+      "confidence": 0.9,
       "matched": true
     },
     {
@@ -242,6 +438,7 @@
       "actual_main_intent": "order_service",
       "actual_sub_intent": "order_service.query_status",
       "route_source": "rule",
+      "confidence": 0.76,
       "matched": false
     },
     {
@@ -250,10 +447,11 @@
       "previous_sub_intent": "order_service.query_status",
       "expected_main_intent": "order_service",
       "expected_sub_intent": "order_service.query_status",
-      "actual_main_intent": "order_service",
-      "actual_sub_intent": "order_service.query_status",
-      "route_source": "slot_followup",
-      "matched": true
+      "actual_main_intent": "unsupported",
+      "actual_sub_intent": "unsupported.unknown",
+      "route_source": "fallback",
+      "confidence": 0.2,
+      "matched": false
     },
     {
       "id": "logistics_basic",
@@ -263,6 +461,7 @@
       "actual_main_intent": "logistics_service",
       "actual_sub_intent": "logistics_service.query_status",
       "route_source": "rule",
+      "confidence": 0.78,
       "matched": true
     },
     {
@@ -273,6 +472,7 @@
       "actual_main_intent": "logistics_service",
       "actual_sub_intent": "logistics_service.query_status",
       "route_source": "rule",
+      "confidence": 0.78,
       "matched": true
     },
     {
@@ -283,6 +483,7 @@
       "actual_main_intent": "logistics_service",
       "actual_sub_intent": "logistics_service.query_status",
       "route_source": "rule",
+      "confidence": 0.78,
       "matched": true
     },
     {
@@ -290,10 +491,11 @@
       "message": "包裹到哪了",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
-      "route_source": "fallback",
-      "matched": true
+      "actual_main_intent": "logistics_service",
+      "actual_sub_intent": "logistics_service.query_status",
+      "route_source": "rule",
+      "confidence": 0.78,
+      "matched": false
     },
     {
       "id": "logistics_with_id",
@@ -303,6 +505,7 @@
       "actual_main_intent": "logistics_service",
       "actual_sub_intent": "logistics_service.query_status",
       "route_source": "rule",
+      "confidence": 0.9,
       "matched": true
     },
     {
@@ -311,10 +514,11 @@
       "previous_sub_intent": "logistics_service.query_status",
       "expected_main_intent": "logistics_service",
       "expected_sub_intent": "logistics_service.query_status",
-      "actual_main_intent": "logistics_service",
-      "actual_sub_intent": "logistics_service.query_status",
-      "route_source": "slot_followup",
-      "matched": true
+      "actual_main_intent": "unsupported",
+      "actual_sub_intent": "unsupported.unknown",
+      "route_source": "fallback",
+      "confidence": 0.2,
+      "matched": false
     },
     {
       "id": "handoff_basic",
@@ -324,6 +528,7 @@
       "actual_main_intent": "handoff_service",
       "actual_sub_intent": "handoff_service.request_human",
       "route_source": "rule",
+      "confidence": 0.99,
       "matched": true
     },
     {
@@ -334,6 +539,7 @@
       "actual_main_intent": "handoff_service",
       "actual_sub_intent": "handoff_service.request_human",
       "route_source": "rule",
+      "confidence": 0.99,
       "matched": true
     },
     {
@@ -344,6 +550,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.greeting",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -354,6 +561,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.greeting",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -364,6 +572,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.greeting",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -374,6 +583,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.greeting",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -384,6 +594,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.thanks",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -391,10 +602,11 @@
       "message": "辛苦了",
       "expected_main_intent": "chitchat",
       "expected_sub_intent": "chitchat.thanks",
-      "actual_main_intent": "chitchat",
-      "actual_sub_intent": "chitchat.thanks",
-      "route_source": "rule",
-      "matched": true
+      "actual_main_intent": "unsupported",
+      "actual_sub_intent": "unsupported.unknown",
+      "route_source": "fallback",
+      "confidence": 0.2,
+      "matched": false
     },
     {
       "id": "thanks_english",
@@ -404,6 +616,7 @@
       "actual_main_intent": "chitchat",
       "actual_sub_intent": "chitchat.thanks",
       "route_source": "rule",
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -411,10 +624,11 @@
       "message": "我要投诉",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
-      "route_source": "fallback",
-      "matched": true
+      "actual_main_intent": "handoff_service",
+      "actual_sub_intent": "handoff_service.request_human",
+      "route_source": "rule",
+      "confidence": 0.99,
+      "matched": false
     },
     {
       "id": "unsupported_goodbye",
@@ -424,6 +638,7 @@
       "actual_main_intent": "unsupported",
       "actual_sub_intent": "unsupported.unknown",
       "route_source": "fallback",
+      "confidence": 0.2,
       "matched": true
     },
     {
@@ -434,6 +649,7 @@
       "actual_main_intent": "unsupported",
       "actual_sub_intent": "unsupported.unknown",
       "route_source": "fallback",
+      "confidence": 0.2,
       "matched": true
     },
     {
@@ -444,6 +660,7 @@
       "actual_main_intent": "unsupported",
       "actual_sub_intent": "unsupported.unknown",
       "route_source": "fallback",
+      "confidence": 0.2,
       "matched": true
     },
     {
@@ -451,20 +668,22 @@
       "message": "什么时候能收到货",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
-      "route_source": "fallback",
-      "matched": true
+      "actual_main_intent": "faq",
+      "actual_sub_intent": "faq.general",
+      "route_source": "rule",
+      "confidence": 0.65,
+      "matched": false
     },
     {
       "id": "unsupported_invoice_change",
       "message": "发票可以修改吗",
       "expected_main_intent": "unsupported",
       "expected_sub_intent": "unsupported.unknown",
-      "actual_main_intent": "unsupported",
-      "actual_sub_intent": "unsupported.unknown",
-      "route_source": "fallback",
-      "matched": true
+      "actual_main_intent": "faq",
+      "actual_sub_intent": "faq.general",
+      "route_source": "rule",
+      "confidence": 0.65,
+      "matched": false
     },
     {
       "id": "unsupported_coupon_question",
@@ -474,6 +693,7 @@
       "actual_main_intent": "unsupported",
       "actual_sub_intent": "unsupported.unknown",
       "route_source": "fallback",
+      "confidence": 0.2,
       "matched": true
     }
   ]
