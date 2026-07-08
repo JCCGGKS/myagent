@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 
 import TurnTracePanel from "@/components/TurnTracePanel.vue";
 import { useChatStore } from "@/stores/chat";
 
 const store = useChatStore();
+const fileInput = ref<HTMLInputElement | null>(null);
 
 const prompts = [
   "退款多久到账？",
@@ -13,6 +14,38 @@ const prompts = [
   "转人工",
 ];
 
+// Sidebar menu state
+const expandedMenu = ref<string | null>('chat'); // 'chat' or 'knowledge'
+
+function toggleMenu(menu: string) {
+  if (expandedMenu.value === menu) {
+    expandedMenu.value = null;
+  } else {
+    expandedMenu.value = menu;
+    store.activePanel = menu as 'chat' | 'knowledge';
+  }
+}
+
+function triggerUpload() {
+  fileInput.value?.click();
+}
+
+function onFileChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  store.uploadKnowledgeFiles(target.files);
+  target.value = "";
+}
+
+function handleEnter() {
+  if (store.draft.trim() && !store.pending) {
+    store.sendMessage();
+  }
+}
+
+function handleShiftEnter() {
+  store.draft += '\n';
+}
+
 onMounted(async () => {
   await store.refreshHealth();
   await store.connectSocket();
@@ -20,188 +53,168 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="app-shell">
+  <div class="app-shell">
+    <!-- Left Sidebar -->
     <aside class="session-sidebar">
-      <div class="sidebar-head">
-        <div>
-          <p class="eyebrow">Conversation</p>
-          <h1>会话</h1>
-        </div>
-        <button type="button" class="new-session-button" @click="store.createNewSession">
-          新建会话
-        </button>
+      <div class="sidebar-brand">
+        <h1>客服助手</h1>
       </div>
 
-      <div class="session-toolbar">
-        <div class="backend-state compact" :class="{ offline: store.backendReady === false }">
-          <span class="status-dot"></span>
-          <p v-if="store.socketConnected">已连接</p>
-          <p v-else-if="store.backendReady === true">仅 API 可用</p>
-          <p v-else-if="store.backendReady === false">后端离线</p>
-          <p v-else>探测中</p>
-        </div>
-      </div>
-
-      <label class="session-search">
-        <span>搜索会话</span>
-        <input v-model="store.sessionSearch" type="text" placeholder="搜索标题或内容" />
-      </label>
-
-      <section class="session-list">
-        <div v-for="group in store.groupedSessions" :key="group.label" class="session-group">
-          <p class="session-group-label">{{ group.label }}</p>
-          <div
-            v-for="session in group.items"
-            :key="session.id"
-            class="session-item"
-            :class="{ active: session.id === store.activeSessionId }"
+      <!-- Menu Items -->
+      <nav class="sidebar-nav">
+        <!-- Chat Menu -->
+        <div class="menu-item">
+          <button
+            type="button"
+            class="menu-header"
+            :class="{ active: expandedMenu === 'chat' }"
+            @click="toggleMenu('chat')"
           >
-            <div class="session-item-head">
-              <button type="button" class="session-main" @click="store.switchSession(session.id)">
-                <template v-if="store.renamingSessionId === session.id">
-                  <input
-                    v-model="store.renameDraft"
-                    class="session-rename-input"
-                    type="text"
-                    maxlength="20"
-                    @click.stop
-                    @keyup.enter="store.submitRenameSession(session.id)"
-                    @keyup.esc="store.cancelRenameSession()"
-                  />
-                </template>
-                <template v-else>
-                  <h2>{{ session.title }}</h2>
-                </template>
-              </button>
-              <span>{{ session.updatedAt }}</span>
-            </div>
-            <p @click="store.switchSession(session.id)">{{ session.preview }}</p>
-            <div class="session-item-actions">
-              <button
-                v-if="store.renamingSessionId === session.id"
-                type="button"
-                class="session-action"
-                @click="store.submitRenameSession(session.id)"
+            <span class="menu-icon">💬</span>
+            <span class="menu-title">会话管理</span>
+            <span class="menu-arrow">{{ expandedMenu === 'chat' ? '▼' : '▶' }}</span>
+          </button>
+
+          <div v-if="expandedMenu === 'chat'" class="menu-content">
+            <button
+              type="button"
+              class="new-session-button"
+              @click="store.createNewSession"
+            >
+              + 新建会话
+            </button>
+
+            <div class="session-list">
+              <div
+                v-for="session in store.sessions"
+                :key="session.id"
+                class="session-item"
+                :class="{ active: session.id === store.activeSessionId }"
+                @click="store.switchSession(session.id)"
               >
-                保存
-              </button>
-              <button
-                v-else
-                type="button"
-                class="session-action"
-                @click="store.startRenameSession(session.id)"
-              >
-                重命名
-              </button>
-              <button
-                v-if="store.renamingSessionId === session.id"
-                type="button"
-                class="session-action ghost"
-                @click="store.cancelRenameSession()"
-              >
-                取消
-              </button>
-              <button
-                v-else
-                type="button"
-                class="session-action ghost"
-                @click="store.removeSession(session.id)"
-              >
-                删除
-              </button>
+                <div class="session-item-title">{{ session.title }}</div>
+                <div class="session-item-preview">{{ session.preview }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </section>
+
+        <!-- Knowledge Menu -->
+        <div class="menu-item">
+          <button
+            type="button"
+            class="menu-header"
+            :class="{ active: expandedMenu === 'knowledge' }"
+            @click="toggleMenu('knowledge')"
+          >
+            <span class="menu-icon">📚</span>
+            <span class="menu-title">知识库</span>
+            <span class="menu-arrow">{{ expandedMenu === 'knowledge' ? '▼' : '▶' }}</span>
+          </button>
+
+          <div v-if="expandedMenu === 'knowledge'" class="menu-content">
+            <button type="button" class="upload-button" @click="triggerUpload">
+              上传文件
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              style="display: none;"
+              @change="onFileChange"
+            />
+
+            <div class="file-list">
+              <div
+                v-for="file in store.knowledgeFiles"
+                :key="file.id"
+                class="file-item"
+              >
+                <div class="file-name">{{ file.name }}</div>
+                <div class="file-meta">{{ file.sizeLabel }} • {{ file.status }}</div>
+              </div>
+
+              <div v-if="store.knowledgeFiles.length === 0" class="empty-hint">
+                暂无文件，点击上方按钮上传
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
     </aside>
 
-    <section class="workspace">
-      <section class="console-panel">
-        <header class="console-head">
-          <div class="chat-title">
-            <p class="eyebrow">Current Chat</p>
-            <h2>{{ store.activeSession.title }}</h2>
-            <p class="chat-subtitle">
-              {{ store.sessionSnapshot.mainIntent }} / {{ store.sessionSnapshot.subIntent }} /
-              {{ store.sessionSnapshot.stage }} / {{ store.sessionSnapshot.clarify }}
-            </p>
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <!-- Chat Panel -->
+      <template v-if="store.activePanel === 'chat'">
+        <div class="chat-shell">
+          <div class="chat-header">
+            <h2>{{ store.activeSession?.title || '新会话' }}</h2>
           </div>
-          <div class="identity-grid">
-            <label>
-              <span>用户 ID</span>
-              <input v-model="store.userId" type="text" />
-            </label>
-            <label>
-              <span>渠道</span>
-              <input v-model="store.channel" type="text" />
-            </label>
+
+          <div class="message-list">
+            <div
+              v-for="message in store.messages"
+              :key="message.id"
+              class="message-card"
+              :class="message.role"
+            >
+              <p>{{ message.content }}</p>
+            </div>
           </div>
-        </header>
 
-        <div class="prompt-row">
-          <button
-            v-for="prompt in prompts"
-            :key="prompt"
-            type="button"
-            class="soft-button"
-            @click="store.sendMessage(prompt)"
-          >
-            {{ prompt }}
-          </button>
-        </div>
-
-        <section class="message-list" aria-live="polite">
-          <article
-            v-for="message in store.messages"
-            :key="message.id"
-            class="message-card"
-            :class="[message.role, { meta: message.tone === 'meta' }]"
-          >
-            <p class="message-role">{{ message.role }}</p>
-            <p>{{ message.content }}</p>
-          </article>
-        </section>
-
-        <form class="composer" @submit.prevent="store.sendMessage()">
-          <label class="composer-label" for="message-input">消息</label>
-          <textarea
-            id="message-input"
-            v-model="store.draft"
-            rows="4"
-            placeholder="例如：帮我查一下订单 A1001"
-            :disabled="store.pending"
-          />
-          <div class="composer-foot">
-            <p>{{ store.statusText }}</p>
-            <button type="submit" class="submit-button" :disabled="store.pending">
-              {{ store.pending ? "发送中..." : "发送消息" }}
+          <div class="prompt-row">
+            <button
+              v-for="prompt in prompts"
+              :key="prompt"
+              type="button"
+              class="soft-button"
+              @click="store.sendMessage(prompt)"
+            >
+              {{ prompt }}
             </button>
           </div>
-        </form>
-      </section>
 
-      <section class="overview-panel compact">
-        <div class="overview-grid">
-          <article class="overview-card">
-            <p class="panel-label">Session ID</p>
-            <pre>{{ store.sessionId }}</pre>
-          </article>
-          <article class="overview-card">
-            <p class="panel-label">Slots</p>
-            <pre>{{ JSON.stringify(store.sessionSnapshot.slots, null, 2) }}</pre>
-          </article>
-          <article class="overview-card">
-            <p class="panel-label">Missing</p>
-            <pre>{{ JSON.stringify(store.sessionSnapshot.missingSlots, null, 2) }}</pre>
-          </article>
-          <article class="overview-card">
-            <p class="panel-label">Summary</p>
-            <pre>{{ store.sessionSnapshot.summary }}</pre>
-          </article>
+          <div class="composer">
+            <textarea
+              v-model="store.draft"
+              placeholder="输入消息，按回车发送，Shift+回车换行"
+              :disabled="store.pending"
+              @keydown.enter.exact.prevent="handleEnter"
+              @keydown.shift.enter.prevent="handleShiftEnter"
+            />
+            <div class="composer-foot">
+              <span class="status-text">{{ store.statusText }}</span>
+              <button
+                type="button"
+                class="submit-button"
+                :disabled="store.pending || !store.draft.trim()"
+                @click="store.sendMessage()"
+              >
+                {{ store.pending ? '发送中...' : '发送' }}
+              </button>
+            </div>
+          </div>
         </div>
-      </section>
+      </template>
 
-      <TurnTracePanel :turns="store.turns" />
-    </section>
-  </main>
+      <!-- Knowledge Panel -->
+      <template v-else>
+        <div class="chat-shell">
+          <div class="chat-header">
+            <h2>知识库管理</h2>
+            <p class="header-hint">在左侧边栏的"知识库"菜单中管理文件</p>
+          </div>
+
+          <div class="message-list" style="display: flex; align-items: center; justify-content: center;">
+            <div style="text-align: center; color: var(--ink-soft);">
+              <p style="font-size: 1.2rem; margin-bottom: 12px;">📚</p>
+              <p>请在左侧边栏的"知识库"菜单中</p>
+              <p>上传和管理知识库文件</p>
+            </div>
+          </div>
+        </div>
+      </template>
+    </main>
+  </div>
 </template>

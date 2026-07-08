@@ -7,6 +7,7 @@ import type {
   ChatSessionItem,
   ChatSocketEvent,
   ConversationState,
+  KnowledgeFileItem,
   MessageItem,
   ToolResult,
   TurnItem,
@@ -25,6 +26,33 @@ function nowLabel() {
 
 function todayLabel() {
   return new Date().toLocaleDateString("zh-CN");
+}
+
+function fileSizeLabel(size: number) {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+  return `${size} B`;
+}
+
+function fileTypeLabel(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase() || "";
+  const mapping: Record<string, string> = {
+    pdf: "PDF",
+    doc: "Word",
+    docx: "Word",
+    txt: "Text",
+    md: "Markdown",
+    csv: "CSV",
+    xls: "Excel",
+    xlsx: "Excel",
+    ppt: "PPT",
+    pptx: "PPT",
+  };
+  return mapping[extension] || "File";
 }
 
 function createInitialMessage(): MessageItem {
@@ -53,12 +81,31 @@ function createSession(title = "新会话"): ChatSessionItem {
 }
 
 export const useChatStore = defineStore("chat", () => {
+  const activePanel = ref<"chat" | "knowledge">("chat");
   const sessions = ref<ChatSessionItem[]>([createSession("客服咨询")]);
   const activeSessionId = ref(sessions.value[0].id);
   const sessionSearch = ref("");
   const userId = ref("user-001");
   const channel = ref("web");
   const draft = ref("");
+  const knowledgeFiles = ref<KnowledgeFileItem[]>([
+    {
+      id: "kb-001",
+      name: "售后政策说明.pdf",
+      sizeLabel: "1.2 MB",
+      uploadedAt: "09:30",
+      status: "ready",
+      typeLabel: "PDF",
+    },
+    {
+      id: "kb-002",
+      name: "物流异常FAQ.md",
+      sizeLabel: "28 KB",
+      uploadedAt: "10:05",
+      status: "ready",
+      typeLabel: "Markdown",
+    },
+  ]);
   const renameDraft = ref("");
   const renamingSessionId = ref<string | null>(null);
   const statusText = ref("等待发送");
@@ -154,6 +201,28 @@ export const useChatStore = defineStore("chat", () => {
     draft.value = "";
     statusText.value = "已新建会话";
     resetLiveTurn();
+  }
+
+  function uploadKnowledgeFiles(fileList: FileList | null) {
+    if (!fileList?.length) {
+      return;
+    }
+    const uploadedAt = nowLabel();
+    const newItems = Array.from(fileList).map<KnowledgeFileItem>((file, index) => ({
+      id: `kb-${Date.now()}-${index}`,
+      name: file.name,
+      sizeLabel: fileSizeLabel(file.size),
+      uploadedAt,
+      status: "ready",
+      typeLabel: fileTypeLabel(file.name),
+    }));
+    knowledgeFiles.value.unshift(...newItems);
+    statusText.value = `已上传 ${newItems.length} 个知识库文件`;
+  }
+
+  function removeKnowledgeFile(id: string) {
+    knowledgeFiles.value = knowledgeFiles.value.filter((file) => file.id !== id);
+    statusText.value = "已删除知识库文件";
   }
 
   function startRenameSession(id: string) {
@@ -367,6 +436,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   return {
+    activePanel,
     activeSession,
     activeSessionId,
     backendReady,
@@ -383,6 +453,8 @@ export const useChatStore = defineStore("chat", () => {
     pending,
     refreshHealth,
     refreshSession,
+    knowledgeFiles,
+    removeKnowledgeFile,
     removeSession,
     renameDraft,
     renamingSessionId,
@@ -398,6 +470,7 @@ export const useChatStore = defineStore("chat", () => {
     submitRenameSession,
     switchSession,
     turns,
+    uploadKnowledgeFiles,
     userId,
   };
 });

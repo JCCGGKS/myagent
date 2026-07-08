@@ -160,6 +160,15 @@ export interface ChatSessionItem {
   session: ConversationState | null;
 }
 
+export interface KnowledgeFileItem {
+  id: string;
+  name: string;
+  sizeLabel: string;
+  uploadedAt: string;
+  status: "ready" | "indexing";
+  typeLabel: string;
+}
+
 export interface ChatSocketStatusEvent {
   type: "status";
   stage: string;
