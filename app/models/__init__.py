@@ -13,6 +13,8 @@ from app.models.schemas import (
     LogisticsInfo,
     MainIntentCode,
     OrderInfo,
+    SessionInitRequest,
+    SessionInitResponse,
     SubIntentCode,
     ToolExecutionResult,
 )
@@ -32,6 +34,8 @@ __all__ = [
     "LogisticsInfo",
     "MainIntentCode",
     "OrderInfo",
+    "SessionInitRequest",
+    "SessionInitResponse",
     "SubIntentCode",
     "ToolExecutionResult",
 ]

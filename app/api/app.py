@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import json
+from collections.abc import AsyncGenerator
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 
 from app.agents import CustomerServiceAgent
 from app.config import load_llm_config
-from app.models import ChatRequest, ChatResponse, ConversationState
+from app.models import ChatRequest, ChatResponse, ConversationState, SessionInitRequest, SessionInitResponse
 from app.rag import KnowledgeBaseService
 from app.services import (
     HandoffService,
@@ -50,25 +54,44 @@ def chat(request: ChatRequest) -> ChatResponse:
     return agent.chat(request)
 
 
-@app.websocket("/ws/chat")
-async def websocket_chat(websocket: WebSocket) -> None:
-    await websocket.accept()
+@app.post("/chat/init", response_model=SessionInitResponse)
+def chat_init(request: SessionInitRequest) -> SessionInitResponse:
+    """初始化会话，返回 session_id。"""
+    session_id = session_store.create_session(request.user_id, request.channel)
+    return SessionInitResponse(session_id=session_id)
+
+
+def _event_to_sse(event: dict[str, Any]) -> str:
+    """将事件字典格式化为 SSE 行。"""
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+async def _chat_stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
+    """驱动 agent.chat_events() 产出 SSE 格式行。"""
     try:
-        while True:
-            payload = await websocket.receive_json()
-            request = ChatRequest(**payload)
-            for event in agent.chat_events(request):
-                await websocket.send_json(event)
-    except WebSocketDisconnect:
-        return
+        for event in agent.chat_events(request):
+            yield _event_to_sse(event)
     except Exception as exc:
-        await websocket.send_json(
-            {
-                "type": "error",
-                "message": str(exc),
-            }
-        )
-        await websocket.close()
+        yield _event_to_sse({"type": "error", "message": str(exc)})
+        yield "event: done\ndata: {}\n\n"
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """SSE 流式对话接口。
+
+    前端使用 EventSource 或 fetch + ReadableStream 消费，
+    每行格式：data: {JSON}\n\n
+    """
+    return StreamingResponse(
+        _chat_stream_generator(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 
 @app.get("/session/{session_id}", response_model=ConversationState)

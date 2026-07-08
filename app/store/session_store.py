@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -14,6 +15,26 @@ def _now() -> str:
 class SessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
+
+    def create_session(self, user_id: str, channel: str = "web") -> str:
+        """创建新会话，返回 session_id。"""
+        session_id = f"sess-{uuid.uuid4().hex[:12]}"
+        self._sessions[session_id] = {
+            "session": {
+                "session_id": session_id,
+                "user_id": user_id,
+                "channel": channel,
+                "status": "active",
+                "created_at": _now(),
+                "updated_at": _now(),
+            },
+            "messages": [],
+            "state_snapshots": [],
+            "tool_calls": [],
+            "handoff_records": [],
+            "state": None,
+        }
+        return session_id
 
     def get(self, session_id: str) -> ConversationState | None:
         record = self._sessions.get(session_id)

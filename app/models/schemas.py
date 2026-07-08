@@ -80,6 +80,15 @@ class ArchivedTaskState(BaseModel):
     archived_reason: str = ""
 
 
+class SessionInitRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    channel: str = Field(default="web", min_length=1)
+
+
+class SessionInitResponse(BaseModel):
+    session_id: str
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
