@@ -20,6 +20,38 @@ const expandedMenu = ref<string | null>('chat'); // 'chat' or 'knowledge'
 const activeSessionMenu = ref<string | null>(null);
 const showStatsPanel = ref(true); // Control stats panel visibility
 
+// Retrieval strategy
+const strategies = ['向量检索', '关键词检索', '混合检索'];
+const currentStrategy = ref('混合检索');
+const maxRecall = ref(5);
+const minScore = ref(0.5);
+const showConfigPanel = ref(false);
+
+// Temporary config values
+const tempStrategy = ref(currentStrategy.value);
+const tempMaxRecall = ref(maxRecall.value);
+const tempMinScore = ref(minScore.value);
+
+function openConfigPanel() {
+  // Copy current values to temp
+  tempStrategy.value = currentStrategy.value;
+  tempMaxRecall.value = maxRecall.value;
+  tempMinScore.value = minScore.value;
+  showConfigPanel.value = true;
+}
+
+function confirmConfig() {
+  // Apply temp values to actual config
+  currentStrategy.value = tempStrategy.value;
+  maxRecall.value = tempMaxRecall.value;
+  minScore.value = tempMinScore.value;
+  showConfigPanel.value = false;
+}
+
+function cancelConfig() {
+  showConfigPanel.value = false;
+}
+
 function toggleMenu(menu: string) {
   if (expandedMenu.value === menu) {
     expandedMenu.value = null;
@@ -288,17 +320,35 @@ onMounted(async () => {
                 <h2>知识库管理</h2>
                 <p class="header-hint">上传和管理知识库文件</p>
               </div>
-              <button
-                type="button"
-                class="upload-button"
-                @click="triggerUpload"
-                style="
-                  padding: 8px 16px;
-                  font-size: 0.9rem;
-                "
-              >
-                📤 上传文件
-              </button>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button
+                  type="button"
+                  class="config-button"
+                  @click="openConfigPanel"
+                  style="
+                    padding: 8px 16px;
+                    border: 1px solid var(--line);
+                    border-radius: 8px;
+                    background: white;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                  "
+                >
+                  ⚙️ 检索配置
+                </button>
+
+                <button
+                  type="button"
+                  class="upload-button"
+                  @click="triggerUpload"
+                  style="
+                    padding: 8px 16px;
+                    font-size: 0.9rem;
+                  "
+                >
+                  📤 上传文件
+                </button>
+              </div>
               <input
                 ref="fileInput"
                 type="file"
@@ -308,6 +358,96 @@ onMounted(async () => {
               />
             </div>
           </div>
+
+            <!-- Config Panel -->
+            <div v-if="showConfigPanel" class="config-panel">
+              <div class="config-panel-header">
+                <h3>检索配置</h3>
+                <button
+                  type="button"
+                  @click="cancelConfig"
+                  style="
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 1.2rem;
+                    color: var(--ink-soft);
+                  "
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div class="config-item">
+                <label>检索策略</label>
+                <select
+                  v-model="tempStrategy"
+                  style="
+                    width: 100%;
+                    padding: 8px 12px;
+                    border: 1px solid var(--line);
+                    border-radius: 6px;
+                    font-size: 0.9rem;
+                    margin-top: 6px;
+                  "
+                >
+                  <option v-for="strategy in strategies" :key="strategy" :value="strategy">
+                    {{ strategy }}
+                  </option>
+                </select>
+                <p class="config-hint">选择知识库检索的方式：向量检索适合语义匹配，关键词检索适合精确匹配，混合检索结合两者优势</p>
+              </div>
+
+              <div class="config-item">
+                <label>最大召回数量: {{ tempMaxRecall }}</label>
+                <input
+                  type="range"
+                  v-model.number="tempMaxRecall"
+                  min="1"
+                  max="20"
+                  style="width: 100%; margin-top: 6px;"
+                />
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--ink-soft);">
+                  <span>1</span>
+                  <span>20</span>
+                </div>
+                <p class="config-hint">控制最多返回多少个相关文档片段</p>
+              </div>
+
+              <div class="config-item">
+                <label>最小匹配度: {{ tempMinScore }}</label>
+                <input
+                  type="range"
+                  v-model.number="tempMinScore"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  style="width: 100%; margin-top: 6px;"
+                />
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--ink-soft);">
+                  <span>0</span>
+                  <span>1</span>
+                </div>
+                <p class="config-hint">设置最低相似度阈值，低于此值的文档将被过滤</p>
+              </div>
+
+              <div class="config-panel-footer">
+                <button
+                  type="button"
+                  class="cancel-button"
+                  @click="cancelConfig"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  class="confirm-button"
+                  @click="confirmConfig"
+                >
+                  确认
+                </button>
+              </div>
+            </div>
 
           <div class="message-list">
             <div
