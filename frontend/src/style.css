@@ -56,8 +56,8 @@ button {
 }
 
 .session-sidebar {
-  width: 280px;
-  min-width: 280px;
+  width: 320px;
+  min-width: 320px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--line);
   display: flex;
@@ -542,22 +542,23 @@ button {
 
 /* Session List in Sidebar - Flat Design */
 .session-item-flat {
-  padding: 10px 12px;
+  padding: 8px 12px;
   cursor: pointer;
   transition: background 0.2s ease;
-  border-bottom: 1px solid var(--line);
   position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 40px;
 }
 
 .session-item-flat:hover {
-  background: var(--accent-light);
+  background: var(--ai-bubble);
 }
 
 .session-item-flat.active {
-  background: var(--accent-light);
+  background: var(--ai-bubble);
+  font-weight: 500;
 }
 
 .session-item-content {
@@ -570,21 +571,21 @@ button {
 .session-item-title {
   font-size: 0.95rem;
   font-weight: 500;
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 .session-menu-trigger {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 4px;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: var(--ink-soft);
   transition: background 0.2s ease;
 }
