@@ -17,7 +17,17 @@ class ExecutionService:
         self.handoff_service = handoff_service
 
     def execute_business_tool(self, state: ConversationState) -> ConversationState:
-        order_id = state.slots["order_id"]
+        order_id = state.slots.get("order_id")
+        if not order_id:
+            state.tool_result = ToolExecutionResult(
+                kind="error",
+                user_facing_summary="请提供订单号，以便我为您查询。",
+            )
+            state.latest_action_name = "business_tool_executor"
+            state.action_history.append(
+                build_action_record("business_tool_executor", "缺少订单号，无法执行工具")
+            )
+            return state
 
         if state.current_sub_intent == "order_service.query_status":
             order = self.order_service.get_order_status(order_id)
@@ -33,7 +43,11 @@ class ExecutionService:
         else:
             logistics = self.logistics_service.get_logistics(order_id)
             raw = logistics.model_dump() if logistics else None
-            latest_status = logistics.timeline[-1].status if logistics and logistics.timeline else "无"
+            latest_status = (
+                logistics.timeline[-1].status
+                if logistics and logistics.timeline
+                else "无"
+            )
             summary = (
                 f"订单 {order_id} 当前物流状态为 {logistics.tracking_status}，最近节点 {latest_status}"
                 if logistics
