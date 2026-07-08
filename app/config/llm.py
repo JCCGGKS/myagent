@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from app.config.logging_config import LoggingConfig, setup_logging
 from app.utils import load_json_file, load_yaml_file
 
 
@@ -21,6 +22,7 @@ class LLMConfig(BaseModel):
     timeout_seconds: float = 20.0
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     fallback_on_unsupported_only: bool = True
+    logging: LoggingConfig = LoggingConfig()
 
     @property
     def is_usable(self) -> bool:
@@ -30,9 +32,15 @@ class LLMConfig(BaseModel):
 def load_llm_config(path: Path | None = None) -> LLMConfig:
     if path is not None:
         if not path.exists():
-            return LLMConfig()
+            config = LLMConfig()
+            setup_logging(config.logging)
+            return config
         data = _load_config_file(path)
-        return LLMConfig(**data)
+        logging_data = data.pop("logging", {}) if isinstance(data.get("logging"), dict) else {}
+        config = LLMConfig(**data)
+        config.logging = LoggingConfig(**logging_data)
+        setup_logging(config.logging)
+        return config
 
     env_name = os.getenv("APP_ENV", DEFAULT_APP_ENV).strip().lower() or DEFAULT_APP_ENV
     base_config_path = CONFIG_DIR / f"llm_config.{env_name}.yml"
@@ -40,16 +48,26 @@ def load_llm_config(path: Path | None = None) -> LLMConfig:
     legacy_local_override_path = CONFIG_DIR / "llm_config.local.json"
 
     data: dict[str, object] = {}
+    logging_data: dict[str, object] = {}
 
-    if base_config_path.exists():
-        data.update(_load_config_file(base_config_path))
+    for config_path in [base_config_path, local_override_path]:
+        if config_path.exists():
+            file_data = _load_config_file(config_path)
+            data.update(file_data)
+            if isinstance(file_data.get("logging"), dict):
+                logging_data.update(file_data["logging"])
 
-    if local_override_path.exists():
-        data.update(_load_config_file(local_override_path))
-    elif legacy_local_override_path.exists():
-        data.update(_load_config_file(legacy_local_override_path))
+    if not local_override_path.exists() and legacy_local_override_path.exists():
+        file_data = _load_config_file(legacy_local_override_path)
+        data.update(file_data)
+        if isinstance(file_data.get("logging"), dict):
+            logging_data.update(file_data["logging"])
 
-    return LLMConfig(**data)
+    data.pop("logging", None)
+    config = LLMConfig(**data)
+    config.logging = LoggingConfig(**logging_data)
+    setup_logging(config.logging)
+    return config
 
 
 def _load_config_file(path: Path) -> dict[str, object]:

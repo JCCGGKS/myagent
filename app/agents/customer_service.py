@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.models import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
+
+logger = logging.getLogger(__name__)
 from app.rag import KnowledgeBaseService, RagRetrievalService
 from app.services import (
     ClarificationService,
@@ -103,7 +106,13 @@ class CustomerServiceAgent:
         return builder.compile()
 
     def chat(self, request: ChatRequest) -> ChatResponse:
+        logger.info("chat start session=%s message=%r", request.session_id, request.message[:80])
         state = self._execute_request(request)
+        logger.info(
+            "chat done session=%s intent=%s.%s action=%s",
+            request.session_id,
+            state.current_main_intent, state.current_sub_intent, state.current_action,
+        )
         return self._build_chat_response(state)
 
     def chat_events(self, request: ChatRequest) -> list[dict[str, Any]]:
@@ -243,6 +252,7 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
         message = normalize_whitespace(request.message)
+        logger.debug("node=input_normalizer session=%s message=%r", state.session_id, message[:80])
 
         state.reply = ""
         state.intent_result = None
@@ -263,7 +273,14 @@ class CustomerServiceAgent:
 
     def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=intent_router session=%s", state.session_id)
         state.intent_result = self.intent_router_service.route(state, state.last_user_message)
+        logger.debug(
+            "node=intent_router result intent=%s.%s source=%s",
+            state.intent_result.main_intent if state.intent_result else None,
+            state.intent_result.sub_intent if state.intent_result else None,
+            state.intent_result.route_source if state.intent_result else None,
+        )
         payload["state"] = state
         return payload
 
@@ -271,61 +288,79 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         intent = state.intent_result
         if intent is None:
+            logger.warning("state_tracker: no intent_result session=%s", state.session_id)
             return payload
+        logger.debug("node=state_tracker session=%s intent=%s", state.session_id, intent.main_intent)
         payload["state"] = self.state_tracker_service.apply(state, intent)
         return payload
 
     def policy_layer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=policy_layer session=%s", state.session_id)
         payload["state"] = self.policy_service.decide(state)
+        logger.debug("node=policy_layer decision action=%s", state.current_action)
         return payload
 
     def route_after_policy(self, payload: dict[str, Any]) -> str:
         state: ConversationState = payload["state"]
         action = state.current_action
         if action in {"ask_intent_clarification", "ask_slot_clarification"}:
+            logger.debug("route_after_policy -> clarification_node session=%s", state.session_id)
             return "clarification_node"
         if action == "retrieve_knowledge":
+            logger.debug("route_after_policy -> knowledge_retriever session=%s", state.session_id)
             return "knowledge_retriever"
         if action == "query_business_tool":
+            logger.debug("route_after_policy -> business_tool_executor session=%s", state.session_id)
             return "business_tool_executor"
         if action == "handoff_human":
+            logger.debug("route_after_policy -> handoff_node session=%s", state.session_id)
             return "handoff_node"
+        logger.debug("route_after_policy -> response_generator session=%s", state.session_id)
         return "response_generator"
 
     def clarification_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=clarification_node session=%s", state.session_id)
         payload["state"] = self.clarification_service.generate(state)
         return payload
 
     def knowledge_retriever(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=knowledge_retriever session=%s", state.session_id)
         payload["state"] = self.rag_retrieval_service.retrieve(state)
         return payload
 
     def business_tool_executor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=business_tool_executor session=%s", state.session_id)
         payload["state"] = self.execution_service.execute_business_tool(state)
+        logger.info("tool_result session=%s result=%s", state.session_id, state.tool_result)
         return payload
 
     def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.info("node=handoff_node session=%s reason=%s", state.session_id, state.handoff_reason)
         payload["state"] = self.execution_service.create_handoff(state)
         return payload
 
     def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=response_generator session=%s", state.session_id)
         payload["state"] = self.response_service.generate(state)
+        logger.debug("response=%r session=%s", state.reply[:80] if state.reply else "", state.session_id)
         return payload
 
     def context_compressor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
+        logger.debug("node=context_compressor session=%s", state.session_id)
         payload["state"] = self.context_service.compress(state)
         return payload
 
     def memory_writer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
+        logger.debug("node=memory_writer session=%s", state.session_id)
         payload["state"] = self.memory_service.persist(state, request)
         return payload
 

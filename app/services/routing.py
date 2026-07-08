@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.models import ConversationState, IntentResult
@@ -7,6 +8,8 @@ from app.rag import KnowledgeBaseService
 from app.services.domain import extract_order_id
 from app.services.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.services.llm_fallback import LLMIntentFallbackService
+
+logger = logging.getLogger(__name__)
 
 
 class IntentRouterService:
@@ -39,6 +42,16 @@ class IntentRouterService:
         has_greeting_keyword = self._contains_any(lowered, rules.get("greeting_keywords", []))
         has_thanks_keyword = self._contains_any(lowered, rules.get("thanks_keywords", []))
 
+        logger.debug(
+            "Routing message session=%s previous_intent=%s order_id=%s "
+            "handoff_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s greeting_kw=%s thanks_kw=%s "
+            "emotion=%s",
+            state.session_id, previous_main_intent, order_id,
+            has_handoff_keyword, has_logistics_keyword, has_order_keyword,
+            has_refund_keyword, has_greeting_keyword, has_thanks_keyword,
+            emotion.primary,
+        )
+
         if has_handoff_keyword or emotion.primary in {"angry", "urgent"}:
             intent = IntentResult(
                 main_intent="handoff_service",
@@ -50,6 +63,10 @@ class IntentRouterService:
                 handoff_reason="user_request" if has_handoff_keyword else "emotion_escalation",
             )
             candidate_intents = ["handoff_service", previous_main_intent]
+            logger.info(
+                "Routed intent=handoff_service reason=%s emotion=%s session=%s",
+                intent.handoff_reason, emotion.primary, state.session_id,
+            )
         elif has_logistics_keyword:
             slots = {"order_id": order_id} if order_id else {}
             intent = IntentResult(
@@ -62,6 +79,10 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["logistics_service", "order_service"]
+            logger.info(
+                "Routed intent=logistics_service confidence=%.2f order_id=%s session=%s",
+                intent.confidence, order_id, state.session_id,
+            )
         elif has_order_keyword:
             slots = {"order_id": order_id} if order_id else {}
             intent = IntentResult(
@@ -74,6 +95,10 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["order_service", "logistics_service"]
+            logger.info(
+                "Routed intent=order_service confidence=%.2f order_id=%s session=%s",
+                intent.confidence, order_id, state.session_id,
+            )
         elif has_refund_keyword:
             slots = {"order_id": order_id} if order_id else {}
             sub_intent = (
@@ -91,6 +116,10 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["refund_service", "faq"]
+            logger.info(
+                "Routed intent=%s confidence=%.2f order_id=%s session=%s",
+                sub_intent, intent.confidence, order_id, state.session_id,
+            )
         elif has_greeting_keyword:
             intent = IntentResult(
                 main_intent="chitchat",
@@ -100,6 +129,7 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["chitchat"]
+            logger.info("Routed intent=chitchat.greeting session=%s", state.session_id)
         elif has_thanks_keyword:
             intent = IntentResult(
                 main_intent="chitchat",
@@ -109,6 +139,7 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["chitchat"]
+            logger.info("Routed intent=chitchat.thanks session=%s", state.session_id)
         elif order_id and previous_sub_intent in {
             "order_service.query_status",
             "logistics_service.query_status",
@@ -124,6 +155,10 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = [main_intent]
+            logger.info(
+                "Routed via slot_followup intent=%s order_id=%s session=%s",
+                previous_sub_intent, order_id, state.session_id,
+            )
         elif knowledge_hits:
             intent = IntentResult(
                 main_intent="faq",
@@ -133,6 +168,10 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = ["faq"]
+            logger.info(
+                "Routed intent=faq (knowledge hit) score=%.2f session=%s",
+                knowledge_hits[0].score, state.session_id,
+            )
         else:
             intent = self._route_with_llm_fallback(message, previous_sub_intent) or IntentResult(
                 main_intent="unsupported",
@@ -143,9 +182,17 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = [intent.main_intent, previous_main_intent]
+            logger.info(
+                "Routed intent=%s source=%s session=%s",
+                intent.main_intent, intent.route_source, state.session_id,
+            )
 
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unsupported", intent.main_intent}
+        logger.debug(
+            "Routing result intent=%s.%s shift=%s session=%s",
+            intent.main_intent, intent.sub_intent, intent.is_intent_shift, state.session_id,
+        )
         return intent
 
     def _route_with_llm_fallback(
@@ -200,6 +247,11 @@ class StateTrackerService:
         previous_main_intent = state.current_main_intent
         previous_sub_intent = state.current_sub_intent
         previous_slots = dict(state.slots)
+
+        logger.debug(
+            "StateTracker apply session=%s intent=%s.%s shift=%s",
+            state.session_id, intent.main_intent, intent.sub_intent, intent.is_intent_shift,
+        )
 
         if intent.is_intent_shift and previous_main_intent != "unsupported":
             state.archived_states.append(
@@ -257,6 +309,10 @@ class StateTrackerService:
             state.stage = "unsupported"
 
         state.summary = self.build_state_summary(state)
+        logger.info(
+            "State updated session=%s stage=%s slots=%s missing=%s",
+            state.session_id, state.stage, state.slots, state.missing_slots,
+        )
         return state
 
     def build_state_summary(self, state: ConversationState) -> str:
@@ -289,19 +345,31 @@ class HandoffClarificationPolicy:
     def decide(self, state: ConversationState) -> ConversationState:
         if state.handoff:
             state.current_action = "handoff_human"
+            logger.info("Policy: handoff forced session=%s", state.session_id)
         elif state.needs_clarification:
             if state.current_main_intent == "unsupported":
                 state.current_action = "ask_intent_clarification"
                 state.intent_clarification_count += 1
+                logger.info(
+                    "Policy: ask_intent_clarification count=%d session=%s",
+                    state.intent_clarification_count, state.session_id,
+                )
             else:
                 state.current_action = "ask_slot_clarification"
                 state.slot_clarification_count += 1
+                logger.info(
+                    "Policy: ask_slot_clarification count=%d missing=%s session=%s",
+                    state.slot_clarification_count, state.missing_slots, state.session_id,
+                )
         elif state.current_main_intent in {"faq", "refund_service"}:
             state.current_action = "retrieve_knowledge"
+            logger.debug("Policy: retrieve_knowledge session=%s", state.session_id)
         elif state.current_main_intent in {"order_service", "logistics_service"}:
             state.current_action = "query_business_tool"
+            logger.debug("Policy: query_business_tool session=%s", state.session_id)
         else:
             state.current_action = "answer_directly"
+            logger.debug("Policy: answer_directly session=%s", state.session_id)
 
         if (
             state.intent_clarification_count >= self.handoff_threshold
@@ -310,5 +378,10 @@ class HandoffClarificationPolicy:
             state.current_action = "handoff_human"
             state.handoff = True
             state.handoff_reason = "clarification_failed"
+            logger.warning(
+                "Policy: forced handoff (clarification failed) session=%s",
+                state.session_id,
+            )
 
+        logger.info("Policy decision action=%s session=%s", state.current_action, state.session_id)
         return state

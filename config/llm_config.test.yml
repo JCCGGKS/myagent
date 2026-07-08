@@ -5,3 +5,9 @@ base_url: null
 timeout_seconds: 20.0
 confidence_threshold: 0.7
 fallback_on_unsupported_only: true
+
+logging:
+  level: INFO
+  console: true
+  file: true
+  file_path: logs/app.log

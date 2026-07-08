@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Literal
 
 from pydantic import BaseModel
@@ -13,6 +14,8 @@ try:
     from openai import OpenAI
 except ImportError:  # pragma: no cover
     OpenAI = None
+
+logger = logging.getLogger(__name__)
 
 
 class LLMIntentDecision(BaseModel):
@@ -45,10 +48,12 @@ class LLMIntentFallbackService:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self.client = None
-        self.last_debug: dict[str, str] = {}
 
-        if OpenAI is None or not config.is_usable:
-            self.last_debug = {"status": "disabled_or_sdk_missing"}
+        if OpenAI is None:
+            logger.warning("LLM fallback disabled: openai SDK not installed")
+            return
+        if not config.is_usable:
+            logger.info("LLM fallback disabled: api_key not configured")
             return
 
         client_kwargs: dict[str, object] = {
@@ -58,7 +63,7 @@ class LLMIntentFallbackService:
         if config.base_url:
             client_kwargs["base_url"] = config.base_url
         self.client = OpenAI(**client_kwargs)
-        self.last_debug = {"status": "ready"}
+        logger.info("LLMIntentFallbackService initialized model=%s", config.model)
 
     @property
     def enabled(self) -> bool:
@@ -66,20 +71,33 @@ class LLMIntentFallbackService:
 
     def classify(self, message: str, previous_sub_intent: str) -> IntentResult | None:
         if self.client is None:
-            self.last_debug = {"status": "client_unavailable"}
+            logger.debug("LLM fallback skipped: client not available")
             return None
 
+        logger.debug(
+            "LLM fallback classify message=%r previous_sub_intent=%s",
+            message[:80], previous_sub_intent,
+        )
         prompt = build_llm_intent_user_prompt(message, previous_sub_intent)
         parsed = self._classify_with_responses_api(prompt)
         if parsed is None:
             parsed = self._classify_with_chat_completions(prompt)
 
         if parsed is None:
+            logger.warning("LLM fallback: both APIs failed, returning None")
             return None
 
         if parsed.confidence < self.config.confidence_threshold:
+            logger.info(
+                "LLM fallback: confidence=%.2f below threshold=%.2f, discarding",
+                parsed.confidence, self.config.confidence_threshold,
+            )
             return None
 
+        logger.info(
+            "LLM fallback success: intent=%s.%s confidence=%.2f",
+            parsed.main_intent, parsed.sub_intent, parsed.confidence,
+        )
         return IntentResult(
             main_intent=parsed.main_intent,
             sub_intent=parsed.sub_intent,
@@ -99,24 +117,15 @@ class LLMIntentFallbackService:
                 text_format=LLMIntentDecision,
             )
         except Exception as exc:
-            self.last_debug = {
-                "status": "responses_api_error",
-                "error": repr(exc),
-            }
+            logger.warning("responses.parse API error: %s", repr(exc))
             return None
 
         parsed = response.output_parsed
         if parsed is None:
-            self.last_debug = {
-                "status": "responses_api_empty",
-                "raw": self._safe_dump(response),
-            }
+            logger.warning("responses.parse returned empty parsed")
             return None
 
-        self.last_debug = {
-            "status": "responses_api_success",
-            "raw": self._safe_dump(response),
-        }
+        logger.debug("responses.parse success: %s", self._safe_dump(response))
         return parsed
 
     def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
@@ -130,34 +139,21 @@ class LLMIntentFallbackService:
                 response_format={"type": "json_object"},
             )
         except Exception as exc:
-            self.last_debug = {
-                "status": "chat_completions_error",
-                "error": repr(exc),
-            }
+            logger.warning("chat.completions API error: %s", repr(exc))
             return None
 
         content = response.choices[0].message.content if response.choices else None
         if not content:
-            self.last_debug = {
-                "status": "chat_completions_empty",
-                "raw": self._safe_dump(response),
-            }
+            logger.warning("chat.completions returned empty content")
             return None
 
         try:
             data = json.loads(content)
             parsed = LLMIntentDecision(**data)
-            self.last_debug = {
-                "status": "chat_completions_success",
-                "raw": content,
-            }
+            logger.debug("chat.completions success: %s", content)
             return parsed
         except Exception as exc:
-            self.last_debug = {
-                "status": "chat_completions_parse_error",
-                "error": repr(exc),
-                "raw": content,
-            }
+            logger.warning("chat.completions parse error: %s raw=%s", repr(exc), content)
             return None
 
     def _safe_dump(self, response: object) -> str:
