@@ -1,0 +1,71 @@
+# 意图识别单点评估报告（纯规则（无 LLM））
+
+## 总体结果
+- 样本总数：1000
+- 命中：550
+- 准确率：55.00%
+- 路由分布：
+  - `rule`: 519
+  - `fallback`: 481
+  - `llm_fallback`: 0
+
+## 按主意图
+- `after_sale_refund`: 66/136 = 48.53%
+- `chitchat`: 55/128 = 42.97%
+- `complaint`: 78/126 = 61.90%
+- `handoff_service`: 67/126 = 53.17%
+- `logistics`: 74/159 = 46.54%
+- `order_query`: 97/193 = 50.26%
+- `unrecognize`: 113/132 = 85.61%
+
+## 未命中样本（前 50 条）
+- `case_0002`: `快递咋这么慢`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`
+- `case_0003`: `收到坏的了`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `unrecognize/unrecognize.unknown`
+- `case_0005`: `我要跟人讲`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`
+- `case_0006`: `有人吗`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0007`: `服务态度太差`  expected `complaint/complaint.service_complaint`  actual `unrecognize/unrecognize.unknown`
+- `case_0010`: `A1346`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0011`: `发货了没有啊`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0014`: `发错货了`  expected `after_sale_refund/after_sale_refund.wrong_goods`  actual `unrecognize/unrecognize.unknown`
+- `case_0015`: `地址填错了能改吗`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`
+- `case_0017`: `帮我改地址`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`
+- `case_0018`: `东西有问题我要退`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `unrecognize/unrecognize.unknown`
+- `case_0021`: `什么时候好`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0022`: `帮我看下买的东西到哪了`  expected `order_query/order_query.query_status`  actual `logistics/logistics.not_received`
+- `case_0025`: `我的包裹是不是丢了`  expected `logistics/logistics.lost_package`  actual `unrecognize/unrecognize.unknown`
+- `case_0026`: `能不能快点`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `unrecognize/unrecognize.unknown`
+- `case_0027`: `在不在`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0029`: `送货咋这么慢`  expected `logistics/logistics.delayed`  actual `unrecognize/unrecognize.unknown`
+- `case_0033`: `嗨`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0037`: `我的单子咋样了`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0039`: `谢谢`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0044`: `我的货发了吗`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0045`: `不想要了能退吗`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `unrecognize/unrecognize.unknown`
+- `case_0046`: `我想改下收货地址`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`
+- `case_0049`: `我不想买了能退吗`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `unrecognize/unrecognize.unknown`
+- `case_0051`: `单子还没好`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0053`: `机器人听不懂`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`
+- `case_0054`: `货啥时候能到`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0055`: `我这单啥情况`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0059`: `不想跟机器人说话`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`
+- `case_0061`: `早上好`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0063`: `还没发吗`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0065`: `收到的货不对`  expected `after_sale_refund/after_sale_refund.wrong_goods`  actual `unrecognize/unrecognize.unknown`
+- `case_0067`: `东西还没收到`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0069`: `好了没`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0070`: `给我赔偿`  expected `complaint/complaint.compensate`  actual `complaint/complaint.service_complaint`
+- `case_0072`: `有消息没`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0074`: `快递丢了怎么办`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`
+- `case_0075`: `退货政策是什么`  expected `unrecognize/unrecognize.unknown`  actual `after_sale_refund/after_sale_refund.consult_policy`
+- `case_0077`: `叫你们负责人来`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`
+- `case_0079`: `东西坏了能退吗`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `unrecognize/unrecognize.unknown`
+- `case_0084`: `多谢了`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`
+- `case_0085`: `A1466`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0087`: `A1136`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0090`: `你们这什么破服务`  expected `complaint/complaint.service_complaint`  actual `unrecognize/unrecognize.unknown`
+- `case_0093`: `A1290`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0100`: `再查一下`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0102`: `A1461`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0104`: `A1405`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`
+- `case_0105`: `A1318`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`
+- `case_0106`: `质量太差了要退款`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `complaint/complaint.service_complaint`
