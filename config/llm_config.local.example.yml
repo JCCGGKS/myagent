@@ -1,13 +1,36 @@
-enabled: true
-api_key: replace-with-local-key
-model: gpt-5.5
-base_url: https://your-openai-compatible-gateway.example.com/v1
-timeout_seconds: 20.0
-confidence_threshold: 0.7
-fallback_on_unsupported_only: true
+# LLM 配置（本地覆盖，参考模板）
+llm:
+  # 是否启用 LLM 意图识别兜底
+  enabled: true
 
+  # OpenAI / 兼容 API 的密钥（替换为自己真实的 key）
+  api_key: replace-with-local-key
+
+  # 使用的模型名称
+  model: gpt-5.5
+
+  # 兼容 API 的 base URL（第三方网关地址）
+  base_url: https://your-openai-compatible-gateway.example.com/v1
+
+  # 请求超时时间（秒）
+  timeout_seconds: 20.0
+
+  # LLM 意图识别的最低置信度阈值（低于此值的结果会被丢弃）
+  confidence_threshold: 0.7
+
+  # 仅当规则路由结果为 unsupported 时才调用 LLM 兜底
+  fallback_on_unsupported_only: true
+
+# 日志配置
 logging:
+  # 日志级别：DEBUG | INFO | WARNING | ERROR
   level: DEBUG
+
+  # 是否输出到控制台
   console: true
+
+  # 是否写入文件
   file: true
+
+  # 日志文件路径（相对于项目根目录）
   file_path: logs/app.log

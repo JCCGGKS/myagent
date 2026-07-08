@@ -29,15 +29,26 @@ class LLMConfig(BaseModel):
         return self.enabled and bool(self.api_key.strip())
 
 
+def _extract_config_sections(file_data: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    """从加载的 YAML/JSON 数据中分离 llm 和 logging 配置段。"""
+    llm_data = file_data.get("llm", {})
+    if not isinstance(llm_data, dict):
+        llm_data = {}
+    logging_data = file_data.get("logging", {})
+    if not isinstance(logging_data, dict):
+        logging_data = {}
+    return llm_data, logging_data
+
+
 def load_llm_config(path: Path | None = None) -> LLMConfig:
     if path is not None:
         if not path.exists():
             config = LLMConfig()
             setup_logging(config.logging)
             return config
-        data = _load_config_file(path)
-        logging_data = data.pop("logging", {}) if isinstance(data.get("logging"), dict) else {}
-        config = LLMConfig(**data)
+        file_data = _load_config_file(path)
+        llm_data, logging_data = _extract_config_sections(file_data)
+        config = LLMConfig(**llm_data)
         config.logging = LoggingConfig(**logging_data)
         setup_logging(config.logging)
         return config
@@ -47,24 +58,23 @@ def load_llm_config(path: Path | None = None) -> LLMConfig:
     local_override_path = CONFIG_DIR / "llm_config.local.yml"
     legacy_local_override_path = CONFIG_DIR / "llm_config.local.json"
 
-    data: dict[str, object] = {}
+    llm_data: dict[str, object] = {}
     logging_data: dict[str, object] = {}
 
     for config_path in [base_config_path, local_override_path]:
         if config_path.exists():
             file_data = _load_config_file(config_path)
-            data.update(file_data)
-            if isinstance(file_data.get("logging"), dict):
-                logging_data.update(file_data["logging"])
+            file_llm, file_logging = _extract_config_sections(file_data)
+            llm_data.update(file_llm)
+            logging_data.update(file_logging)
 
     if not local_override_path.exists() and legacy_local_override_path.exists():
         file_data = _load_config_file(legacy_local_override_path)
-        data.update(file_data)
-        if isinstance(file_data.get("logging"), dict):
-            logging_data.update(file_data["logging"])
+        file_llm, file_logging = _extract_config_sections(file_data)
+        llm_data.update(file_llm)
+        logging_data.update(file_logging)
 
-    data.pop("logging", None)
-    config = LLMConfig(**data)
+    config = LLMConfig(**llm_data)
     config.logging = LoggingConfig(**logging_data)
     setup_logging(config.logging)
     return config
