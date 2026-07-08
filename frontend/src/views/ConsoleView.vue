@@ -16,6 +16,7 @@ const prompts = [
 
 // Sidebar menu state
 const expandedMenu = ref<string | null>('chat'); // 'chat' or 'knowledge'
+const activeSessionMenu = ref<string | null>(null);
 
 function toggleMenu(menu: string) {
   if (expandedMenu.value === menu) {
@@ -24,6 +25,32 @@ function toggleMenu(menu: string) {
     expandedMenu.value = menu;
     store.activePanel = menu as 'chat' | 'knowledge';
   }
+}
+
+function toggleSessionMenu(sessionId: string) {
+  if (activeSessionMenu.value === sessionId) {
+    activeSessionMenu.value = null;
+  } else {
+    activeSessionMenu.value = sessionId;
+  }
+}
+
+function renameSession(sessionId: string) {
+  // TODO: Implement rename functionality
+  console.log('Rename session:', sessionId);
+  alert('重命名功能开发中...');
+}
+
+function deleteSession(sessionId: string) {
+  if (confirm('确定要删除这个会话吗？')) {
+    store.removeSession(sessionId);
+  }
+}
+
+function pinSession(sessionId: string) {
+  // TODO: Implement pin functionality
+  console.log('Pin session:', sessionId);
+  alert('置顶功能开发中...');
 }
 
 function triggerUpload() {
@@ -76,24 +103,50 @@ onMounted(async () => {
           </button>
 
           <div v-if="expandedMenu === 'chat'" class="menu-content">
-            <button
-              type="button"
-              class="new-session-button"
-              @click="store.createNewSession"
+            <div
+              v-for="session in store.sessions"
+              :key="session.id"
+              class="session-item-flat"
+              :class="{ active: session.id === store.activeSessionId }"
             >
-              + 新建会话
-            </button>
-
-            <div class="session-list">
-              <div
-                v-for="session in store.sessions"
-                :key="session.id"
-                class="session-item"
-                :class="{ active: session.id === store.activeSessionId }"
-                @click="store.switchSession(session.id)"
+                <div class="session-item-content" @click="store.switchSession(session.id)">
+                  <div class="session-item-title">{{ session.title }}</div>
+                  <div v-if="session.preview" class="session-item-preview">{{ session.preview }}</div>
+                </div>
+              <button
+                type="button"
+                class="session-menu-trigger"
+                @click.stop="toggleSessionMenu(session.id)"
               >
-                <div class="session-item-title">{{ session.title }}</div>
-                <div class="session-item-preview">{{ session.preview }}</div>
+                ⋯
+              </button>
+
+              <!-- Session Menu -->
+              <div
+                v-if="activeSessionMenu === session.id"
+                class="session-menu"
+              >
+                <button
+                  type="button"
+                  class="session-menu-item"
+                  @click.stop="renameSession(session.id); activeSessionMenu = null;"
+                >
+                  ✏️ 重命名
+                </button>
+                <button
+                  type="button"
+                  class="session-menu-item"
+                  @click.stop="deleteSession(session.id); activeSessionMenu = null;"
+                >
+                  🗑️ 删除
+                </button>
+                <button
+                  type="button"
+                  class="session-menu-item"
+                  @click.stop="pinSession(session.id); activeSessionMenu = null;"
+                >
+                  📌 置顶
+                </button>
               </div>
             </div>
           </div>
@@ -113,17 +166,6 @@ onMounted(async () => {
           </button>
 
           <div v-if="expandedMenu === 'knowledge'" class="menu-content">
-            <button type="button" class="upload-button" @click="triggerUpload">
-              上传文件
-            </button>
-            <input
-              ref="fileInput"
-              type="file"
-              multiple
-              style="display: none;"
-              @change="onFileChange"
-            />
-
             <div class="file-list">
               <div
                 v-for="file in store.knowledgeFiles"
@@ -135,7 +177,7 @@ onMounted(async () => {
               </div>
 
               <div v-if="store.knowledgeFiles.length === 0" class="empty-hint">
-                暂无文件，点击上方按钮上传
+                暂无文件
               </div>
             </div>
           </div>
@@ -149,7 +191,20 @@ onMounted(async () => {
       <template v-if="store.activePanel === 'chat'">
         <div class="chat-shell">
           <div class="chat-header">
-            <h2>{{ store.activeSession?.title || '新会话' }}</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2>{{ store.activeSession?.title || '新会话' }}</h2>
+              <button
+                type="button"
+                class="new-session-button"
+                @click="store.createNewSession"
+                style="
+                  padding: 8px 16px;
+                  font-size: 0.9rem;
+                "
+              >
+                + 新建会话
+              </button>
+            </div>
           </div>
 
           <div class="message-list">
@@ -159,11 +214,11 @@ onMounted(async () => {
               class="message-card"
               :class="message.role"
             >
-              <p>{{ message.content }}</p>
+              <div class="message-content">{{ message.content }}</div>
             </div>
           </div>
 
-          <div class="prompt-row">
+          <div class="prompt-row" v-if="store.messages.length <= 1">
             <button
               v-for="prompt in prompts"
               :key="prompt"
@@ -202,15 +257,49 @@ onMounted(async () => {
       <template v-else>
         <div class="chat-shell">
           <div class="chat-header">
-            <h2>知识库管理</h2>
-            <p class="header-hint">在左侧边栏的"知识库"菜单中管理文件</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h2>知识库管理</h2>
+                <p class="header-hint">上传和管理知识库文件</p>
+              </div>
+              <button
+                type="button"
+                class="upload-button"
+                @click="triggerUpload"
+                style="
+                  padding: 8px 16px;
+                  font-size: 0.9rem;
+                "
+              >
+                📤 上传文件
+              </button>
+              <input
+                ref="fileInput"
+                type="file"
+                multiple
+                style="display: none;"
+                @change="onFileChange"
+              />
+            </div>
           </div>
 
-          <div class="message-list" style="display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center; color: var(--ink-soft);">
-              <p style="font-size: 1.2rem; margin-bottom: 12px;">📚</p>
-              <p>请在左侧边栏的"知识库"菜单中</p>
-              <p>上传和管理知识库文件</p>
+          <div class="message-list">
+            <div
+              v-for="file in store.knowledgeFiles"
+              :key="file.id"
+              class="message-card assistant"
+              style="max-width: 100%; margin-bottom: 12px;"
+            >
+              <p><strong>{{ file.name }}</strong></p>
+              <p style="font-size: 0.85rem; color: var(--ink-soft); margin-top: 6px;">
+                {{ file.sizeLabel }} • {{ file.uploadedAt }} • {{ file.status }}
+              </p>
+            </div>
+
+            <div v-if="store.knowledgeFiles.length === 0" style="text-align: center; padding: 60px 20px; color: var(--ink-soft);">
+              <p style="font-size: 3rem; margin-bottom: 16px;">📚</p>
+              <p style="font-size: 1.1rem; margin-bottom: 8px;">暂无文件</p>
+              <p style="font-size: 0.9rem;">点击右上角"上传文件"按钮添加</p>
             </div>
           </div>
         </div>

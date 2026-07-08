@@ -59,7 +59,7 @@ function createInitialMessage(): MessageItem {
   return {
     id: `assistant-initial-${Date.now()}`,
     role: "assistant",
-    content: "输入一个问题开始演示。支持 FAQ、订单查询、物流查询和转人工。",
+    content: "你好！我是客服助手，有什么可以帮您的吗？",
   };
 }
 
@@ -69,7 +69,7 @@ function createSession(title = "新会话"): ChatSessionItem {
   return {
     id: createSessionId(),
     title,
-    preview: "等待开始对话",
+    preview: "",
     createdDay: day,
     createdAt: timestamp,
     updatedDay: day,

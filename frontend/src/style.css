@@ -228,6 +228,10 @@ button {
   font-size: 0.95rem;
 }
 
+.message-content {
+  word-break: break-word;
+}
+
 .message-card.user {
   align-self: flex-end;
   color: #ffffff;
@@ -507,34 +511,37 @@ button {
   }
 }
 
-/* Session List in Sidebar */
-.session-list {
-  max-height: 400px;
-  overflow-y: auto;
-  margin-top: 8px;
-}
-
-.session-item {
+/* Session List in Sidebar - Flat Design */
+.session-item-flat {
   padding: 10px 12px;
-  border-radius: 6px;
   cursor: pointer;
   transition: background 0.2s ease;
-  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.session-item:hover {
+.session-item-flat:hover {
   background: var(--accent-light);
 }
 
-.session-item.active {
+.session-item-flat.active {
   background: var(--accent-light);
-  border: 1px solid var(--accent);
+}
+
+.session-item-content {
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+  padding: 4px 0;
 }
 
 .session-item-title {
   font-size: 0.9rem;
   font-weight: 500;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .session-item-preview {
@@ -543,6 +550,57 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-menu-trigger {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--ink-soft);
+  transition: background 0.2s ease;
+}
+
+.session-menu-trigger:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Session Menu Dropdown */
+.session-menu {
+  position: absolute;
+  right: 10px;
+  top: 40px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 6px 0;
+  z-index: 100;
+  min-width: 120px;
+}
+
+.session-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--ink);
+  transition: background 0.2s ease;
+}
+
+.session-menu-item:hover {
+  background: var(--accent-light) !important;
 }
 
 /* File List in Sidebar */
