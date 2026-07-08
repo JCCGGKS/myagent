@@ -132,7 +132,7 @@ The backend execution chain aligns with `template/06.1-06.4` and `template/07`:
 
 ## Intent Structure
 
-Current backend intent structure uses "main intent + sub-intent":
+Current backend intent structure uses "main intent + sub-intent", loaded from `config/intent_schemas.yml` and `config/intent_rules.yml`:
 
 - `faq` -> `faq.general`
 - `order_service` -> `order_service.query_status`
@@ -143,6 +143,8 @@ Current backend intent structure uses "main intent + sub-intent":
 - `chitchat` -> `chitchat.greeting`
 - `chitchat` -> `chitchat.thanks`
 - `unsupported` -> `unsupported.unknown`
+
+Intent codes in design docs (`template/`) have been aligned to this list.
 
 ## Configuration Files
 
