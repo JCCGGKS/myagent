@@ -5490,8 +5490,8 @@
       },
       "chitchat": {
         "total": 128,
-        "matched": 127,
-        "accuracy": 0.9922
+        "matched": 128,
+        "accuracy": 1.0
       },
       "complaint": {
         "total": 126,
@@ -5500,8 +5500,8 @@
       },
       "handoff_service": {
         "total": 126,
-        "matched": 83,
-        "accuracy": 0.6587
+        "matched": 81,
+        "accuracy": 0.6429
       },
       "logistics": {
         "total": 159,
@@ -5515,8 +5515,8 @@
       },
       "unrecognize": {
         "total": 132,
-        "matched": 60,
-        "accuracy": 0.4545
+        "matched": 61,
+        "accuracy": 0.4621
       }
     },
     "failed_cases": [
@@ -6069,6 +6069,18 @@
         "matched": false
       },
       {
+        "id": "case_0199",
+        "message": "今天天气怎么样",
+        "expected_main_intent": "unrecognize",
+        "expected_sub_intent": "unrecognize.unknown",
+        "note": "irrelevant",
+        "actual_main_intent": "chitchat",
+        "actual_sub_intent": "chitchat.greeting",
+        "route_source": "llm_fallback",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
         "id": "case_0202",
         "message": "收到坏的了",
         "expected_main_intent": "after_sale_refund",
@@ -6189,6 +6201,18 @@
         "matched": false
       },
       {
+        "id": "case_0234",
+        "message": "好的",
+        "expected_main_intent": "unrecognize",
+        "expected_sub_intent": "unrecognize.unknown",
+        "note": "ambiguous",
+        "actual_main_intent": "chitchat",
+        "actual_sub_intent": "chitchat.greeting",
+        "route_source": "llm_fallback",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
         "id": "case_0243",
         "message": "发货了没有啊",
         "expected_main_intent": "logistics",
@@ -6245,18 +6269,6 @@
         "actual_sub_intent": "unrecognize.unknown",
         "route_source": "fallback",
         "confidence": 0.2,
-        "matched": false
-      },
-      {
-        "id": "case_0262",
-        "message": "今天天气怎么样",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "irrelevant",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
         "matched": false
       },
       {
@@ -6332,6 +6344,18 @@
         "matched": false
       },
       {
+        "id": "case_0304",
+        "message": "好的",
+        "expected_main_intent": "unrecognize",
+        "expected_sub_intent": "unrecognize.unknown",
+        "note": "ambiguous",
+        "actual_main_intent": "chitchat",
+        "actual_sub_intent": "chitchat.greeting",
+        "route_source": "llm_fallback",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
         "id": "case_0307",
         "message": "不想要了能退吗",
         "expected_main_intent": "after_sale_refund",
@@ -6377,18 +6401,6 @@
         "actual_sub_intent": "unrecognize.unknown",
         "route_source": "fallback",
         "confidence": 0.2,
-        "matched": false
-      },
-      {
-        "id": "case_0325",
-        "message": "今天天气怎么样",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "irrelevant",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
         "matched": false
       },
       {
@@ -6644,6 +6656,18 @@
         "matched": false
       },
       {
+        "id": "case_0420",
+        "message": "我要跟人讲",
+        "expected_main_intent": "handoff_service",
+        "expected_sub_intent": "handoff_service.request_human",
+        "note": "colloquial",
+        "actual_main_intent": "unrecognize",
+        "actual_sub_intent": "unrecognize.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
         "id": "case_0423",
         "message": "你们招人吗",
         "expected_main_intent": "unrecognize",
@@ -6720,18 +6744,6 @@
         "message": "东西坏了能退吗",
         "expected_main_intent": "after_sale_refund",
         "expected_sub_intent": "after_sale_refund.damage_refund",
-        "note": "colloquial",
-        "actual_main_intent": "unrecognize",
-        "actual_sub_intent": "unrecognize.unknown",
-        "route_source": "fallback",
-        "confidence": 0.2,
-        "matched": false
-      },
-      {
-        "id": "case_0450",
-        "message": "谢谢",
-        "expected_main_intent": "chitchat",
-        "expected_sub_intent": "chitchat.greeting",
         "note": "colloquial",
         "actual_main_intent": "unrecognize",
         "actual_sub_intent": "unrecognize.unknown",
@@ -7004,6 +7016,18 @@
         "matched": false
       },
       {
+        "id": "case_0521",
+        "message": "今天天气怎么样",
+        "expected_main_intent": "unrecognize",
+        "expected_sub_intent": "unrecognize.unknown",
+        "note": "irrelevant",
+        "actual_main_intent": "chitchat",
+        "actual_sub_intent": "chitchat.greeting",
+        "route_source": "llm_fallback",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
         "id": "case_0524",
         "message": "我不想买了能退吗",
         "expected_main_intent": "after_sale_refund",
@@ -7061,18 +7085,6 @@
         "actual_sub_intent": "unrecognize.unknown",
         "route_source": "fallback",
         "confidence": 0.2,
-        "matched": false
-      },
-      {
-        "id": "case_0542",
-        "message": "好的",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "ambiguous",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
         "matched": false
       },
       {
@@ -7267,18 +7279,6 @@
         "matched": false
       },
       {
-        "id": "case_0605",
-        "message": "好的",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "ambiguous",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
-        "matched": false
-      },
-      {
         "id": "case_0616",
         "message": "叫你们负责人来",
         "expected_main_intent": "handoff_service",
@@ -7458,18 +7458,6 @@
         "matched": false
       },
       {
-        "id": "case_0668",
-        "message": "好的",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "ambiguous",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
-        "matched": false
-      },
-      {
         "id": "case_0669",
         "message": "帮我看下买的东西到哪了",
         "expected_main_intent": "order_query",
@@ -7573,6 +7561,18 @@
         "note": "faq",
         "actual_main_intent": "order_query",
         "actual_sub_intent": "order_query.query_status",
+        "route_source": "llm_fallback",
+        "confidence": 0.8,
+        "matched": false
+      },
+      {
+        "id": "case_0710",
+        "message": "好的",
+        "expected_main_intent": "unrecognize",
+        "expected_sub_intent": "unrecognize.unknown",
+        "note": "ambiguous",
+        "actual_main_intent": "chitchat",
+        "actual_sub_intent": "chitchat.greeting",
         "route_source": "llm_fallback",
         "confidence": 0.8,
         "matched": false
@@ -7702,18 +7702,6 @@
         "message": "东西有问题我要退",
         "expected_main_intent": "after_sale_refund",
         "expected_sub_intent": "after_sale_refund.damage_refund",
-        "note": "colloquial",
-        "actual_main_intent": "unrecognize",
-        "actual_sub_intent": "unrecognize.unknown",
-        "route_source": "fallback",
-        "confidence": 0.2,
-        "matched": false
-      },
-      {
-        "id": "case_0756",
-        "message": "我要跟人讲",
-        "expected_main_intent": "handoff_service",
-        "expected_sub_intent": "handoff_service.request_human",
         "note": "colloquial",
         "actual_main_intent": "unrecognize",
         "actual_sub_intent": "unrecognize.unknown",
@@ -7986,18 +7974,6 @@
         "matched": false
       },
       {
-        "id": "case_0829",
-        "message": "好的",
-        "expected_main_intent": "unrecognize",
-        "expected_sub_intent": "unrecognize.unknown",
-        "note": "ambiguous",
-        "actual_main_intent": "chitchat",
-        "actual_sub_intent": "chitchat.greeting",
-        "route_source": "llm_fallback",
-        "confidence": 0.8,
-        "matched": false
-      },
-      {
         "id": "case_0832",
         "message": "发错货了",
         "expected_main_intent": "after_sale_refund",
@@ -8038,6 +8014,18 @@
         "message": "发错货了",
         "expected_main_intent": "after_sale_refund",
         "expected_sub_intent": "after_sale_refund.wrong_goods",
+        "note": "colloquial",
+        "actual_main_intent": "unrecognize",
+        "actual_sub_intent": "unrecognize.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
+        "id": "case_0840",
+        "message": "我要跟人讲",
+        "expected_main_intent": "handoff_service",
+        "expected_sub_intent": "handoff_service.request_human",
         "note": "colloquial",
         "actual_main_intent": "unrecognize",
         "actual_sub_intent": "unrecognize.unknown",
@@ -8272,6 +8260,18 @@
         "matched": false
       },
       {
+        "id": "case_0924",
+        "message": "我要跟人讲",
+        "expected_main_intent": "handoff_service",
+        "expected_sub_intent": "handoff_service.request_human",
+        "note": "colloquial",
+        "actual_main_intent": "unrecognize",
+        "actual_sub_intent": "unrecognize.unknown",
+        "route_source": "fallback",
+        "confidence": 0.2,
+        "matched": false
+      },
+      {
         "id": "case_0929",
         "message": "发货了没有啊",
         "expected_main_intent": "logistics",
@@ -8450,6 +8450,7 @@
         "confidence": 0.8,
         "matched": false
       }
-    ]
+    ],
+    "llm_fallback_hits": 510
   }
 }

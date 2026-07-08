@@ -107,13 +107,21 @@ def write_single_step_report(metrics: dict, tag: str) -> None:
         f"- `{intent}`: {v['matched']}/{v['total']} = {v['accuracy']:.2%}"
         for intent, v in metrics["per_main_intent"].items()
     ]
+    route_label_map = {
+        "rule": "规则命中",
+        "slot_followup": "上下文跟进",
+        "llm_fallback": "LLM 兜底",
+        "fallback": "未识别（走兜底）",
+    }
     route_lines = [
-        f"  - `{k}`: {v}" for k, v in metrics["route_source_distribution"].items()
+        f"  - {route_label_map.get(k, k)}：{v} 条"
+        for k, v in metrics["route_source_distribution"].items()
     ]
     failed_lines = [
         f"- `{r['id']}`: `{r['message']}`  "
         f"expected `{r['expected_main_intent']}/{r['expected_sub_intent']}`  "
         f"actual `{r['actual_main_intent']}/{r['actual_sub_intent']}`"
+        f"（路由：{route_label_map.get(r.get('route_source', ''), r.get('route_source', ''))}）"
         for r in metrics["failed_cases"][:50]
     ]
 

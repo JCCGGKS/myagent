@@ -158,8 +158,8 @@
   {
     "id": "case_0024",
     "message": "帮我查一下优惠券",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -318,8 +318,8 @@
   {
     "id": "case_0048",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0049",
@@ -396,8 +396,8 @@
   {
     "id": "case_0060",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -474,8 +474,8 @@
   {
     "id": "case_0071",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -502,8 +502,8 @@
   {
     "id": "case_0075",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -637,15 +637,15 @@
   {
     "id": "case_0095",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
     "id": "case_0096",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -776,8 +776,8 @@
   {
     "id": "case_0116",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -826,8 +826,8 @@
   {
     "id": "case_0124",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -1222,8 +1222,8 @@
   {
     "id": "case_0185",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -1317,8 +1317,8 @@
   {
     "id": "case_0199",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -1461,8 +1461,8 @@
   {
     "id": "case_0220",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -1604,8 +1604,8 @@
   {
     "id": "case_0241",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -1745,8 +1745,8 @@
   {
     "id": "case_0262",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -1791,8 +1791,8 @@
   {
     "id": "case_0269",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -1885,8 +1885,8 @@
   {
     "id": "case_0283",
     "message": "帮我查一下优惠券",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -1931,8 +1931,8 @@
   {
     "id": "case_0290",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -1978,8 +1978,8 @@
   {
     "id": "case_0297",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2073,8 +2073,8 @@
   {
     "id": "case_0311",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -2167,8 +2167,8 @@
   {
     "id": "case_0325",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -2212,8 +2212,8 @@
   {
     "id": "case_0332",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -2260,8 +2260,8 @@
   {
     "id": "case_0339",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -2306,8 +2306,8 @@
   {
     "id": "case_0346",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2352,8 +2352,8 @@
   {
     "id": "case_0353",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2399,8 +2399,8 @@
   {
     "id": "case_0360",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -2447,8 +2447,8 @@
   {
     "id": "case_0367",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2494,8 +2494,8 @@
   {
     "id": "case_0374",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0375",
@@ -2539,8 +2539,8 @@
   {
     "id": "case_0381",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2585,8 +2585,8 @@
   {
     "id": "case_0388",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2632,8 +2632,8 @@
   {
     "id": "case_0395",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2679,8 +2679,8 @@
   {
     "id": "case_0402",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0403",
@@ -2723,8 +2723,8 @@
   {
     "id": "case_0409",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2769,8 +2769,8 @@
   {
     "id": "case_0416",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -2817,8 +2817,8 @@
   {
     "id": "case_0423",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -2864,8 +2864,8 @@
   {
     "id": "case_0430",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -2911,8 +2911,8 @@
   {
     "id": "case_0437",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -2960,8 +2960,8 @@
   {
     "id": "case_0444",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -3006,8 +3006,8 @@
   {
     "id": "case_0451",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3052,8 +3052,8 @@
   {
     "id": "case_0458",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3098,8 +3098,8 @@
   {
     "id": "case_0465",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3191,8 +3191,8 @@
   {
     "id": "case_0479",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3286,8 +3286,8 @@
   {
     "id": "case_0493",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3476,8 +3476,8 @@
   {
     "id": "case_0521",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -3523,8 +3523,8 @@
   {
     "id": "case_0528",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3571,8 +3571,8 @@
   {
     "id": "case_0535",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3664,8 +3664,8 @@
   {
     "id": "case_0549",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3809,8 +3809,8 @@
   {
     "id": "case_0570",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -3902,8 +3902,8 @@
   {
     "id": "case_0584",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -3951,8 +3951,8 @@
   {
     "id": "case_0591",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -3998,8 +3998,8 @@
   {
     "id": "case_0598",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -4088,8 +4088,8 @@
   {
     "id": "case_0612",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0613",
@@ -4272,8 +4272,8 @@
   {
     "id": "case_0640",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -4319,8 +4319,8 @@
   {
     "id": "case_0647",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -4367,8 +4367,8 @@
   {
     "id": "case_0654",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -4597,8 +4597,8 @@
   {
     "id": "case_0689",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -4643,8 +4643,8 @@
   {
     "id": "case_0696",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -4783,8 +4783,8 @@
   {
     "id": "case_0717",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -4876,8 +4876,8 @@
   {
     "id": "case_0731",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -4923,8 +4923,8 @@
   {
     "id": "case_0738",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0739",
@@ -4969,8 +4969,8 @@
   {
     "id": "case_0745",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -5015,8 +5015,8 @@
   {
     "id": "case_0752",
     "message": "你会做什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown"
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope"
   },
   {
     "id": "case_0753",
@@ -5061,8 +5061,8 @@
   {
     "id": "case_0759",
     "message": "帮我查一下优惠券",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5107,8 +5107,8 @@
   {
     "id": "case_0766",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -5153,8 +5153,8 @@
   {
     "id": "case_0773",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -5201,8 +5201,8 @@
   {
     "id": "case_0780",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -5248,8 +5248,8 @@
   {
     "id": "case_0787",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -5295,8 +5295,8 @@
   {
     "id": "case_0794",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5343,8 +5343,8 @@
   {
     "id": "case_0801",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5390,8 +5390,8 @@
   {
     "id": "case_0808",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5581,8 +5581,8 @@
   {
     "id": "case_0836",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -5627,8 +5627,8 @@
   {
     "id": "case_0843",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5675,8 +5675,8 @@
   {
     "id": "case_0850",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5721,8 +5721,8 @@
   {
     "id": "case_0857",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5815,8 +5815,8 @@
   {
     "id": "case_0871",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -5907,8 +5907,8 @@
   {
     "id": "case_0885",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -5955,8 +5955,8 @@
   {
     "id": "case_0892",
     "message": "支持哪些支付方式",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6047,8 +6047,8 @@
   {
     "id": "case_0906",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6093,8 +6093,8 @@
   {
     "id": "case_0913",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -6187,8 +6187,8 @@
   {
     "id": "case_0927",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6232,8 +6232,8 @@
   {
     "id": "case_0934",
     "message": "今天天气怎么样",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "irrelevant"
   },
   {
@@ -6279,8 +6279,8 @@
   {
     "id": "case_0941",
     "message": "帮我查一下优惠券",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6327,8 +6327,8 @@
   {
     "id": "case_0948",
     "message": "退款多久到账",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6372,8 +6372,8 @@
   {
     "id": "case_0955",
     "message": "怎么加盟",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -6417,8 +6417,8 @@
   {
     "id": "case_0962",
     "message": "帮我查一下优惠券",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6464,8 +6464,8 @@
   {
     "id": "case_0969",
     "message": "退货政策是什么",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
@@ -6510,8 +6510,8 @@
   {
     "id": "case_0976",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -6557,8 +6557,8 @@
   {
     "id": "case_0983",
     "message": "你们招人吗",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "out_of_scope"
   },
   {
@@ -6605,8 +6605,8 @@
   {
     "id": "case_0990",
     "message": "运费怎么算",
-    "expected_main_intent": "unrecognize",
-    "expected_sub_intent": "unrecognize.unknown",
+    "expected_main_intent": "unsupported_biz",
+    "expected_sub_intent": "unsupported_biz.out_of_scope",
     "note": "faq"
   },
   {
