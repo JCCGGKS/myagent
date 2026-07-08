@@ -30,7 +30,7 @@ myagent/
 
 Core backend modules:
 
-- `app/api`: Exposes HTTP and WebSocket interfaces, handles app assembly
+- `app/api`: Exposes HTTP and SSE (Server-Sent Events) interfaces, handles app assembly
 - `app/agents`: Chains intent recognition, state updates, policy distribution, FAQ/tool routing, clarification and response generation
 - `app/models`: Unified maintenance of `ChatRequest`, `ChatResponse`, `ConversationState` and other data structures
 - `app/rag`: Hosts FAQ retrieval and subsequent RAG evolution entry points, currently contains `KnowledgeBaseService` and `RagRetrievalService`
@@ -108,8 +108,8 @@ git diff --cached       # Review staged changes before committing
 ## Backend API Endpoints
 
 - `GET /health` - Health check
-- `POST /chat` - Chat endpoint (fallback when WebSocket unavailable)
-- `WS /ws/chat` - WebSocket chat endpoint (preferred for web)
+- `POST /chat` - Chat endpoint (non-streaming)
+- `POST /chat/stream` - SSE chat endpoint (preferred for web, returns `text/event-stream`)
 - `GET /session/{session_id}` - Get session state
 
 Example curl request:
@@ -174,11 +174,9 @@ Current `ConversationState` covers two layers of context:
 - Business state: `current_main_intent / current_sub_intent / stage / slots / missing_slots / confirmed_slots`
 - Execution state: `current_action / latest_action_result / action_history / running_summary / archived_states`
 
-WebSocket `/ws/chat` continuously outputs:
-- `status` - Processing status
+SSE `/chat/stream` continuously outputs events:
 - `intent` - Recognized intent
 - `state` - Current state snapshot
-- `trace` - Execution trace
 - `tool_result` - Tool execution results
 - `final` - Final response
 
@@ -217,7 +215,8 @@ Stage only intended files and review `git diff --cached` before committing.
 ## Frontend Notes
 
 - `frontend/` uses `Vue 3 + Vite + TypeScript + Pinia + Vue Router`
-- Vite dev server proxies `/api` and `/ws` to `http://127.0.0.1:8000`
+- Vite dev server proxies `/api` and `/chat/stream` to `http://127.0.0.1:8000`
 - Backend has CORS enabled for `http://127.0.0.1:5173` and `http://localhost:5173`
 - Frontend console includes message flow, session state panel, turn trace history, and structured detail cards for orders/logistics/handoff
-- WebSocket `/ws/chat` is preferred for real-time communication, with `POST /chat` as fallback
+- SSE `POST /chat/stream` is preferred for real-time communication, with `POST /chat` as fallback
+- Frontend uses `ChatSSEClient` (`frontend/src/lib/sse.ts`) with `AbortController` for user interrupt

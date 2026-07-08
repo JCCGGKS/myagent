@@ -107,67 +107,97 @@ class CustomerServiceAgent:
         return self._build_chat_response(state)
 
     def chat_events(self, request: ChatRequest) -> list[dict[str, Any]]:
+        """LangGraph 图驱动的事件生成（与 chat() 行为一致）。"""
+        if self.graph is None:
+            return self._chat_events_fallback(request)
+        payload = self._build_payload(request)
+        events: list[dict[str, Any]] = []
+        for chunk in self.graph.stream(payload):
+            for node_name, node_payload in chunk.items():
+                # node_payload is the full payload dict: {"state": ..., "request": ...}
+                state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
+                if state:
+                    events.extend(self._node_state_to_events(node_name, state))
+        return events
+
+    def _chat_events_fallback(self, request: ChatRequest) -> list[dict[str, Any]]:
+        """LangGraph 不可用时的降级路径（手动串联，逻辑与图一致）。"""
         payload = self._build_payload(request)
         events: list[dict[str, Any]] = []
 
         payload = self.input_normalizer(payload)
-        events.append({"type": "status", "stage": "input_normalizer", "message": "已接收用户消息"})
+        events.extend(self._node_state_to_events("input_normalizer", payload["state"]))
 
         payload = self.intent_router(payload)
-        state = payload["state"]
-        intent = state.intent_result
-        events.append(
-            {
-                "type": "intent",
-                "main_intent": intent.main_intent if intent else "unsupported",
-                "sub_intent": intent.sub_intent if intent else "unsupported.unknown",
-                "confidence": intent.confidence if intent else 0.0,
-                "slots": intent.slots if intent else {},
-                "needs_clarification": intent.needs_clarification if intent else False,
-            }
-        )
+        events.extend(self._node_state_to_events("intent_router", payload["state"]))
 
         payload = self.state_tracker(payload)
-        state = payload["state"]
-        events.append(
-            {
-                "type": "state",
-                "stage": state.stage,
-                "current_main_intent": state.current_main_intent,
-                "current_sub_intent": state.current_sub_intent,
-                "slots": state.slots,
-                "missing_slots": state.missing_slots,
-                "needs_clarification": state.needs_clarification,
-            }
-        )
+        events.extend(self._node_state_to_events("state_tracker", payload["state"]))
 
         payload = self.policy_layer(payload)
-        state = payload["state"]
-        events.append({"type": "trace", "message": f"策略动作: {state.current_action}"})
+        events.extend(self._node_state_to_events("policy_layer", payload["state"]))
 
         route = self.route_after_policy(payload)
         if route == "clarification_node":
             payload = self.clarification_node(payload)
-            events.append({"type": "trace", "message": "进入澄清节点"})
+            events.extend(self._node_state_to_events("clarification_node", payload["state"]))
         elif route == "knowledge_retriever":
             payload = self.knowledge_retriever(payload)
-            events.append({"type": "trace", "message": "执行知识检索"})
+            events.extend(self._node_state_to_events("knowledge_retriever", payload["state"]))
+            payload = self.response_generator(payload)
+            events.extend(self._node_state_to_events("response_generator", payload["state"]))
         elif route == "business_tool_executor":
             payload = self.business_tool_executor(payload)
-            state = payload["state"]
-            events.append({"type": "tool_result", "tool_result": self._serialize_tool_result(state)})
+            events.extend(self._node_state_to_events("business_tool_executor", payload["state"]))
         elif route == "handoff_node":
             payload = self.handoff_node(payload)
-            state = payload["state"]
-            events.append({"type": "tool_result", "tool_result": self._serialize_tool_result(state)})
+            events.extend(self._node_state_to_events("handoff_node", payload["state"]))
 
         if route != "clarification_node":
             payload = self.response_generator(payload)
+            events.extend(self._node_state_to_events("response_generator", payload["state"]))
 
         payload = self.context_compressor(payload)
+        events.extend(self._node_state_to_events("context_compressor", payload["state"]))
+
         payload = self.memory_writer(payload)
-        state = payload["state"]
-        events.append({"type": "final", "response": self._build_chat_response(state).model_dump()})
+        events.extend(self._node_state_to_events("memory_writer", payload["state"]))
+
+        return events
+
+    def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
+        """将节点执行后的状态转为事件列表（供 chat_events 和 graph.stream 共用）。"""
+        events: list[dict[str, Any]] = []
+        if node_name == "intent_router":
+            intent = state.intent_result
+            events.append(
+                {
+                    "type": "intent",
+                    "main_intent": intent.main_intent if intent else "unsupported",
+                    "sub_intent": intent.sub_intent if intent else "unsupported.unknown",
+                    "confidence": intent.confidence if intent else 0.0,
+                    "slots": intent.slots if intent else {},
+                    "needs_clarification": intent.needs_clarification if intent else False,
+                }
+            )
+        elif node_name == "state_tracker":
+            events.append(
+                {
+                    "type": "state",
+                    "stage": state.stage,
+                    "current_main_intent": state.current_main_intent,
+                    "current_sub_intent": state.current_sub_intent,
+                    "slots": state.slots,
+                    "missing_slots": state.missing_slots,
+                    "needs_clarification": state.needs_clarification,
+                }
+            )
+        elif node_name in {"business_tool_executor", "handoff_node"}:
+            if state.tool_result:
+                events.append({"type": "tool_result", "tool_result": self._serialize_tool_result(state)})
+        elif node_name == "response_generator":
+            events.append({"type": "final", "response": self._build_chat_response(state).model_dump()})
+        # 其他节点不推事件（或推通用 trace）
         return events
 
     def _execute_request(self, request: ChatRequest) -> ConversationState:
