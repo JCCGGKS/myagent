@@ -189,7 +189,8 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 100%;
+  flex:1;
+  min-width: 0;
 }
 
 .chat-header {
@@ -239,6 +240,7 @@ button {
   gap: 10px;
   padding: 16px 24px;
   background: var(--main-bg);
+  flex-shrink: 0;
 }
 
 .soft-button {
@@ -293,6 +295,7 @@ button {
   padding: 20px 24px;
   background: var(--main-bg);
   border-top: 1px solid var(--line);
+  flex-shrink: 0;
 }
 
 .composer textarea {
@@ -369,6 +372,7 @@ button {
   gap: 8px;
   padding: 16px 24px;
   background: var(--main-bg);
+  flex-shrink: 0;
 }
 
 /* Overview Panel */
@@ -673,4 +677,116 @@ button {
 .status-text {
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+
+/* Chat Layout - two-column: chat area + stats sidebar */
+.chat-layout {
+  display: flex;
+  flex:1;
+  overflow: hidden;
+  height: 100%;
+}
+
+.stats-sidebar {
+  width: 340px;
+  min-width: 340px;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+/* Live stats bar pinned between message list and input */
+.live-stats {
+  flex-shrink: 0;
+  background: var(--main-bg);
+  border-top: 1px solid var(--line);
+  padding: 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.live-stats-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.live-stats-item {
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.live-stats-item strong,
+.live-stats-tool strong {
+  color: var(--ink-soft);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.live-stats-tool {
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.live-stats-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.live-stats-trace .trace-line {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Stats Panel in Sidebar */
+.sidebar-stats-toggle {
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidebar-stats {
+  flex: 1;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+  min-height: 200px;
+  max-height: 50vh;
+}
+
+.sidebar-stats .stats-panel {
+  border: none;
+  border-radius: 0;
+  height: 100%;
+}
+
+.sidebar-stats .stats-content {
+  padding: 8px 12px;
+}
+
+.sidebar-stats .stats-head {
+  padding: 12px;
+}
+
+.sidebar-stats .stats-section {
+  margin-bottom: 12px;
+}
+
+.sidebar-stats .stat-item {
+  padding: 4px 0;
+  font-size: 0.8rem;
+}
+
+.sidebar-stats .stat-value {
+  font-size: 0.8rem;
+}
+
+.sidebar-stats .stat-value.mono {
+  font-size: 0.75rem;
 }

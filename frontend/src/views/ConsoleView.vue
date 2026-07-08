@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 
+import StatsPanel from "@/components/StatsPanel.vue";
 import TurnTracePanel from "@/components/TurnTracePanel.vue";
 import { useChatStore } from "@/stores/chat";
 
@@ -17,6 +18,7 @@ const prompts = [
 // Sidebar menu state
 const expandedMenu = ref<string | null>('chat'); // 'chat' or 'knowledge'
 const activeSessionMenu = ref<string | null>(null);
+const showStatsPanel = ref(true); // Control stats panel visibility
 
 function toggleMenu(menu: string) {
   if (expandedMenu.value === menu) {
@@ -73,6 +75,10 @@ function handleShiftEnter() {
   store.draft += '\n';
 }
 
+function toggleStatsPanel() {
+  showStatsPanel.value = !showStatsPanel.value;
+}
+
 onMounted(async () => {
   await store.refreshHealth();
   await store.initFromLocalStorage();
@@ -86,6 +92,25 @@ onMounted(async () => {
     <aside class="session-sidebar">
       <div class="sidebar-brand">
         <h1>客服助手</h1>
+      </div>
+
+      <!-- Stats Panel Toggle -->
+      <div class="sidebar-stats-toggle">
+        <button
+          type="button"
+          class="menu-header"
+          :class="{ active: showStatsPanel }"
+          @click="toggleStatsPanel"
+        >
+          <span class="menu-icon">📊</span>
+          <span class="menu-title">统计面板</span>
+          <span class="menu-arrow">{{ showStatsPanel ? '▼' : '▶' }}</span>
+        </button>
+      </div>
+
+      <!-- Stats Panel -->
+      <div v-if="showStatsPanel" class="sidebar-stats">
+        <StatsPanel />
       </div>
 
       <!-- Menu Items -->
@@ -217,6 +242,7 @@ onMounted(async () => {
               <div class="message-content">{{ message.content }}</div>
             </div>
           </div>
+
 
           <div class="prompt-row">
             <button
