@@ -386,13 +386,10 @@ class HandoffClarificationPolicy:
                     "Policy: ask_slot_clarification count=%d missing=%s session=%s",
                     state.slot_clarification_count, state.missing_slots, state.session_id,
                 )
-        elif state.current_main_intent in {"order_query", "logistics"}:
-            state.current_action = "query_business_tool"
-            logger.debug("Policy: query_business_tool session=%s", state.session_id)
-        elif state.current_main_intent == "after_sale_refund":
-            # TODO: 接入 RefundService 后改为 query_business_tool
-            state.current_action = "answer_directly"
-            logger.debug("Policy: after_sale_refund -> answer_directly (pending RefundService) session=%s", state.session_id)
+        elif state.current_main_intent in {"order_query", "logistics", "after_sale_refund", "complaint"}:
+            # 这些意图可能需要工具调用（订单查询、物流查询、RAG 检索等）
+            state.current_action = "agent_process"
+            logger.debug("Policy: agent_process session=%s", state.session_id)
         else:
             state.current_action = "answer_directly"
             logger.debug("Policy: answer_directly session=%s", state.session_id)

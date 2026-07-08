@@ -6,7 +6,7 @@ from typing import Any
 from app.models import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
 
 logger = logging.getLogger(__name__)
-from app.rag import KnowledgeBaseService, RagRetrievalService
+from app.services.agent_node import AgentNodeService
 from app.services import (
     ClarificationService,
     ContextService,
@@ -37,14 +37,12 @@ class CustomerServiceAgent:
     def __init__(
         self,
         store: SessionStore,
-        knowledge_base: KnowledgeBaseService,
         order_service: OrderService,
         logistics_service: LogisticsService,
         handoff_service: HandoffService,
         llm_fallback_service: LLMIntentFallbackService | None = None,
     ) -> None:
         self.store = store
-        self.knowledge_base = knowledge_base
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
@@ -53,7 +51,6 @@ class CustomerServiceAgent:
         self.state_tracker_service = StateTrackerService(schema_registry=self.intent_schema_registry)
         self.policy_service = HandoffClarificationPolicy()
         self.clarification_service = ClarificationService()
-        self.rag_retrieval_service = RagRetrievalService(knowledge_base=knowledge_base)
         self.execution_service = ExecutionService(
             order_service=order_service,
             logistics_service=logistics_service,
@@ -62,6 +59,11 @@ class CustomerServiceAgent:
         self.context_service = ContextService(state_tracker=self.state_tracker_service)
         self.response_service = ResponseService()
         self.memory_service = MemoryService(store)
+        # agent_node 初始化（工具调用节点）
+        self.agent_node_service = AgentNodeService(
+            llm=None,  # TODO: 接入真实 LLM
+            tools=None,  # 会从默认工具列表加载
+        )
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -74,8 +76,8 @@ class CustomerServiceAgent:
         builder.add_node("state_tracker", self.state_tracker)
         builder.add_node("policy_layer", self.policy_layer)
         builder.add_node("clarification_node", self.clarification_node)
-        builder.add_node("knowledge_retriever", self.knowledge_retriever)
-        builder.add_node("business_tool_executor", self.business_tool_executor)
+        # agent_node 替代 business_tool_executor 和 knowledge_retriever
+        builder.add_node("agent_node", self.agent_node)
         builder.add_node("handoff_node", self.handoff_node)
         builder.add_node("response_generator", self.response_generator)
         builder.add_node("context_compressor", self.context_compressor)
@@ -90,15 +92,14 @@ class CustomerServiceAgent:
             self.route_after_policy,
             {
                 "clarification_node": "clarification_node",
-                "knowledge_retriever": "knowledge_retriever",
-                "business_tool_executor": "business_tool_executor",
+                "agent_node": "agent_node",
                 "handoff_node": "handoff_node",
                 "response_generator": "response_generator",
             },
         )
         builder.add_edge("clarification_node", "context_compressor")
-        builder.add_edge("knowledge_retriever", "response_generator")
-        builder.add_edge("business_tool_executor", "response_generator")
+        # agent_node 执行完后，路由到 response_generator
+        builder.add_edge("agent_node", "response_generator")
         builder.add_edge("handoff_node", "response_generator")
         builder.add_edge("response_generator", "context_compressor")
         builder.add_edge("context_compressor", "memory_writer")
@@ -256,7 +257,6 @@ class CustomerServiceAgent:
 
         state.reply = ""
         state.intent_result = None
-        state.retrieved_knowledge = []
         state.tool_result = None
         state.handoff = False
         state.handoff_reason = ""
@@ -307,15 +307,14 @@ class CustomerServiceAgent:
         if action in {"ask_intent_clarification", "ask_slot_clarification"}:
             logger.debug("route_after_policy -> clarification_node session=%s", state.session_id)
             return "clarification_node"
-        if action == "retrieve_knowledge":
-            logger.debug("route_after_policy -> knowledge_retriever session=%s", state.session_id)
-            return "knowledge_retriever"
-        if action == "query_business_tool":
-            logger.debug("route_after_policy -> business_tool_executor session=%s", state.session_id)
-            return "business_tool_executor"
+        # agent_process 路由到 agent_node（工具调用）
+        if action == "agent_process":
+            logger.debug("route_after_policy -> agent_node session=%s", state.session_id)
+            return "agent_node"
         if action == "handoff_human":
             logger.debug("route_after_policy -> handoff_node session=%s", state.session_id)
             return "handoff_node"
+        # 其他情况（如 answer_directly）路由到 response_generator
         logger.debug("route_after_policy -> response_generator session=%s", state.session_id)
         return "response_generator"
 
@@ -325,7 +324,13 @@ class CustomerServiceAgent:
         payload["state"] = self.clarification_service.generate(state)
         return payload
 
-    def knowledge_retriever(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def agent_node(self, payload: dict[str, Any]) -> dict[str, Any]:
+        state: ConversationState = payload["state"]
+        logger.debug("node=agent_node session=%s", state.session_id)
+        payload["state"] = self.agent_node_service.run(state)
+        return payload
+
+    # knowledge_retriever 已移除，功能由 agent_node 里的 rag_retrieve 工具替代
         state: ConversationState = payload["state"]
         logger.debug("node=knowledge_retriever session=%s", state.session_id)
         payload["state"] = self.rag_retrieval_service.retrieve(state)

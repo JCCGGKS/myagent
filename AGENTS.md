@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Overview
-This is a customer service Agent MVP with a FastAPI backend and Vue 3 frontend. The agent provides six core capabilities: FAQ, order query, logistics query, refund consultation, human handoff, and greetings. The backend uses a main intent + sub-intent structure with multi-turn slot filling.
+This is a customer service Agent MVP with a FastAPI backend and Vue 3 frontend. The agent provides five core capabilities: order query, logistics query, refund consultation, human handoff, and greetings. The backend uses a main intent + sub-intent structure with multi-turn slot filling.
 
 ## Project Structure & Module Organization
 
@@ -11,10 +11,10 @@ myagent/
 │   ├── agents/      # Customer service main agent, orchestrates nodes
 │   ├── api/         # FastAPI / WebSocket entry points
 │   ├── config/      # Configuration loading
-│   ├── mock_data/   # FAQ, order, logistics mock data
+│   ├── mock_data/   # Order, logistics mock data
 │   ├── models/      # Request, response, session, domain models
 │   ├── prompts/     # LLM prompt definitions
-│   ├── rag/         # Knowledge retrieval and FAQ/RAG modules
+│   ├── rag/         # Knowledge retrieval modules
 │   ├── services/    # Routing / state / policy / dialog / execution / context services
 │   ├── store/       # Session state storage, tool audit, handoff records
 │   └── utils/       # File and text utility functions
@@ -31,9 +31,9 @@ myagent/
 Core backend modules:
 
 - `app/api`: Exposes HTTP and SSE (Server-Sent Events) interfaces, handles app assembly
-- `app/agents`: Chains intent recognition, state updates, policy distribution, FAQ/tool routing, clarification and response generation
+- `app/agents`: Chains intent recognition, state updates, policy distribution, tool routing, clarification and response generation
 - `app/models`: Unified maintenance of `ChatRequest`, `ChatResponse`, `ConversationState` and other data structures
-- `app/rag`: Hosts FAQ retrieval and subsequent RAG evolution entry points, currently contains `KnowledgeBaseService` and `RagRetrievalService`
+- `app/rag`: Hosts knowledge retrieval and subsequent RAG evolution entry points, currently contains `KnowledgeBaseService` and `RagRetrievalService`
 - `app/services/domain`: Order query, logistics query, human handoff and other domain services
 - `app/services/routing`: Intent routing, state tracking, policy layer
 - `app/services/dialog`: Clarification replies, final replies, memory persistence
@@ -128,13 +128,12 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 The backend execution chain aligns with `template/06.1-06.4` and `template/07`:
 
-`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / knowledge / tool / handoff -> response_generator -> context_compressor -> memory_writer`
+`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor -> memory_writer`
 
 ## Intent Structure
 
 Current backend intent structure uses "main intent + sub-intent", loaded from `config/intent_schemas.yml` and `config/intent_rules.yml`:
 
-- `faq` -> `faq.general`
 - `order_service` -> `order_service.query_status`
 - `logistics_service` -> `logistics_service.query_status`
 - `refund_service` -> `refund_service.consult_policy`

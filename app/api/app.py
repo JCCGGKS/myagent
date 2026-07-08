@@ -10,7 +10,6 @@ from starlette.responses import StreamingResponse
 from app.agents import CustomerServiceAgent
 from app.config import load_llm_config
 from app.models import ChatRequest, ChatResponse, ConversationState, SessionInitRequest, SessionInitResponse
-from app.rag import KnowledgeBaseService
 from app.services import (
     HandoffService,
     LLMIntentFallbackService,
@@ -24,7 +23,6 @@ session_store = SessionStore()
 llm_config = load_llm_config()
 agent = CustomerServiceAgent(
     store=session_store,
-    knowledge_base=KnowledgeBaseService(),
     order_service=OrderService(),
     logistics_service=LogisticsService(),
     handoff_service=HandoffService(),

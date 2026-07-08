@@ -18,6 +18,42 @@ llm:
   # LLM 意图识别的最低置信度阈值（低于此值的结果会被丢弃）
   confidence_threshold: 0.7
 
+# RAG 配置
+rag:
+  # 检索策略：bm25 | semantic | hybrid
+  retrieval_strategy: "hybrid"
+
+  # 返回结果数量
+  top_k: 5
+
+  # BM25 策略配置
+  bm25:
+    # 最小匹配度阈值（BM25 原始分数，低于此值的结果会被丢弃）
+    min_score_threshold: 5.0
+
+  # 语义向量策略配置
+  semantic:
+    # 距离度量方式：cosine | dot_product | euclidean
+    metric: "cosine"
+    # 最小匹配度阈值（余弦相似度范围 -1~1，低于此值的结果会被丢弃）
+    min_score_threshold: 0.7
+
+  # 混合检索配置
+  hybrid:
+    # 融合方法：rrf | weighted
+    fusion_method: "rrf"
+    # 加权融合的权重（仅当 fusion_method=weighted 时生效）
+    weighted_alpha: 0.5
+    # 最小匹配度阈值（融合后的 RRF 分数，低于此值的结果会被丢弃）
+    min_score_threshold: 0.5
+
+  # Rerank 配置
+  rerank:
+    # 是否启用 Rerank
+    enabled: false
+    # Rerank 模型名称（启用时必填）
+    model: ""
+
 # 日志配置
 logging:
   # 日志级别：DEBUG | INFO | WARNING | ERROR

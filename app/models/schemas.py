@@ -62,13 +62,6 @@ class ActionRecord(BaseModel):
     created_at: str = ""
 
 
-class KnowledgeHit(BaseModel):
-    faq_key: str
-    question: str
-    answer: str
-    score: float = 0.0
-    doc_type: str = "faq"
-
 
 class ToolExecutionResult(BaseModel):
     kind: Literal["knowledge", "order_query", "logistics", "aftersale_refund", "handoff"]
@@ -144,7 +137,6 @@ class ConversationState(BaseModel):
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
     last_user_message: str = ""
     intent_result: IntentResult | None = None
-    retrieved_knowledge: list[KnowledgeHit] = Field(default_factory=list)
     tool_result: ToolExecutionResult | None = None
     handoff: bool = False
     handoff_reason: str = ""

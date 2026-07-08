@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Optional
 
 from app.models import ChatRequest, ConversationState
+
+logger = logging.getLogger(__name__)
 from app.store import SessionStore
 from app.utils import build_action_record, load_yaml_file
 
@@ -10,11 +14,13 @@ from app.utils import build_action_record, load_yaml_file
 DEFAULT_CLARIFICATION_PROMPT_PATH = (
     Path(__file__).resolve().parents[2] / "config" / "clarification_prompts.yml"
 )
-DEFAULT_RESPONSE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "config" / "response_prompts.yml"
+DEFAULT_RESPONSE_PROMPT_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "response_prompts.yml"
+)
 
 
 class ClarificationPromptRegistry:
-    def __init__(self, prompt_path: Path | None = None) -> None:
+    def __init__(self, prompt_path: Optional[Path] = None) -> None:
         self.prompt_path = prompt_path or DEFAULT_CLARIFICATION_PROMPT_PATH
         self._prompts = self._load()
 
@@ -30,7 +36,7 @@ class ClarificationPromptRegistry:
 
 
 class ResponsePromptRegistry:
-    def __init__(self, prompt_path: Path | None = None) -> None:
+    def __init__(self, prompt_path: Optional[Path] = None) -> None:
         self.prompt_path = prompt_path or DEFAULT_RESPONSE_PROMPT_PATH
         self._prompts = self._load()
 
@@ -46,7 +52,7 @@ class ResponsePromptRegistry:
 
 
 class ClarificationService:
-    def __init__(self, prompt_registry: ClarificationPromptRegistry | None = None) -> None:
+    def __init__(self, prompt_registry: Optional[ClarificationPromptRegistry] = None) -> None:
         self.prompt_registry = prompt_registry or ClarificationPromptRegistry()
 
     def generate(self, state: ConversationState) -> ConversationState:
@@ -67,64 +73,57 @@ class ClarificationService:
 
 
 class ResponseService:
-    def __init__(self, prompt_registry: ResponsePromptRegistry | None = None) -> None:
+    def __init__(self, prompt_registry: Optional[ResponsePromptRegistry] = None) -> None:
         self.prompt_registry = prompt_registry or ResponsePromptRegistry()
 
     def generate(self, state: ConversationState) -> ConversationState:
-        prompts = self.prompt_registry.get()
+        """生成响应（LLM 驱动，非模板）。"""
+        # 如果已经有 reply（如 agent_node 已生成），直接返回
         if state.reply:
             return state
 
-        if state.current_main_intent == "complaint":
-            state.reply = prompts.get("complaint_ack", "非常抱歉给你带来不好的体验。")
-        elif state.current_sub_intent == "after_sale_refund.consult_policy":
-            state.reply = (
-                state.tool_result.user_facing_summary
-                if state.tool_result and state.tool_result.user_facing_summary
-                else prompts["refund_policy_fallback"]
-            )
-        elif state.current_sub_intent == "after_sale_refund.request_refund":
-            state.reply = prompts["refund_request_ack"]
-        elif state.current_sub_intent == "order_query.query_status":
-            tool_data = state.tool_result.sanitized_result if state.tool_result else None
-            if tool_data:
-                state.reply = prompts["order_template"].format(
-                    order_id=tool_data["order_id"],
-                    status=tool_data["status"],
-                    product_name=tool_data["product_name"],
-                    amount=tool_data["amount"],
-                )
-            else:
-                state.reply = prompts["order_not_found"]
-        elif state.current_sub_intent == "logistics.not_received":
-            tool_data = state.tool_result.sanitized_result if state.tool_result else None
-            if tool_data and tool_data.get("timeline"):
-                latest = tool_data["timeline"][-1]
-                state.reply = prompts["logistics_template"].format(
-                    order_id=tool_data["order_id"],
-                    tracking_status=tool_data["tracking_status"],
-                    latest_time=latest["time"],
-                    latest_status=latest["status"],
-                )
-            else:
-                state.reply = prompts["logistics_not_found"]
-        elif state.current_main_intent == "handoff_service":
-            handoff_data = state.tool_result.sanitized_result if state.tool_result else {}
-            state.reply = prompts["handoff_template"].format(
-                ticket_id=handoff_data.get("ticket_id", "N/A")
-            )
-        elif state.current_sub_intent == "chitchat.greeting":
-            state.reply = prompts["greeting"]
-        elif state.current_main_intent == "unsupported_biz":
-            state.reply = prompts["unsupported_biz"]
-        else:
-            state.reply = prompts["unknown_fallback"]
+        # 构造 LLM 输入
+        system_prompt = self._build_system_prompt(state)
+        messages = self._build_messages(state)
 
-        state.latest_action_name = state.latest_action_name or "response_generator"
-        state.latest_action_result = {"reply": state.reply}
+        # 调用 LLM 生成响应（当前为模拟实现）
+        reply = self._call_llm(messages, system_prompt, state)
+
+        state.reply = reply
+        state.latest_action_name = "response_generator"
+        state.latest_action_result = {"reply": reply}
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
-            state.action_history.append(build_action_record("response_generator", state.reply))
+            state.action_history.append(build_action_record("response_generator", reply))
         return state
+
+    def _build_system_prompt(self, state: ConversationState) -> str:
+        """构造系统提示（包含意图、槽位、情绪等上下文）。"""
+        prompt = "你是一个客服助手，负责回答用户问题。"
+        prompt += f"\n当前意图：{state.current_main_intent}.{state.current_sub_intent}"
+        prompt += f"\n当前阶段：{state.stage}"
+        if state.slots:
+            prompt += f"\n已填槽位：{state.slots}"
+        if state.missing_slots:
+            prompt += f"\n缺失槽位：{state.missing_slots}"
+        if state.tool_result:
+            prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
+        prompt += "\n请根据以上信息，生成友好的客服响应。"
+        return prompt
+
+    def _build_messages(self, state: ConversationState) -> list[dict]:
+        """构造 messages（包含历史消息）。"""
+        messages = []
+        # 加入最近 5 条消息
+        recent = state.message_history[-5:]
+        messages.extend(recent)
+        return messages
+
+    def _call_llm(self, messages: list[dict], system_prompt: str, state: Optional[ConversationState] = None) -> str:
+        """调用 LLM 生成响应（当前为模拟实现）。"""
+        # TODO: 接入真实 LLM 调用（OpenAI 兼容 API）
+        logger.debug("ResponseService: calling LLM with %d messages", len(messages))
+        intent = state.current_main_intent if state else "unknown"
+        return f"模拟 LLM 响应（请接入真实 LLM）。意图：{intent}"
 
 
 class MemoryService:
