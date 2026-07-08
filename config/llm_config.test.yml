@@ -1,6 +1,6 @@
 enabled: false
 api_key: ""
-model: gpt-5.5
+model: gpt-4o
 base_url: null
 timeout_seconds: 20.0
 confidence_threshold: 0.7
