@@ -18,6 +18,7 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 - faq
 - order_service
 - logistics_service
+- refund_service
 - handoff_service
 - chitchat
 - unsupported
@@ -26,6 +27,8 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 - faq.general
 - order_service.query_status
 - logistics_service.query_status
+- refund_service.consult_policy
+- refund_service.request_refund
 - handoff_service.request_human
 - chitchat.greeting
 - chitchat.thanks
@@ -34,9 +37,10 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 判定原则：
 - 问候类：你好、在吗、hello -> chitchat.greeting
 - 感谢类：谢谢、辛苦了 -> chitchat.thanks
-- 转人工类：要人工客服 -> handoff_service.request_human
+- 转人工类：要人工客服、投诉 -> handoff_service.request_human
 - 订单状态类：查订单、发货了吗、订单状态 -> order_service.query_status
 - 物流进度类：快递到哪了、物流更新、配送进度 -> logistics_service.query_status
+- 退款退货类：退款、退货、售后、要退款 -> refund_service（根据细节判断 consult_policy 或 request_refund）
 - FAQ 类：标准知识问答，如发票怎么开、支持哪些支付方式、退款多久到账
 - 其它未覆盖能力或无法稳定判断 -> unsupported.unknown
 
