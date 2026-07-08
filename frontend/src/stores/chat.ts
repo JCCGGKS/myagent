@@ -1,8 +1,8 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { getHealth, getSession, postChat } from "@/lib/api";
-import { ChatWebSocketClient } from "@/lib/websocket";
+import { getHealth, getSession, postChat, postChatInit } from "@/lib/api";
+import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
   ChatSocketEvent,
@@ -63,11 +63,11 @@ function createInitialMessage(): MessageItem {
   };
 }
 
-function createSession(title = "新会话"): ChatSessionItem {
+function createSession(title = "新会话", sessionId?: string): ChatSessionItem {
   const timestamp = nowLabel();
   const day = todayLabel();
   return {
-    id: createSessionId(),
+    id: sessionId || createSessionId(),
     title,
     preview: "",
     createdDay: day,
@@ -88,24 +88,7 @@ export const useChatStore = defineStore("chat", () => {
   const userId = ref("user-001");
   const channel = ref("web");
   const draft = ref("");
-  const knowledgeFiles = ref<KnowledgeFileItem[]>([
-    {
-      id: "kb-001",
-      name: "售后政策说明.pdf",
-      sizeLabel: "1.2 MB",
-      uploadedAt: "09:30",
-      status: "ready",
-      typeLabel: "PDF",
-    },
-    {
-      id: "kb-002",
-      name: "物流异常FAQ.md",
-      sizeLabel: "28 KB",
-      uploadedAt: "10:05",
-      status: "ready",
-      typeLabel: "Markdown",
-    },
-  ]);
+  const knowledgeFiles = ref<KnowledgeFileItem[]>([]);
   const renameDraft = ref("");
   const renamingSessionId = ref<string | null>(null);
   const statusText = ref("等待发送");
@@ -145,7 +128,9 @@ export const useChatStore = defineStore("chat", () => {
     return groups;
   });
 
-  const client = new ChatWebSocketClient({
+  const SESSION_STORAGE_KEY = "chat_session_id";
+
+  const client = new ChatSSEClient({
     onEvent: handleSocketEvent,
     onOpenChange: (connected) => {
       socketConnected.value = connected;
@@ -194,13 +179,23 @@ export const useChatStore = defineStore("chat", () => {
     liveStage.value = null;
   }
 
-  function createNewSession() {
-    const newSession = createSession();
-    sessions.value.unshift(newSession);
-    activeSessionId.value = newSession.id;
-    draft.value = "";
-    statusText.value = "已新建会话";
-    resetLiveTurn();
+  async function createNewSession() {
+    try {
+      statusText.value = "正在创建会话...";
+      const response = await postChatInit({
+        user_id: userId.value.trim() || "user-001",
+        channel: channel.value.trim() || "web",
+      });
+      const newSession = createSession("新会话", response.session_id);
+      sessions.value.unshift(newSession);
+      activeSessionId.value = newSession.id;
+      saveSessionIdToStorage(response.session_id);
+      draft.value = "";
+      statusText.value = "已新建会话";
+      resetLiveTurn();
+    } catch (error) {
+      statusText.value = "创建会话失败";
+    }
   }
 
   function uploadKnowledgeFiles(fileList: FileList | null) {
@@ -273,6 +268,27 @@ export const useChatStore = defineStore("chat", () => {
         activeSession.value.session = await getSession(id);
       } catch (error) {
         // Ignore 404 for brand new local sessions.
+      }
+    }
+  }
+
+  function saveSessionIdToStorage(sessionId: string) {
+    localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+  }
+
+  async function initFromLocalStorage() {
+    const savedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (savedSessionId) {
+      try {
+        const sessionState = await getSession(savedSessionId);
+        const restoredSession = createSession("恢复的会话", savedSessionId);
+        restoredSession.session = sessionState;
+        sessions.value = [restoredSession];
+        activeSessionId.value = savedSessionId;
+        statusText.value = "已恢复上次会话";
+      } catch (error) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        statusText.value = "会话已过期，请新建会话";
       }
     }
   }
@@ -465,6 +481,7 @@ export const useChatStore = defineStore("chat", () => {
     sessions,
     startRenameSession,
     groupedSessions,
+    initFromLocalStorage,
     socketConnected,
     statusText,
     submitRenameSession,

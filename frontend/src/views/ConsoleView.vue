@@ -75,6 +75,7 @@ function handleShiftEnter() {
 
 onMounted(async () => {
   await store.refreshHealth();
+  await store.initFromLocalStorage();
   await store.connectSocket();
 });
 </script>
