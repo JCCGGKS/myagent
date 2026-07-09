@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import StatsPanel from "@/components/StatsPanel.vue";
 import TurnTracePanel from "@/components/TurnTracePanel.vue";
 import KnowledgeBuildPanel from "@/views/KnowledgeBuildPanel.vue";
 import { useChatStore } from "@/stores/chat";
+import { useAuthStore } from "@/stores/auth";
 
 const store = useChatStore();
+const auth = useAuthStore();
+const router = useRouter();
 const fileInput = ref<HTMLInputElement | null>(null);
+
+function handleLogout() {
+  auth.logout();
+  router.push("/login");
+}
 
 const prompts = [
   "退款多久到账？",
@@ -121,6 +130,7 @@ onMounted(async () => {
   await store.refreshHealth();
   await store.initFromLocalStorage();
   await store.connectSocket();
+  await auth.fetchMe();
 });
 </script>
 
@@ -241,6 +251,17 @@ onMounted(async () => {
           </div>
         </div>
       </nav>
+
+      <!-- 用户与登出 -->
+      <div class="sidebar-user">
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name">{{ auth.user?.username || '未登录' }}</span>
+          <span class="sidebar-user-email">{{ auth.user?.email || '' }}</span>
+        </div>
+        <button type="button" class="sidebar-logout" @click="handleLogout">
+          退出登录
+        </button>
+      </div>
     </aside>
 
     <!-- Main Workspace -->
