@@ -259,7 +259,7 @@ export const useChatStore = defineStore("chat", () => {
     }
     const trimmed = nextTitle.slice(0, 20);
     target.title = trimmed;
-    touchTargetSession(target, target.preview);
+    touchTargetSession(target);
     cancelRenameSession();
     try {
       await updateSession(id, trimmed);
@@ -291,7 +291,7 @@ export const useChatStore = defineStore("chat", () => {
     const target = sessions.value.find((session) => session.id === id);
     if (target) {
       target.title = trimmed;
-      touchTargetSession(target, target.preview);
+      touchTargetSession(target);
     }
     try {
       await updateSession(id, trimmed);
