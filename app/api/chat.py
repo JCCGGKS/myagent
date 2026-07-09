@@ -119,7 +119,7 @@ def list_sessions(
     http_request: Request,
     authorization: str | None = Header(default=None),
 ) -> list[dict[str, Any]]:
-    """列出当前 token 用户的历史会话（含 title / updated_at / preview）。"""
+    """列出当前 token 用户的历史会话（含 title / updated_at）。"""
     user_id = resolve_user_id(http_request, authorization=authorization)
     if user_id is None:
         log_warning("api", "list_sessions unauthorized")

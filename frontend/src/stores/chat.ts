@@ -67,14 +67,12 @@ function createSession(
   title = "新会话",
   sessionId?: string,
   messages?: MessageItem[],
-  preview = "",
 ): ChatSessionItem {
   const timestamp = nowLabel();
   const day = todayLabel();
   return {
     id: sessionId || createSessionId(),
     title,
-    preview,
     createdDay: day,
     createdAt: timestamp,
     updatedDay: day,
@@ -113,7 +111,7 @@ export const useChatStore = defineStore("chat", () => {
       return sessions.value;
     }
     return sessions.value.filter((session) => {
-      return `${session.title} ${session.preview}`.toLowerCase().includes(keyword);
+      return session.title.toLowerCase().includes(keyword);
     });
   });
   const groupedSessions = computed(() => {
@@ -157,22 +155,19 @@ export const useChatStore = defineStore("chat", () => {
     summary: session.value?.summary || "等待会话开始...",
   }));
 
-  function touchTargetSession(target: ChatSessionItem, preview?: string) {
+  function touchTargetSession(target: ChatSessionItem) {
     target.updatedDay = todayLabel();
     target.updatedAt = nowLabel();
-    if (preview) {
-      target.preview = preview;
-    }
   }
 
-  function touchSession(preview?: string) {
-    touchTargetSession(activeSession.value, preview);
+  function touchSession() {
+    touchTargetSession(activeSession.value);
   }
 
   function appendMessage(message: MessageItem) {
     activeSession.value.messages.push(message);
     if (message.role !== "system") {
-      touchSession(message.content);
+      touchSession();
     }
   }
 

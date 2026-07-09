@@ -66,7 +66,7 @@ class SessionStore(ABC):
 
     @abstractmethod
     def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
-        """列出某用户的会话（含 title / updated_at / preview），按 updated_at 倒序。"""
+        """列出某用户的会话（含 title / updated_at），按 updated_at 倒序。"""
 
     @abstractmethod
     def get_messages(self, session_id: str) -> list[dict[str, Any]]:
@@ -207,14 +207,11 @@ class MemorySessionStore(SessionStore):
                 continue
             if session.get("deleted_at") is not None:
                 continue
-            messages = record.get("messages", [])
-            preview = messages[-1]["content"] if messages else ""
             result.append(
                 {
                     "session_id": session.get("session_id"),
                     "title": session.get("title", "新会话"),
                     "updated_at": session.get("updated_at"),
-                    "preview": preview,
                 }
             )
         result.sort(key=lambda s: str(s.get("updated_at") or ""), reverse=True)
@@ -365,22 +362,13 @@ class SqlSessionStore(SessionStore):
 
     def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
         with self._db() as db:
-            from app.model.session import Message, Session as SessionRow
+            from app.model.session import Session as SessionRow
 
-            latest = (
-                db.query(Message.content)
-                .filter(Message.session_id == SessionRow.session_id)
-                .order_by(Message.created_at.desc())
-                .limit(1)
-                .correlate(SessionRow)
-                .scalar_subquery()
-            )
             rows = (
                 db.query(
                     SessionRow.session_id,
                     SessionRow.title,
                     SessionRow.updated_at,
-                    latest.label("preview"),
                 )
                 .filter(SessionRow.user_id == user_id)
                 .filter(SessionRow.deleted_at.is_(None))
@@ -392,7 +380,6 @@ class SqlSessionStore(SessionStore):
                     "session_id": r.session_id,
                     "title": r.title,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-                    "preview": r.preview or "",
                 }
                 for r in rows
             ]

@@ -159,7 +159,6 @@ export interface TurnItem {
 export interface ChatSessionItem {
   id: string;
   title: string;
-  preview: string;
   createdDay: string;
   createdAt: string;
   updatedDay: string;
