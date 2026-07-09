@@ -125,8 +125,10 @@ def get_session(session_id: str) -> ConversationState:
 
 
 @router.get("/sessions")
-def list_sessions(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
-    """列出当前 token 用户的历史会话（含 title / updated_at / preview），按更新时间倒序。"""
+def list_sessions(
+    authorization: str | None = Header(default=None),
+) -> list[dict[str, Any]]:
+    """列出当前 token 用户的历史会话（含 title / updated_at / preview）。"""
     user_id = get_user_id_from_token(authorization)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Missing or invalid authorization")
@@ -148,6 +150,6 @@ def rename_session(session_id: str, body: SessionRenameRequest) -> dict[str, str
 
 @router.delete("/session/{session_id}")
 def delete_session(session_id: str) -> dict[str, str]:
-    """删除会话（级联清理子表）。"""
+    """软删除会话（标记 deleted_at，保留数据与消息）。"""
     session_store.delete_session(session_id)
     return {"session_id": session_id, "status": "deleted"}

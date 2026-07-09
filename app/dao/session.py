@@ -83,7 +83,7 @@ class SessionStore(ABC):
 
     @abstractmethod
     def delete_session(self, session_id: str) -> None:
-        """删除会话（含级联子表）。"""
+        """软删除会话（标记 deleted_at，保留数据与消息）。"""
 
 
 class MemorySessionStore(SessionStore):

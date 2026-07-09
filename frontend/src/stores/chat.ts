@@ -338,14 +338,18 @@ export const useChatStore = defineStore("chat", () => {
     localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   }
 
+  async function loadSessions() {
+    const list = await getSessionList();
+    sessions.value = list.map((s) =>
+      createSession(s.title || "新会话", s.session_id, undefined, s.preview),
+    );
+  }
+
   async function initFromLocalStorage() {
     const savedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
     try {
-      const list = await getSessionList();
-      if (list.length) {
-        sessions.value = list.map((s) =>
-          createSession(s.title || "新会话", s.session_id, undefined, s.preview),
-        );
+      await loadSessions();
+      if (sessions.value.length) {
         if (savedSessionId && sessions.value.some((s) => s.id === savedSessionId)) {
           await switchSession(savedSessionId);
         } else {
