@@ -5,6 +5,8 @@
 # 这样即使容器端口未映射到宿主机也能建表）。
 # 也可加 --host 参数改用宿主机 mysql 客户端直连（读配置里的 mysql 段）。
 #
+# 会按文件名顺序执行 template/sqls/ 下所有 *.sql（如 01_users.sql、02_sessions.sql）。
+#
 # 环境变量覆盖：
 #   CONTAINER    MySQL 容器名（默认 myagent-mysql）
 #   MYSQL_ROOT_PASSWORD  容器内 root 密码（默认 root，与 docker-compose 一致）
@@ -18,6 +20,13 @@ MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-root}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_FILE="$ROOT_DIR/config/llm_config.${APP_ENV}.yml"
+
+# 按文件名排序收集所有建表 SQL
+SQL_FILES=( "$(ls "$SCRIPT_DIR"/*.sql 2>/dev/null | sort)" )
+if [ "${#SQL_FILES[@]}" -eq 0 ]; then
+  echo "未在 $SCRIPT_DIR 下找到任何 .sql 文件" >&2
+  exit 1
+fi
 
 MODE="docker"
 if [ "${1:-}" = "--host" ]; then
@@ -35,12 +44,13 @@ run_docker() {
     exit 1
   fi
 
-  echo "==> 在容器 $CONTAINER 内执行 01_users.sql（库 myagent，用户 root）"
-  docker exec -i "$CONTAINER" \
-    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" myagent < "$SCRIPT_DIR/01_users.sql"
+  for sql in "${SQL_FILES[@]}"; do
+    echo "==> 在容器 $CONTAINER 内执行 $(basename "$sql")（库 myagent，用户 root）"
+    docker exec -i "$CONTAINER" \
+      mysql -uroot -p"$MYSQL_ROOT_PASSWORD" myagent < "$sql"
+  done
 
-  echo "==> 完成。可选种子："
-  echo "    docker exec -i $CONTAINER mysql -uroot -p'$MYSQL_ROOT_PASSWORD' myagent < $SCRIPT_DIR/02_init.sql"
+  echo "==> 全部建表完成（共 ${#SQL_FILES[@]} 个文件）"
 }
 
 run_host() {
@@ -70,10 +80,12 @@ PY
     exit 1
   fi
 
-  echo "==> 对 ${USER}@${HOST}:${PORT}/${DATABASE} 执行 01_users.sql"
-  MYSQL_PWD="$PASS" mysql -h"$HOST" -P"$PORT" -u"$USER" "$DATABASE" < "$SCRIPT_DIR/01_users.sql"
+  for sql in "${SQL_FILES[@]}"; do
+    echo "==> 对 ${USER}@${HOST}:${PORT}/${DATABASE} 执行 $(basename "$sql")"
+    MYSQL_PWD="$PASS" mysql -h"$HOST" -P"$PORT" -u"$USER" "$DATABASE" < "$sql"
+  done
 
-  echo "==> 完成。可选种子：mysql ... < 02_init.sql"
+  echo "==> 全部建表完成（共 ${#SQL_FILES[@]} 个文件）"
 }
 
 if [ "$MODE" = "docker" ]; then
