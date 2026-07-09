@@ -1,0 +1,99 @@
+# 客户服务 Agent 基础设施依赖
+# 启动顺序：mysql / redis / qdrant 三者相互独立，均由后端服务依赖；
+# 后端启动时应等待三者 healthy（见 services.app.depends_on）。
+# 单独启动基础设施时可按需使用：docker compose up -d mysql redis qdrant
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: myagent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: myagent
+      MYSQL_USER: myagent
+      MYSQL_PASSWORD: myagent
+      TZ: Asia/Shanghai
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - myagent-net
+
+  redis:
+    image: redis/redis-stack:latest
+    container_name: myagent-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"      # Redis 服务端口
+      - "8001:8001"      # Redis Insight 可视化面板
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - myagent-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: myagent-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"      # REST 端口
+      - "6334:6334"      # gRPC 端口
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - myagent-net
+
+  # 后端服务（可选，如需一并编排可放开注释，并复制一份 .env / 配置）
+  # app:
+  #   build: .
+  #   container_name: myagent-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     APP_ENV: test
+  #     MYSQL_HOST: mysql
+  #     REDIS_HOST: redis
+  #     QDRANT_HOST: qdrant
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     qdrant:
+  #       condition: service_healthy
+  #   networks:
+  #     - myagent-net
+
+networks:
+  myagent-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  qdrant_data:
