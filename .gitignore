@@ -223,4 +223,7 @@ config/llm_config.local.yml
 # Application logs
 logs/
 plans/
+.codex
+.agents
+.claude
 
