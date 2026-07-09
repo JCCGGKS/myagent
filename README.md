@@ -83,7 +83,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 myagent/
 ├── app/
 │   ├── api/         # FastAPI HTTP / SSE 入口，仅做请求处理与应用装配
-│   ├── business/    # 业务逻辑层（含 auth / rag / prompts 子模块）
+│   ├── business/    # 业务逻辑层（含 auth / rag / tools / prompts 子模块）
 │   ├── config/      # 配置加载
 │   ├── dao/         # 数据访问层（session / user / knowledge / data）
 │   ├── data/        # 独立资源层（orders.json / logistics.json）
@@ -117,7 +117,8 @@ myagent/
   - `state_summary.py`: 共享的状态摘要构建（打破 context ↔ routing 循环依赖）
   - `agent_node.py`: 单轮 Agent 节点执行
   - `customer_service.py`: 客服主 Agent，编排各节点
-  - `business/rag`: 知识检索（chunker / ingestion / retriever / retrieval_strategy / rag_tool）
+  - `business/rag`: 知识检索（chunker / ingestion / sparse_bm25 / retrieval_strategy / rerank）
+  - `business/tools`: 工具层，封装供 LLM 调用的业务工具（如 `rag_tool.py` 的 `RagRetrieveTool` 检索工具）；依赖 `rag` 子包
   - `business/prompts`: LLM prompt 定义（intent 等）
   - `business/auth`: 认证业务（service / router / models / deps），依赖 `UserDAO` 依赖注入
 - `app/dao`: 数据访问层，对外提供 `SessionStore` / `UserDAO` 抽象接口与 `Memory*` / `Sql*` 双实现
