@@ -15,11 +15,15 @@ class AgentNodeService:
 
     def __init__(
         self,
-        llm: Any,  # ChatOpenAI 或兼容 LLM
+        llm: Any | None = None,
+        llm_client: Any | None = None,
+        llm_model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tool_rounds: int = 3,
     ) -> None:
-        self.llm = llm
+        # 兼容旧字段 llm：仍允许直接传入已构造的 client。
+        self.llm_client = llm if llm is not None else llm_client
+        self.llm_model = llm_model
         self.tools = tools or self._default_tools()
         self.max_tool_rounds = max_tool_rounds
 
@@ -115,17 +119,46 @@ class AgentNodeService:
         return prompt
 
     def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        """调用 LLM，返回响应（包含 content 或 tool_calls）。"""
-        # TODO: 接入真实 LLM 调用（OpenAI 兼容 API）
-        # 当前为模拟实现
+        """调用 LLM，返回响应（包含 content 或 tool_calls）。
+
+        无 client 时降级返回 mock content，避免本地/CI 不接 LLM 时崩溃。
+        """
         logger.debug("agent_node: calling LLM with %d messages", len(messages))
 
-        # 模拟响应：随机返回 tool_calls 或 content
-        # 实际实现应调用 self.llm.invoke(messages, tools=self.tools)
-        return {
-            "content": "模拟 LLM 响应（请接入真实 LLM）",
-            "tool_calls": [],
-        }
+        if self.llm_client is None or not self.llm_model:
+            return {
+                "content": "模拟 LLM 响应（请接入真实 LLM）",
+                "tool_calls": [],
+            }
+
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+                tools=self.tools if self.tools else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("agent_node: LLM call failed err=%r", exc)
+            return {"content": "抱歉，我暂时无法回答这个问题。", "tool_calls": []}
+
+        if not response.choices:
+            return {"content": "", "tool_calls": []}
+
+        message = response.choices[0].message
+        content = message.content or ""
+        tool_calls: list[dict[str, Any]] = []
+        for tc in getattr(message, "tool_calls", None) or []:
+            tool_calls.append(
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments or "{}",
+                    },
+                }
+            )
+        return {"content": content, "tool_calls": tool_calls}
 
     def _execute_tool(self, tool_name: str, tool_args: dict, state: ConversationState) -> dict[str, Any]:
         """执行单个工具，返回结构化结果。"""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.schema import ChatRequest, ConversationState
 
@@ -74,11 +74,18 @@ class ClarificationService:
 
 
 class ResponseService:
-    def __init__(self, prompt_registry: Optional[ResponsePromptRegistry] = None) -> None:
+    def __init__(
+        self,
+        prompt_registry: Optional[ResponsePromptRegistry] = None,
+        llm_client: Any | None = None,
+        llm_model: str | None = None,
+    ) -> None:
         self.prompt_registry = prompt_registry or ResponsePromptRegistry()
+        self.llm_client = llm_client
+        self.llm_model = llm_model
 
     def generate(self, state: ConversationState) -> ConversationState:
-        """生成响应（LLM 驱动，非模板）。"""
+        """生成响应（LLM 驱动，client 不可用时降级到 mock）。"""
         # 如果已经有 reply（如 agent_node 已生成），直接返回
         if state.reply:
             return state
@@ -86,9 +93,11 @@ class ResponseService:
         # 构造 LLM 输入
         system_prompt = self._build_system_prompt(state)
         messages = self._build_messages(state)
+        # messages 第一个位置是 system，剩余是 user/assistant
+        llm_messages = [{"role": "system", "content": system_prompt}] + messages
 
-        # 调用 LLM 生成响应（当前为模拟实现）
-        reply = self._call_llm(messages, system_prompt, state)
+        # 调用 LLM 生成响应
+        reply = self._call_llm(llm_messages, state)
 
         state.reply = reply
         state.latest_action_name = "response_generator"
@@ -113,18 +122,28 @@ class ResponseService:
 
     def _build_messages(self, state: ConversationState) -> list[dict]:
         """构造 messages（包含历史消息）。"""
-        messages = []
         # 加入最近 5 条消息
-        recent = state.message_history[-5:]
-        messages.extend(recent)
-        return messages
+        return list(state.message_history[-5:])
 
-    def _call_llm(self, messages: list[dict], system_prompt: str, state: Optional[ConversationState] = None) -> str:
-        """调用 LLM 生成响应（当前为模拟实现）。"""
-        # TODO: 接入真实 LLM 调用（OpenAI 兼容 API）
+    def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
+        """调用 LLM 生成响应。无 client 时降级到 mock，便于本地/CI 不接 LLM。"""
         logger.debug("ResponseService: calling LLM with %d messages", len(messages))
-        intent = state.current_main_intent if state else "unknown"
-        return f"模拟 LLM 响应（请接入真实 LLM）。意图：{intent}"
+        if self.llm_client is None or not self.llm_model:
+            intent = state.current_main_intent if state else "unknown"
+            return f"模拟 LLM 响应（请接入真实 LLM）。意图：{intent}"
+
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ResponseService: LLM call failed err=%r", exc)
+            intent = state.current_main_intent if state else "unknown"
+            return f"模拟 LLM 响应（LLM 调用失败）。意图：{intent}"
+
+        content = (response.choices[0].message.content or "") if response.choices else ""
+        return content.strip() or "抱歉，我暂时无法回答这个问题。"
 
 
 class MemoryService:

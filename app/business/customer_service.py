@@ -41,6 +41,8 @@ class CustomerServiceAgent:
         logistics_service: LogisticsService,
         handoff_service: HandoffService,
         llm_fallback_service: LLMIntentFallbackService | None = None,
+        llm_client: Any | None = None,
+        llm_model: str | None = None,
     ) -> None:
         self.store = store
         self.order_service = order_service
@@ -57,11 +59,15 @@ class CustomerServiceAgent:
             handoff_service=handoff_service,
         )
         self.context_service = ContextService(state_tracker=self.state_tracker_service)
-        self.response_service = ResponseService()
+        self.response_service = ResponseService(
+            llm_client=llm_client,
+            llm_model=llm_model,
+        )
         self.memory_service = MemoryService(store)
         # agent_node 初始化（工具调用节点）
         self.agent_node_service = AgentNodeService(
-            llm=None,  # TODO: 接入真实 LLM
+            llm_client=llm_client,
+            llm_model=llm_model,
             tools=None,  # 会从默认工具列表加载
         )
         self.graph = self._build_graph()

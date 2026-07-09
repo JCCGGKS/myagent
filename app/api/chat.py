@@ -17,6 +17,7 @@ from app.business import (
 from app.business.auth.deps import resolve_user_id
 from app.config import load_llm_config
 from app.dao import SessionStore, get_session_store
+from app.pkgs.llm import build_openai_client
 from app.schema import (
     ChatRequest,
     ChatResponse,
@@ -29,12 +30,15 @@ from app.utils import log_error, log_info, log_warning
 
 session_store: SessionStore = get_session_store()
 llm_config = load_llm_config()
+llm_client = build_openai_client(llm_config)
 agent = CustomerServiceAgent(
     store=session_store,
     order_service=OrderService(),
     logistics_service=LogisticsService(),
     handoff_service=HandoffService(),
     llm_fallback_service=LLMIntentFallbackService(llm_config),
+    llm_client=llm_client,
+    llm_model=llm_config.model if llm_client is not None else None,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])
