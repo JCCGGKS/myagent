@@ -15,10 +15,16 @@ const isUploading = computed(() =>
   store.knowledgeFiles.some((file) => file.status === "uploading"),
 );
 
+const strategyOptions = [
+  { value: "bm25", label: "稀疏向量检索 (BM25)" },
+  { value: "semantic", label: "语义向量检索" },
+  { value: "hybrid", label: "混合检索" },
+] as const;
+
 const strategyLabel = computed(() => {
   switch (ragForm.retrieval_strategy) {
     case "bm25":
-      return "关键词检索";
+      return "稀疏向量检索 (BM25)";
     case "semantic":
       return "语义向量检索";
     case "hybrid":
@@ -27,6 +33,36 @@ const strategyLabel = computed(() => {
       return String(ragForm.retrieval_strategy);
   }
 });
+
+// 当前检索策略下，哪些配置项是“激活”的（其余置灰）
+const activeFields = computed<Set<string>>(() => {
+  const s = ragForm.retrieval_strategy;
+  const set = new Set<string>(["top_k"]); // 所有策略通用
+  if (s === "bm25") {
+    set.add("metric_bm25");
+    set.add("bm25_threshold");
+  }
+  if (s === "semantic") {
+    set.add("metric_semantic");
+    set.add("semantic_threshold");
+  }
+  if (s === "hybrid") {
+    set.add("metric_semantic"); // hybrid 也用语义度量
+    set.add("fusion_method");
+    set.add("hybrid_threshold");
+    set.add("rerank");
+    // 仅加权融合时才可选语义权重
+    if (ragForm.hybrid.fusion_method === "weighted") {
+      set.add("weighted_alpha");
+    }
+  }
+  return set;
+});
+
+// 每项解释是否“激活”（用于置灰判断）
+function isActive(key: string) {
+  return activeFields.value.has(key);
+}
 
 const stats = computed(() => {
   const files = store.knowledgeFiles;
@@ -212,57 +248,120 @@ function statusLabel(item: KnowledgeFileItem): string {
         </div>
         <p v-if="configError" class="kb-file-error">{{ configError }}</p>
 
-        <div class="kb-form-grid">
-          <label class="kb-field-col">
-            <span>检索策略</span>
-            <select v-model="ragForm.retrieval_strategy">
-              <option value="bm25">关键词检索 (BM25)</option>
-              <option value="semantic">语义向量检索</option>
-              <option value="hybrid">混合检索</option>
-            </select>
-          </label>
+        <!-- 检索策略选择器 -->
+        <div class="kb-strategy-bar">
+          <button
+            v-for="opt in strategyOptions"
+            :key="opt.value"
+            type="button"
+            class="kb-strategy-tab"
+            :class="{ 'is-active': ragForm.retrieval_strategy === opt.value }"
+            @click="ragForm.retrieval_strategy = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
 
-          <label class="kb-field-col">
-            <span>最大召回数量 (top_k)</span>
-            <input v-model.number="ragForm.top_k" type="number" min="1" max="50" />
-          </label>
+        <!-- 配置卡片组：随检索策略变化，不可选的项置灰 -->
+        <div class="kb-config-cards">
+          <!-- top_k：所有策略通用 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('top_k') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">最大召回数量</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">每次检索最多返回的结果条数。数值越大召回越全但噪声也可能增多，建议 3–10。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.top_k" type="number" min="1" max="50" :disabled="!isActive('top_k')" />
+          </div>
 
-          <label v-if="ragForm.retrieval_strategy === 'semantic' || ragForm.retrieval_strategy === 'hybrid'" class="kb-field-col">
-            <span>相似度度量</span>
-            <select v-model="ragForm.semantic.metric">
+          <!-- 相似度度量 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('metric_semantic') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">相似度度量</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">向量间的距离计算方式。余弦相似度最常用；点积对向量长度敏感；欧式距离偏向空间邻近。</span>
+              </span>
+            </div>
+            <select v-model="ragForm.semantic.metric" :disabled="!isActive('metric_semantic')">
               <option value="cosine">余弦相似度</option>
               <option value="dot_product">点积</option>
               <option value="euclidean">欧式距离</option>
             </select>
-          </label>
+          </div>
 
-          <label v-if="ragForm.retrieval_strategy === 'bm25'" class="kb-field-col">
-            <span>最小匹配度 (BM25)</span>
-            <input v-model.number="ragForm.bm25.min_score_threshold" type="number" step="0.1" />
-          </label>
+          <!-- BM25 最小匹配度 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('bm25_threshold') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">BM25 最小匹配度</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">低于该分数的文档将被丢弃。阈值越高结果越精准但可能漏召回，普通语料 0–10 区间调节。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.bm25.min_score_threshold" type="number" step="0.1" :disabled="!isActive('bm25_threshold')" />
+          </div>
 
-          <label v-if="ragForm.retrieval_strategy === 'semantic'" class="kb-field-col">
-            <span>最小匹配度 (语义)</span>
-            <input v-model.number="ragForm.semantic.min_score_threshold" type="number" step="0.05" min="0" max="1" />
-          </label>
+          <!-- 语义 最小匹配度 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('semantic_threshold') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">语义最小匹配度</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">余弦值低于该阈值视为不相关。范围 0–1，0.7 左右较严格，0.5 更宽松易召回。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.semantic.min_score_threshold" type="number" step="0.05" min="0" max="1" :disabled="!isActive('semantic_threshold')" />
+          </div>
 
-          <template v-if="ragForm.retrieval_strategy === 'hybrid'">
-            <label class="kb-field-col">
-              <span>融合方式</span>
-              <select v-model="ragForm.hybrid.fusion_method">
-                <option value="rrf">倒数排序融合 (RRF)</option>
-                <option value="weighted">加权融合</option>
-              </select>
+          <!-- 融合方式 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('fusion_method') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">融合方式</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">混合检索合并两套结果的方式。RRF 按排名倒数加权、无需调权；加权融合需手动设定语义权重。</span>
+              </span>
+            </div>
+            <select v-model="ragForm.hybrid.fusion_method" :disabled="!isActive('fusion_method')">
+              <option value="rrf">倒数排序融合 (RRF)</option>
+              <option value="weighted">加权融合</option>
+            </select>
+          </div>
+
+          <!-- 语义权重 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('weighted_alpha') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">语义权重 (α)</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">语义检索在融合中的占比。0.0 偏向关键词，1.0 偏向语义，0.5 为均衡。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.hybrid.weighted_alpha" type="number" step="0.05" min="0" max="1" :disabled="!isActive('weighted_alpha')" />
+          </div>
+
+          <!-- 混合最小匹配度 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('hybrid_threshold') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">混合最小匹配度</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">融合后综合得分低于该值的文档将被过滤，范围 0–1。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.hybrid.min_score_threshold" type="number" step="0.05" min="0" max="1" :disabled="!isActive('hybrid_threshold')" />
+          </div>
+
+          <!-- 结果重排 -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('rerank') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">结果重排 (Rerank)</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">用更精细的模型对召回结果二次排序，可显著提升相关性，但会增加响应耗时。开启后使用后端默认重排模型。</span>
+              </span>
+            </div>
+            <label class="kb-switch">
+              <input v-model="ragForm.rerank.enabled" type="checkbox" :disabled="!isActive('rerank')" />
+              <span class="kb-switch-track"><span class="kb-switch-thumb"></span></span>
+              <span class="kb-switch-text">{{ ragForm.rerank.enabled ? "已开启" : "已关闭" }}</span>
             </label>
-            <label v-if="ragForm.hybrid.fusion_method === 'weighted'" class="kb-field-col">
-              <span>语义权重 (α)</span>
-              <input v-model.number="ragForm.hybrid.weighted_alpha" type="number" step="0.05" min="0" max="1" />
-            </label>
-            <label class="kb-field-col">
-              <span>最小匹配度 (混合)</span>
-              <input v-model.number="ragForm.hybrid.min_score_threshold" type="number" step="0.05" min="0" max="1" />
-            </label>
-          </template>
+          </div>
         </div>
 
         <div class="kb-modal-actions">
@@ -617,22 +716,125 @@ function statusLabel(item: KnowledgeFileItem): string {
   background: #f3f4f6;
 }
 
-.kb-form-grid {
+.kb-strategy-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.kb-strategy-tab {
+  flex: 1;
+  padding: 9px 0;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.kb-strategy-tab:hover {
+  border-color: #2563eb;
+}
+
+.kb-strategy-tab.is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.kb-config-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 20px;
+  gap: 12px;
 }
 
-.kb-field-col {
+.kb-config-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: #374151;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  transition: opacity 0.15s, background 0.15s;
 }
 
-.kb-field-col select,
-.kb-field-col input {
+.kb-config-card.is-disabled {
+  opacity: 0.45;
+  background: #f9fafb;
+  pointer-events: none;
+}
+
+.kb-config-card.is-disabled .kb-info {
+  pointer-events: auto;
+}
+
+.kb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kb-card-title {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+}
+
+.kb-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #eef2ff;
+  color: #4f46e5;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.kb-info:hover {
+  background: #e0e7ff;
+}
+
+.kb-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max(220px, 100%);
+  z-index: 20;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #f9fafb;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+  pointer-events: none;
+}
+
+.kb-info:hover .kb-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.kb-config-card select,
+.kb-config-card input:not(.kb-rerank-model) {
   padding: 7px 10px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -640,14 +842,63 @@ function statusLabel(item: KnowledgeFileItem): string {
   background: #fff;
 }
 
-.kb-field-col select:focus,
-.kb-field-col input:focus {
+.kb-config-card select:focus,
+.kb-config-card input:focus {
   outline: none;
   border-color: #2563eb;
 }
 
+.kb-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.kb-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.kb-switch-track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: #d1d5db;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.kb-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+
+.kb-switch input:checked + .kb-switch-track {
+  background: #2563eb;
+}
+
+.kb-switch input:checked + .kb-switch-track .kb-switch-thumb {
+  transform: translateX(18px);
+}
+
+.kb-switch-text {
+  font-size: 13px;
+  color: #6b7280;
+}
+
 @media (max-width: 640px) {
-  .kb-form-grid {
+  .kb-config-cards {
     grid-template-columns: 1fr;
   }
 }
