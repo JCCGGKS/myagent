@@ -21,24 +21,6 @@ def _resolve_config_path() -> Path:
     return CONFIG_DIR / f"llm_config.{env_name}.yml"
 
 
-class BM25Config(BaseModel):
-    # Qdrant 稀疏 BM25（modifier=IDF）分数通常在 0~10 量级，强命中约 4~6。
-    min_score_threshold: float = 1.0
-
-
-class SemanticConfig(BaseModel):
-    metric: str = "cosine"  # cosine | dot_product | euclidean
-    min_score_threshold: float = 0.5
-
-
-class HybridConfig(BaseModel):
-    fusion_method: str = "rrf"  # rrf | weighted
-    weighted_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
-    # RRF 融合后分数为倒数秩（约 1/(k+rank)，k=60 时最大 ~0.016），
-    # 阈值应接近 0，否则会过滤掉全部结果。默认 0.0 表示不按阈值过滤，仅取 top_k。
-    min_score_threshold: float = 0.0
-
-
 class RerankConfig(BaseModel):
     enabled: bool = False
     model: str = ""
@@ -47,9 +29,13 @@ class RerankConfig(BaseModel):
 class RagConfig(BaseModel):
     retrieval_strategy: str = "hybrid"  # bm25 | semantic | hybrid
     top_k: int = Field(default=5, ge=1)
-    bm25: BM25Config = BM25Config()
-    semantic: SemanticConfig = SemanticConfig()
-    hybrid: HybridConfig = HybridConfig()
+    # 单一最小匹配度阈值：配置读出即为最终值，不做任何归一化/映射。
+    # 不同检索策略适用量纲不同，由前端按 retrieval_strategy 控制可输入范围：
+    #   - bm25    ：BM25(Modifier.IDF) 原始分数，0~10 量级，强命中约 4~6
+    #   - semantic：余弦相似度，0~1
+    #   - hybrid  ：RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016，应接近 0
+    # 默认 0.0 表示不按阈值过滤，仅取 top_k。
+    min_score_threshold: float = 0.0
     rerank: RerankConfig = RerankConfig()
 
 
@@ -96,8 +82,8 @@ def _load_rag_config() -> RagConfig:
 def _apply_patch(model: BaseModel, patch: dict[str, object]) -> None:
     """将扁平/嵌套的 patch 应用到 pydantic model（仅支持一层嵌套）。"""
     for key, value in patch.items():
-        if key in ("bm25", "semantic", "hybrid", "rerank") and isinstance(value, dict):
-            sub = getattr(model, key)
+        if key == "rerank" and isinstance(value, dict):
+            sub = model.rerank
             for sub_key, sub_value in value.items():
                 if sub_value is not None and hasattr(sub, sub_key):
                     setattr(sub, sub_key, sub_value)
@@ -137,8 +123,8 @@ def get_rag_config_service() -> RagConfigService:
 def load_rag_config_raw() -> dict[str, object]:
     """读取当前环境配置文件中的 `rag` 原始段（dict）。
 
-    用于获取 RagConfig pydantic 模型未涵盖的字段，例如 `embedding` /
-    `qdrant` 等连接与密钥信息。无配置时返回空 dict。
+    该段由前端 PUT /rag/config 管理（检索策略、阈值、rerank 等）。
+    无配置时返回空 dict。
     """
     path = _resolve_config_path()
     if not path.exists():
@@ -149,4 +135,22 @@ def load_rag_config_raw() -> dict[str, object]:
         return {}
     if isinstance(file_data, dict) and isinstance(file_data.get("rag"), dict):
         return dict(file_data["rag"])
+    return {}
+
+
+def load_embedding_config_raw() -> dict[str, object]:
+    """读取当前环境配置文件中的顶层 `embedding` 原始段（dict）。
+
+    与 `rag` 同级，属于基础设施/密钥配置，不由前端管理。包含
+    model / api_key / dimensions。无配置时返回空 dict。
+    """
+    path = _resolve_config_path()
+    if not path.exists():
+        return {}
+    try:
+        file_data = load_yaml_file(path)
+    except Exception:
+        return {}
+    if isinstance(file_data, dict) and isinstance(file_data.get("embedding"), dict):
+        return dict(file_data["embedding"])
     return {}

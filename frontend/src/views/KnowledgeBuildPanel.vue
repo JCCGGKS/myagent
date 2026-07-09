@@ -37,26 +37,40 @@ const strategyLabel = computed(() => {
 // 当前检索策略下，哪些配置项是“激活”的（其余置灰）
 const activeFields = computed<Set<string>>(() => {
   const s = ragForm.retrieval_strategy;
-  const set = new Set<string>(["top_k"]); // 所有策略通用
-  if (s === "bm25") {
-    set.add("metric_bm25");
-    set.add("bm25_threshold");
-  }
-  if (s === "semantic") {
-    set.add("metric_semantic");
-    set.add("semantic_threshold");
-  }
+  const set = new Set<string>(["top_k", "threshold"]); // 所有策略通用
   if (s === "hybrid") {
-    set.add("metric_semantic"); // hybrid 也用语义度量
-    set.add("fusion_method");
-    set.add("hybrid_threshold");
     set.add("rerank");
-    // 仅加权融合时才可选语义权重
-    if (ragForm.hybrid.fusion_method === "weighted") {
-      set.add("weighted_alpha");
-    }
   }
   return set;
+});
+
+// 最小匹配度阈值的可输入范围与提示：由前端按检索策略控制（量纲不同）。
+const thresholdAttrs = computed<{ min: number; max: number; step: number; hint: string }>(() => {
+  switch (ragForm.retrieval_strategy) {
+    case "bm25":
+      return {
+        min: 0,
+        max: 10,
+        step: 0.1,
+        hint: "BM25 原始分数，0~10 量级，强命中约 4~6。阈值越高越精准但可能漏召回。",
+      };
+    case "semantic":
+      return {
+        min: 0,
+        max: 1,
+        step: 0.05,
+        hint: "余弦相似度，0~1。0.7 左右较严格，0.5 更宽松易召回。",
+      };
+    case "hybrid":
+      return {
+        min: 0,
+        max: 0.05,
+        step: 0.001,
+        hint: "RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016；必须接近 0，否则会过滤掉全部结果。",
+      };
+    default:
+      return { min: 0, max: 1, step: 0.05, hint: "" };
+  }
 });
 
 // 每项解释是否“激活”（用于置灰判断）
@@ -78,9 +92,7 @@ const stats = computed(() => {
 const defaultConfig: RagConfig = {
   retrieval_strategy: "hybrid",
   top_k: 5,
-  bm25: { min_score_threshold: 5.0 },
-  semantic: { metric: "cosine", min_score_threshold: 0.7 },
-  hybrid: { fusion_method: "rrf", weighted_alpha: 0.5, min_score_threshold: 0.5 },
+  min_score_threshold: 0.0,
   rerank: { enabled: false, model: "" },
 };
 const ragForm = reactive<RagConfig>(structuredClone(defaultConfig));
@@ -107,9 +119,7 @@ function applySnapshot(cfg: RagConfig) {
   const next = cloneConfig(cfg);
   ragForm.retrieval_strategy = next.retrieval_strategy;
   ragForm.top_k = next.top_k;
-  ragForm.bm25 = next.bm25;
-  ragForm.semantic = next.semantic;
-  ragForm.hybrid = next.hybrid;
+  ragForm.min_score_threshold = next.min_score_threshold;
   ragForm.rerank = next.rerank;
 }
 
@@ -275,77 +285,22 @@ function statusLabel(item: KnowledgeFileItem): string {
             <input v-model.number="ragForm.top_k" type="number" min="1" max="50" :disabled="!isActive('top_k')" />
           </div>
 
-          <!-- 相似度度量 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('metric_semantic') }">
+          <!-- 最小匹配度（单一字段，按检索策略动态范围） -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('threshold') }">
             <div class="kb-card-head">
-              <span class="kb-card-title">相似度度量</span>
+              <span class="kb-card-title">最小匹配度</span>
               <span class="kb-info">ⓘ
-                <span class="kb-tooltip">向量间的距离计算方式。余弦相似度最常用；点积对向量长度敏感；欧式距离偏向空间邻近。</span>
+                <span class="kb-tooltip">{{ thresholdAttrs.hint }}</span>
               </span>
             </div>
-            <select v-model="ragForm.semantic.metric" :disabled="!isActive('metric_semantic')">
-              <option value="cosine">余弦相似度</option>
-              <option value="dot_product">点积</option>
-              <option value="euclidean">欧式距离</option>
-            </select>
-          </div>
-
-          <!-- BM25 最小匹配度 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('bm25_threshold') }">
-            <div class="kb-card-head">
-              <span class="kb-card-title">BM25 最小匹配度</span>
-              <span class="kb-info">ⓘ
-                <span class="kb-tooltip">低于该分数的文档将被丢弃。阈值越高结果越精准但可能漏召回，普通语料 0–10 区间调节。</span>
-              </span>
-            </div>
-            <input v-model.number="ragForm.bm25.min_score_threshold" type="number" step="0.1" :disabled="!isActive('bm25_threshold')" />
-          </div>
-
-          <!-- 语义 最小匹配度 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('semantic_threshold') }">
-            <div class="kb-card-head">
-              <span class="kb-card-title">语义最小匹配度</span>
-              <span class="kb-info">ⓘ
-                <span class="kb-tooltip">余弦值低于该阈值视为不相关。范围 0–1，0.7 左右较严格，0.5 更宽松易召回。</span>
-              </span>
-            </div>
-            <input v-model.number="ragForm.semantic.min_score_threshold" type="number" step="0.05" min="0" max="1" :disabled="!isActive('semantic_threshold')" />
-          </div>
-
-          <!-- 融合方式 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('fusion_method') }">
-            <div class="kb-card-head">
-              <span class="kb-card-title">融合方式</span>
-              <span class="kb-info">ⓘ
-                <span class="kb-tooltip">混合检索合并两套结果的方式。RRF 按排名倒数加权、无需调权；加权融合需手动设定语义权重。</span>
-              </span>
-            </div>
-            <select v-model="ragForm.hybrid.fusion_method" :disabled="!isActive('fusion_method')">
-              <option value="rrf">倒数排序融合 (RRF)</option>
-              <option value="weighted">加权融合</option>
-            </select>
-          </div>
-
-          <!-- 语义权重 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('weighted_alpha') }">
-            <div class="kb-card-head">
-              <span class="kb-card-title">语义权重 (α)</span>
-              <span class="kb-info">ⓘ
-                <span class="kb-tooltip">语义检索在融合中的占比。0.0 偏向关键词，1.0 偏向语义，0.5 为均衡。</span>
-              </span>
-            </div>
-            <input v-model.number="ragForm.hybrid.weighted_alpha" type="number" step="0.05" min="0" max="1" :disabled="!isActive('weighted_alpha')" />
-          </div>
-
-          <!-- 混合最小匹配度 -->
-          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('hybrid_threshold') }">
-            <div class="kb-card-head">
-              <span class="kb-card-title">混合最小匹配度</span>
-              <span class="kb-info">ⓘ
-                <span class="kb-tooltip">融合后综合得分低于该值的文档将被过滤，范围 0–1。</span>
-              </span>
-            </div>
-            <input v-model.number="ragForm.hybrid.min_score_threshold" type="number" step="0.05" min="0" max="1" :disabled="!isActive('hybrid_threshold')" />
+            <input
+              v-model.number="ragForm.min_score_threshold"
+              type="number"
+              :step="thresholdAttrs.step"
+              :min="thresholdAttrs.min"
+              :max="thresholdAttrs.max"
+              :disabled="!isActive('threshold')"
+            />
           </div>
 
           <!-- 结果重排 -->

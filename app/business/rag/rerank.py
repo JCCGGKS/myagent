@@ -20,8 +20,8 @@ class RerankClient:
 
     依赖 config/llm_config.{env}.yml 的：
       - rag.rerank.model  重排模型（缺省 gated-rerank）
-      - rag.rerank.enabled 是否启用
-      - rag.embedding.api_key  DashScope API Key（与 embedding 复用）
+      - rag.rerank.enabled 是否启用（rag 段由前端管理）
+      - embedding.api_key  DashScope API Key（顶层 embedding 段，与 embedding 复用）
     """
 
     def __init__(
@@ -32,7 +32,7 @@ class RerankClient:
         timeout: float = 10.0,
     ) -> None:
         if not api_key:
-            raise ValueError("RerankClient 需要 DashScope api_key（配置 rag.embedding.api_key）")
+            raise ValueError("RerankClient 需要 DashScope api_key（配置 embedding.api_key）")
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
@@ -73,14 +73,16 @@ class RerankClient:
 
 def build_rerank_client() -> RerankClient | None:
     """从配置构建 RerankClient；未开启或缺少 key 时返回 None。"""
+    from app.config.rag_config import load_embedding_config_raw, load_rag_config_raw
+
     rag_cfg = load_rag_config_raw()
     rerank_cfg = rag_cfg.get("rerank", {})
     if not isinstance(rerank_cfg, dict) or not rerank_cfg.get("enabled"):
         return None
-    emb_cfg = rag_cfg.get("embedding", {})
+    emb_cfg = load_embedding_config_raw()
     api_key = emb_cfg.get("api_key") if isinstance(emb_cfg, dict) else None
     if not api_key:
-        logger.warning("rerank 已开启但未配置 rag.embedding.api_key，跳过重排")
+        logger.warning("rerank 已开启但未配置 embedding.api_key，跳过重排")
         return None
     model = rerank_cfg.get("model") or DEFAULT_RERANK_MODEL
     return RerankClient(api_key=api_key, model=model)

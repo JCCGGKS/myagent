@@ -9,7 +9,7 @@ from fastapi import File, HTTPException, UploadFile
 from fastapi import APIRouter
 
 from app.config import load_llm_config
-from app.config.rag_config import RagConfig, get_rag_config_service, load_rag_config_raw
+from app.config.rag_config import RagConfig, get_rag_config_service
 from app.dao import KnowledgeStore
 from app.pkgs.vector import QdrantClient, get_qdrant_client
 from app.business.rag import (
@@ -20,18 +20,20 @@ from app.business.rag import (
 
 
 def _build_ingestion_service() -> KnowledgeIngestionService:
-    """根据配置构建知识库入库服务。"""
+    """根据配置构建知识库入库服务。
+
+    qdrant 连接参数（host/port/collection_name/vector_size/distance）与
+    embedding 配置均来自顶层配置段，由 get_qdrant_client / build_embedding_client
+    读取；collection_name 与 vector_size 直接沿用 client 上已解析的值。
+    """
     qdrant_client = get_qdrant_client()
-    rag_config = load_rag_config_raw()
     embedding_client = build_embedding_client()
-    collection = rag_config.get("qdrant", {}).get("collection_name", "customer_service_knowledge")
-    dimensions = rag_config.get("embedding", {}).get("dimensions", 1024)
     return KnowledgeIngestionService(
         qdrant_client=qdrant_client,
         chunker=Chunker(),
         embedding_client=embedding_client,
-        collection_name=collection,
-        vector_size=dimensions,
+        collection_name=qdrant_client.collection_name,
+        vector_size=qdrant_client.vector_size,
     )
 
 

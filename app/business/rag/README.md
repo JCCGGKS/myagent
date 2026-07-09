@@ -42,7 +42,7 @@
 
 ### ingestion.py — 入库服务（已落地）
 - `EmbeddingClient`（OpenAI 兼容）：封装 `openai.OpenAI`，`embed()` / `embed_one()` 批量与单条向量化；可对接 DashScope / OpenAI 等网关。
-- `build_embedding_client()`：从 `rag.embedding`（model / api_key / dimensions）+ `llm.base_url` 构建，缺 `api_key` 返回 `None`。
+- `build_embedding_client()`：从顶层 `embedding` 段（model / api_key）+ `llm.base_url` 构建，缺 `api_key` 返回 `None`。向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 - `KnowledgeIngestionService`：
   - `ingest_markdown_file()` / `ingest_markdown_text()` / `ingest_json_records()` 三种入口。
   - `_ingest_chunks()`：对每个块同时构建 `dense`（语义）与 `bm25`（稀疏）向量，写入命名向量 `{"dense": ..., "bm25": SparseVector(...)}`，payload 含 `content / doc_type / heading_path / metadata`。
@@ -52,23 +52,23 @@
 - 真实 `qdrant_client.QdrantClient`，命名向量 `dense`（稠密）+ `bm25`（稀疏，`Modifier.IDF`）。
 - `_ensure_collection()`：懒建集合；若已存在但缺稀疏向量（旧 schema），本地开发环境重建，避免静默失败（生产应改显式迁移）。
 - `upsert(points)`：接受命名向量 dict。
-- `search_semantic()`：`using=dense`，余弦/BOT/欧氏按配置。
+- `search_semantic()`：`using=dense`，距离度量由集合创建时的 `qdrant.distance` 固定（默认余弦），不可在查询时更改。
 - `search_bm25()`：查询文本转稀疏向量，`using=bm25`。
 - `search_hybrid()`：Qdrant 原生 `Prefetch`（两个向量分别召回）+ `FusionQuery(RRF)` 融合。
-- `get_qdrant_client()`：读取 `rag.qdrant`（host/port/collection_name/api_key）与 `rag.embedding.dimensions`。
+- `get_qdrant_client()`：读取顶层 `qdrant` 段（host/port/collection_name/api_key/distance/vector_size），向量维度以 `qdrant.vector_size` 为准。
 - 默认 `host=localhost`、`port=6333`、`collection_name=customer_service_knowledge`、无鉴权。
 
 ### retrieval_strategy.py — 检索策略（已落地）
 - `Document`：统一结果结构 `id / content / metadata / score`。
-- `BM25Strategy`：调用 `search_bm25`，按 `bm25.min_score_threshold` 过滤。
+- `BM25Strategy`：调用 `search_bm25`，按单一 `min_score_threshold` 过滤。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`（不再用 mock 随机分）。
-- `HybridStrategy`：`_rrf_fusion()`（倒数排序融合，`k=60`）或 `_weighted_fusion()`（需归一化），按 `hybrid.min_score_threshold` 过滤后取前 20。
-- `get_strategy_from_config()` / `_build_strategy()`：按 `RagConfig.retrieval_strategy` 装配；语义/混合缺 embedding 配置时抛错。
+- `HybridStrategy`：`_rrf_fusion()`（倒数排序融合，`k=60`，量纲无关、固定使用），按单一 `min_score_threshold` 过滤后取前 20。加权融合已移除（BM25 与余弦分数量纲不同，跨量纲线性混合不可靠）。
+- `get_strategy_from_config()` / `_build_strategy()`：按 `RagConfig.retrieval_strategy` 装配；语义/混合缺 embedding 配置时抛错。单一 `min_score_threshold` 由 `rag` 顶层读出即用于三路过滤，不做归一化。
 
 ### rerank.py — 重排（已落地，DashScope，配置开关）
 - `RerankClient`：调用 DashScope rerank 接口（`DASHSCOPE_RERANK_URL`，默认模型 `gated-rerank`）。
 - `rerank(query, documents)`：返回 `[(原索引, 相关性分数)]` 降序；**调用失败不抛异常，降级为原始顺序**，保证链路不中断。
-- `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `api_key` 时返回 `None`。
+- `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `embedding.api_key` 时返回 `None`。
 
 ### 检索工具（已迁移至 app/business/tools）
 `RagRetrieveTool` / `get_rag_tool()` 已移至 **`app/business/tools/rag_tool.py`**（工具层），不在 `rag` 子包内：
@@ -88,34 +88,25 @@
 rag:
   retrieval_strategy: hybrid        # bm25 | semantic | hybrid
   top_k: 5
-  embedding:                        # 语义/混合检索必需
-    model: text-embedding-v4
-    api_key: <DashScope API Key>
-    dimensions: 1024
-  qdrant:                          # 可选，缺省 localhost:6333
-    host: localhost
-    port: 6333
-    collection_name: customer_service_knowledge
-    # api_key: ...                 # 可选
+  # 最小匹配度阈值（单一字段，读出即用，不做归一化映射）
+  # 不同策略量纲不同，前端按 retrieval_strategy 控制可输入范围：
+  #   bm25    0~10（强命中 4~6）  semantic 0~1  hybrid ~0（RRF 分数约 1/(k+rank)）
+  min_score_threshold: 0.0
   rerank:
     enabled: false                 # true 时启用 DashScope 重排
     model: gated-rerank
-  bm25:
-    min_score_threshold: 1.0       # IDF 分数 0~10 量级，强命中 4~6
-  semantic:
-    metric: cosine
-    min_score_threshold: 0.5
-  hybrid:
-    fusion_method: rrf             # rrf | weighted
-    weighted_alpha: 0.5
-    min_score_threshold: 0.0       # 必接近 0，见下
 ```
+
+> 注意：`embedding` / `qdrant` 均为与 `rag` **同级**的顶层基础设施段（不在 `rag` 内），
+> 不由前端 `PUT /rag/config` 管理。详见各 yml 文件。
 
 ## 阈值校准要点
 
-- **混合检索（RRF）分数极小**：融合后分数约 `1/(k+rank)`，`k=60` 时最大约 `0.016`。`hybrid.min_score_threshold` **必须为 0.0（或接近 0）**，否则会过滤掉全部结果（默认为 `0.0` = 仅按 top_k 截断，不过滤）。
-- BM25（IDF）分数在 0~10 量级，强命中约 4~6，故 `bm25.min_score_threshold` 默认 `1.0`。
-- Semantic 余弦相似度 0~1，默认 `0.5`。
+- **混合检索（RRF）分数极小**：融合后分数约 `1/(k+rank)`，`k=60` 时最大约 `0.016`。`min_score_threshold` 在 hybrid 策略下**必须接近 0**，否则会过滤掉全部结果（默认 `0.0` = 仅按 top_k 截断，不过滤）。
+- BM25（IDF）分数在 0~10 量级，强命中约 4~6。
+- Semantic 余弦相似度 0~1。
+- 三者共用同一个 `min_score_threshold` 字段，读到什么值就直接用什么值过滤（不做映射）。
+  前端按当前 `retrieval_strategy` 限制可输入范围，避免量纲误配（如在 hybrid 下误设高分导致无结果）。
 
 ## 已接入 vs 未实现
 

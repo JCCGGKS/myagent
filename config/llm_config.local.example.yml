@@ -26,29 +26,13 @@ rag:
   # 返回结果数量
   top_k: 5
 
-  # BM25 策略配置
-  bm25:
-    # 最小匹配度阈值（BM25 原始分数，低于此值的结果会被丢弃）
-    min_score_threshold: 5.0
-
-  # 语义向量策略配置
-  semantic:
-    # 距离度量方式：cosine | dot_product | euclidean
-    metric: "cosine"
-
-    # 最小匹配度阈值（余弦相似度范围 -1~1，低于此值的结果会被丢弃）
-    min_score_threshold: 0.7
-
-  # 混合检索配置
-  hybrid:
-    # 融合方法：rrf | weighted
-    fusion_method: "rrf"
-
-    # 加权融合的权重（仅当 fusion_method=weighted 时生效）
-    weighted_alpha: 0.5
-
-    # 最小匹配度阈值（融合后的 RRF 分数，低于此值的结果会被丢弃）
-    min_score_threshold: 0.5
+  # 最小匹配度阈值（单一字段，读出即用，不做归一化映射）
+  # 不同检索策略适用量纲不同，前端按 retrieval_strategy 控制可输入范围：
+  #   - bm25    ：BM25(Modifier.IDF) 原始分数 0~10 量级，强命中约 4~6
+  #   - semantic：余弦相似度 0~1
+  #   - hybrid  ：RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016，应接近 0
+  # 默认 0.0 表示不按阈值过滤，仅取 top_k。
+  min_score_threshold: 0.0
 
   # Rerank 配置
   rerank:
@@ -119,6 +103,13 @@ smtp:
   from_addr: "no-reply@myagent.local"
   # 是否使用 TLS
   use_tls: true
+
+# Embedding 配置（基础设施，不由前端控制；rag 段由前端 PUT /rag/config 管理）
+embedding:
+  # 嵌入模型名称（OpenAI 兼容网关，如 DashScope text-embedding-v4）
+  model: text-embedding-v4
+  # API Key（rerank 复用同一 Key 进行网关鉴权）
+  api_key: ""
 
 # Qdrant 配置
 qdrant:

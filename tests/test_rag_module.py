@@ -62,7 +62,6 @@ class TestRetrievalStrategy:
         self.hybrid_strategy = HybridStrategy(
             bm25_strategy=self.bm25_strategy,
             semantic_strategy=self.semantic_strategy,
-            fusion_method="rrf",
         )
 
     def test_bm25_strategy_should_retrieve(self):

@@ -71,12 +71,10 @@ class SemanticStrategy(RetrievalStrategy):
         client: QdrantClient,
         embedding_client: Any,  # EmbeddingClient
         min_score_threshold: float = 0.7,
-        metric: str = "cosine",
     ) -> None:
         self.client = client
         self.embedding_client = embedding_client
         self.min_score_threshold = min_score_threshold
-        self.metric = metric
 
     def retrieve(self, query: str) -> list[Document]:
         """执行语义向量检索。"""
@@ -84,11 +82,10 @@ class SemanticStrategy(RetrievalStrategy):
             raise RuntimeError("SemanticStrategy 未配置 embedding_client，无法生成查询向量")
         query_vector = self.embedding_client.embed_one(query)
 
-        # 2. 调用 Qdrant 向量检索
+        # 2. 调用 Qdrant 向量检索（距离度量由集合创建时的 qdrant.distance 固定）
         results = self.client.search_semantic(
             query_vector=query_vector,
             limit=20,
-            metric=self.metric,
         )
 
         # 3. 过滤低分
@@ -112,27 +109,20 @@ class HybridStrategy(RetrievalStrategy):
         self,
         bm25_strategy: BM25Strategy,
         semantic_strategy: SemanticStrategy,
-        fusion_method: str = "rrf",  # rrf | weighted
-        weighted_alpha: float = 0.5,
-        min_score_threshold: float = 0.5,
+        min_score_threshold: float = 0.0,
     ) -> None:
         self.bm25_strategy = bm25_strategy
         self.semantic_strategy = semantic_strategy
-        self.fusion_method = fusion_method
-        self.weighted_alpha = weighted_alpha
         self.min_score_threshold = min_score_threshold
 
     def retrieve(self, query: str) -> list[Document]:
-        """执行混合检索（分别召回后融合）。"""
+        """执行混合检索（分别召回后 RRF 融合）。"""
         # 1. 分别召回
         bm25_docs = self.bm25_strategy.retrieve(query)
         semantic_docs = self.semantic_strategy.retrieve(query)
 
-        # 2. 融合
-        if self.fusion_method == "rrf":
-            fused = self._rrf_fusion(bm25_docs, semantic_docs)
-        else:
-            fused = self._weighted_fusion(bm25_docs, semantic_docs, self.weighted_alpha)
+        # 2. RRF 融合（倒数排序融合，量纲无关，固定使用）
+        fused = self._rrf_fusion(bm25_docs, semantic_docs)
 
         # 3. 过滤低分，返回 top_k
         filtered = [doc for doc in fused if doc.score >= self.min_score_threshold]
@@ -177,57 +167,6 @@ class HybridStrategy(RetrievalStrategy):
         fused.sort(key=lambda x: x.score, reverse=True)
         return fused
 
-    def _weighted_fusion(
-        self,
-        bm25_docs: list[Document],
-        semantic_docs: list[Document],
-        alpha: float,
-    ) -> list[Document]:
-        """加权融合（需归一化分数）。"""
-        # 归一化 BM25 分数
-        bm25_max = max((doc.score for doc in bm25_docs), default=1.0)
-        bm25_min = min((doc.score for doc in bm25_docs), default=0.0)
-        bm25_range = bm25_max - bm25_min if bm25_max != bm25_min else 1.0
-
-        # 归一化语义分数（余弦相似度已在 0~1 范围）
-        sem_max = max((doc.score for doc in semantic_docs), default=1.0)
-        sem_min = min((doc.score for doc in semantic_docs), default=0.0)
-        sem_range = sem_max - sem_min if sem_max != sem_min else 1.0
-
-        # 构建融合后的文档列表
-        doc_map: dict[str, Document] = {}
-        scores: dict[str, float] = {}
-
-        for doc in bm25_docs + semantic_docs:
-            if doc.id not in doc_map:
-                doc_map[doc.id] = doc
-
-        for doc in bm25_docs:
-            doc_id = doc.id
-            normalized_score = (doc.score - bm25_min) / bm25_range
-            if doc_id not in scores:
-                scores[doc_id] = 0.0
-            scores[doc_id] += (1 - alpha) * normalized_score
-
-        for doc in semantic_docs:
-            doc_id = doc.id
-            normalized_score = (doc.score - sem_min) / sem_range
-            if doc_id not in scores:
-                scores[doc_id] = 0.0
-            scores[doc_id] += alpha * normalized_score
-
-        fused = [
-            Document(
-                id=doc_id,
-                content=doc_map[doc_id].content,
-                metadata=doc_map[doc_id].metadata,
-                score=score,
-            )
-            for doc_id, score in scores.items()
-        ]
-        fused.sort(key=lambda x: x.score, reverse=True)
-        return fused
-
 
 def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalStrategy:
     """从 RAG 配置创建对应检索策略实例。
@@ -250,43 +189,45 @@ def _build_embedding_client() -> Any:
     embedding_client = build_embedding_client()
     if embedding_client is None:
         raise RuntimeError(
-            "未配置 rag.embedding.api_key，无法进行语义/混合检索。"
-            "请在 config/llm_config.{env}.yml 的 rag.embedding 段配置 model/api_key/dimensions。"
+            "未配置 embedding.api_key，无法进行语义/混合检索。"
+            "请在 config/llm_config.{env}.yml 的顶层 embedding 段配置 model/api_key。"
         )
     return embedding_client
 
 
 def _build_strategy(client: QdrantClient, rag_config: RagConfig) -> RetrievalStrategy:
-    """根据 RagConfig 构建具体检索策略。"""
+    """根据 RagConfig 构建具体检索策略。
+
+    min_score_threshold 为单一字段（rag 顶层），直接读出即用，不做归一化映射。
+    同一阈值会同时作用于 bm25 / semantic 的单路过滤与 hybrid 的融合后过滤。
+    前端按 retrieval_strategy 控制可输入范围，避免量纲不匹配（如 hybrid 误设高分）。
+    """
     retrieval_strategy = rag_config.retrieval_strategy
+    threshold = rag_config.min_score_threshold
 
     if retrieval_strategy == "bm25":
         return BM25Strategy(
             client=client,
-            min_score_threshold=rag_config.bm25.min_score_threshold,
+            min_score_threshold=threshold,
         )
     elif retrieval_strategy == "semantic":
         return SemanticStrategy(
             client=client,
             embedding_client=_build_embedding_client(),
-            min_score_threshold=rag_config.semantic.min_score_threshold,
-            metric=rag_config.semantic.metric,
+            min_score_threshold=threshold,
         )
     else:  # hybrid
         bm25_strategy = BM25Strategy(
             client=client,
-            min_score_threshold=rag_config.bm25.min_score_threshold,
+            min_score_threshold=threshold,
         )
         semantic_strategy = SemanticStrategy(
             client=client,
             embedding_client=_build_embedding_client(),
-            min_score_threshold=rag_config.semantic.min_score_threshold,
-            metric=rag_config.semantic.metric,
+            min_score_threshold=threshold,
         )
         return HybridStrategy(
             bm25_strategy=bm25_strategy,
             semantic_strategy=semantic_strategy,
-            fusion_method=rag_config.hybrid.fusion_method,
-            weighted_alpha=rag_config.hybrid.weighted_alpha,
-            min_score_threshold=rag_config.hybrid.min_score_threshold,
+            min_score_threshold=threshold,
         )

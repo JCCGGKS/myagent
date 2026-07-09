@@ -149,7 +149,6 @@ class QdrantClient:
         query_vector: list[float],
         limit: int = 10,
         score_threshold: float | None = None,
-        metric: str = "cosine",
     ) -> list[dict[str, Any]]:
         self._ensure_collection()
         result = self._client.query_points(
@@ -226,8 +225,12 @@ def _hit_to_dict(hit: Any) -> dict[str, Any]:
 
 
 def _read_qdrant_config() -> dict[str, Any]:
-    """读取 qdrant 配置（rag.qdrant 段）与 embedding 维度（rag.embedding.dimensions）。"""
-    rag: dict[str, Any] = {}
+    """读取 qdrant 配置（config 文件的顶层段，与 rag 同级）。
+
+    local 覆盖文件的同名键会叠加。embedding 配置由 app.config.rag_config
+    单独读取，这里不涉及。
+    """
+    qdrant_cfg: dict[str, Any] = {}
     for path in [get_config_path(), get_config_path("local")]:
         if not path.exists():
             continue
@@ -235,25 +238,23 @@ def _read_qdrant_config() -> dict[str, Any]:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception:
             continue
-        if isinstance(data, dict) and isinstance(data.get("rag"), dict):
-            rag.update(data["rag"])
-    return rag
+        if isinstance(data, dict) and isinstance(data.get("qdrant"), dict):
+            qdrant_cfg.update(data["qdrant"])
+    return qdrant_cfg
 
 
 def get_qdrant_client() -> QdrantClient:
     """根据配置创建 Qdrant 客户端。
 
-    读取 rag.qdrant（host/port/collection_name/api_key）与
-    rag.embedding.dimensions 决定稠密向量维度；缺失则用默认值。
+    读取顶层 qdrant 段（host/port/collection_name/api_key/distance/vector_size）；
+    缺失则用默认值。向量维度以 qdrant.vector_size 为准，须与嵌入模型输出维度一致。
     """
-    cfg = _read_qdrant_config()
-    q = cfg.get("qdrant", {}) if isinstance(cfg.get("qdrant"), dict) else {}
-    emb = cfg.get("embedding", {}) if isinstance(cfg.get("embedding"), dict) else {}
+    q = _read_qdrant_config()
     return QdrantClient(
         host=q.get("host", "localhost"),
         port=q.get("port", 6333),
         collection_name=q.get("collection_name", "customer_service_knowledge"),
         api_key=q.get("api_key"),
-        vector_size=emb.get("dimensions", 1024),
+        vector_size=q.get("vector_size", 1024),
         distance=q.get("distance", "COSINE"),
     )
