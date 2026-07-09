@@ -58,10 +58,10 @@ def login(data: UserLogin, user_dao: UserDAO) -> LoginResponse:
 
 
 def forgot_password(data: ForgotPassword, user_dao: UserDAO) -> None:
-    """找回密码：用户存在才签发 reset token 并发送邮件。"""
+    """找回密码：邮箱未注册直接报错，已注册则签发 reset token 并发送邮件。"""
     user = user_dao.get_by_email(data.email)
     if user is None:
-        return
+        raise AuthError("邮箱地址未注册", status_code=404)
     reset_token = create_reset_token(user["id"], user["email"])
     send_reset_email(user["email"], reset_token)
 

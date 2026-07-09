@@ -93,9 +93,14 @@ def test_forgot_and_reset_password():
     login(UserLogin(username="dave", password="newpass1"), user_dao)
 
 
-def test_forgot_password_unknown_email_no_error():
+def test_forgot_password_unknown_email_raises():
     user_dao = make_user_dao()
-    forgot_password(ForgotPassword(email="nobody@x.com"), user_dao)
+    try:
+        forgot_password(ForgotPassword(email="nobody@x.com"), user_dao)
+    except AuthError as e:
+        assert e.status_code == 404
+    else:
+        raise AssertionError("未注册邮箱应提示未注册")
 
 
 def test_reset_with_bad_token_fails():

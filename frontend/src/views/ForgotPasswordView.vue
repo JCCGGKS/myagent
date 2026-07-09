@@ -7,11 +7,13 @@ import { postForgotPassword, postResetPassword } from "@/lib/api";
 const route = useRoute();
 const router = useRouter();
 
-// 步骤：1=输入邮箱发链接，2=输入 token+新密码重置
+// 步骤：1=输入邮箱发链接，2=凭邮件链接 token 设置新密码
+// 注意：步骤 2 不需要用户手动输入凭证，token 已通过链接 ?token= 带入
 const step = ref<number>((route.query.token as string) ? 2 : 1);
 const email = ref("");
 const token = ref<string>((route.query.token as string) || "");
 const newPassword = ref("");
+const confirmPassword = ref("");
 const message = ref("");
 const error = ref("");
 const loading = ref(false);
@@ -26,8 +28,8 @@ async function requestLink() {
   loading.value = true;
   try {
     const res = await postForgotPassword({ email: email.value });
-    message.value = res.detail || "若账号存在，重置链接已发送";
-    step.value = 2;
+    // 成功：仅提示链接已发送，停留在邮箱输入页，不跳转到凭证/密码页
+    message.value = res.detail || "重置链接已发送";
   } catch (e) {
     error.value = e instanceof Error ? e.message : "请求失败";
   } finally {
@@ -38,8 +40,12 @@ async function requestLink() {
 async function doReset() {
   error.value = "";
   message.value = "";
-  if (!token.value || !newPassword.value) {
-    error.value = "请填写重置凭证与新密码";
+  if (!newPassword.value || !confirmPassword.value) {
+    error.value = "请填写新密码与确认密码";
+    return;
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    error.value = "两次输入的新密码不一致";
     return;
   }
   loading.value = true;
@@ -60,7 +66,7 @@ async function doReset() {
     <div class="auth-card">
       <h1>找回密码</h1>
 
-      <!-- 步骤 1：输入邮箱 -->
+      <!-- 步骤 1：输入邮箱，提交后仅提示链接已发送，不跳转 -->
       <form v-if="step === 1" class="auth-form" @submit.prevent="requestLink">
         <label>
           <span>邮箱</span>
@@ -74,15 +80,15 @@ async function doReset() {
         </div>
       </form>
 
-      <!-- 步骤 2：输入 token + 新密码 -->
+      <!-- 步骤 2：点击邮件链接后，直接输入新密码与确认密码（无需输入凭证） -->
       <form v-else class="auth-form" @submit.prevent="doReset">
-        <label>
-          <span>重置凭证</span>
-          <input v-model="token" type="text" placeholder="从邮件链接中获取的重置凭证" />
-        </label>
         <label>
           <span>新密码（至少 6 位）</span>
           <input v-model="newPassword" type="password" placeholder="输入新密码" />
+        </label>
+        <label>
+          <span>确认密码</span>
+          <input v-model="confirmPassword" type="password" placeholder="再次输入新密码" />
         </label>
         <p v-if="error" class="auth-error">{{ error }}</p>
         <p v-if="message" class="auth-ok">{{ message }}</p>

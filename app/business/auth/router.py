@@ -43,9 +43,12 @@ def api_login(data: UserLogin, user_dao: UserDAO = Depends(get_user_dao)) -> Log
 
 @router.post("/forgot-password")
 def api_forgot_password(data: ForgotPassword, user_dao: UserDAO = Depends(get_user_dao)) -> dict[str, str]:
-    # 无论用户是否存在均返回成功（不泄露账号存在性）
-    forgot_password(data, user_dao)
-    return {"detail": "若账号存在，重置链接已发送"}
+    """找回密码：邮箱未注册返回 404，已注册则发送重置链接。"""
+    try:
+        forgot_password(data, user_dao)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return {"detail": "重置链接已发送"}
 
 
 @router.post("/reset-password")
