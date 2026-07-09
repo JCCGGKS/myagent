@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
@@ -9,6 +10,10 @@ from typing import Any
 from sqlalchemy import func, update
 
 from app.schema import ConversationState
+from app.utils import log_tool_call
+
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -179,8 +184,16 @@ class MemorySessionStore(SessionStore):
         user_facing_summary: str,
         status: str = "success",
     ) -> None:
-        # tool_calls 表已从本通道移除，这里保留接口但不落库。
-        return None
+        # tool_calls 表已从本通道移除；改为写入独立 tool.log，便于调试与评测采样。
+        log_tool_call(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_category=tool_category,
+            request_args=request_args,
+            sanitized_result=sanitized_result,
+            user_facing_summary=user_facing_summary,
+            status=status,
+        )
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         record = self._sessions.get(session_id)
@@ -333,8 +346,16 @@ class SqlSessionStore(SessionStore):
         user_facing_summary: str,
         status: str = "success",
     ) -> None:
-        # tool_calls 表已从本通道移除，这里保留接口但不落库。
-        return None
+        # tool_calls 表已从本通道移除；改为写入独立 tool.log，便于调试与评测采样。
+        log_tool_call(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_category=tool_category,
+            request_args=request_args,
+            sanitized_result=sanitized_result,
+            user_facing_summary=user_facing_summary,
+            status=status,
+        )
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         state = self._states.get(session_id)

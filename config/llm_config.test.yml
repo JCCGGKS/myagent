@@ -146,5 +146,6 @@ logging:
   # 是否写入文件
   file: true
 
-  # 日志文件路径（相对于项目根目录）
-  file_path: logs/app.log
+  # 日志输出目录（相对于项目根目录）
+  # 文件命名：app-YYYY-MM-DD.log，按天切分，保留 14 天
+  dir_path: logs

@@ -25,6 +25,7 @@ from app.schema import (
     SessionInitResponse,
     SessionRenameRequest,
 )
+from app.utils import log_error, log_info, log_warning
 
 session_store: SessionStore = get_session_store()
 llm_config = load_llm_config()
@@ -46,6 +47,9 @@ def chat(
     authorization: str | None = Header(default=None),
 ) -> ChatResponse:
     user_id = resolve_user_id(http_request, authorization)
+    if user_id is None:
+        log_warning("api", "chat unauthorized session=%s", request.session_id)
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     return agent.chat(request, user_id=user_id)
 
 
@@ -57,7 +61,11 @@ def chat_init(
 ) -> SessionInitResponse:
     """初始化会话，返回 session_id。user_id 必须来自 token。"""
     user_id = resolve_user_id(http_request, authorization)
+    if user_id is None:
+        log_warning("api", "chat_init unauthorized")
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     session_id = session_store.create_session(user_id, request.channel, request.title)
+    log_info("api", "chat_init success session=%s user=%s channel=%s", session_id, user_id, request.channel)
     return SessionInitResponse(session_id=session_id, title=request.title)
 
 
@@ -70,6 +78,13 @@ async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGen
         for event in agent.chat_events(request, user_id=user_id):
             yield _event_to_sse(event)
     except Exception as exc:
+        log_error(
+            "api",
+            "chat_stream crashed session=%s user=%s err=%r",
+            request.session_id,
+            user_id,
+            exc,
+        )
         yield _event_to_sse({"type": "error", "message": str(exc)})
         yield "event: done\ndata: {}\n\n"
 
@@ -81,8 +96,11 @@ async def chat_stream(
     authorization: str | None = Header(default=None),
 ) -> StreamingResponse:
     user_id = resolve_user_id(http_request, authorization)
+    if user_id is None:
+        log_warning("api", "chat_stream unauthorized session=%s", request.session_id)
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     return StreamingResponse(
-        _chat_stream_generator(request, user_id=user_id),
+        _chat_stream_generator(request, user_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -99,23 +117,10 @@ def list_sessions(
 ) -> list[dict[str, Any]]:
     """列出当前 token 用户的历史会话（含 title / updated_at / preview）。"""
     user_id = resolve_user_id(http_request, authorization=authorization)
+    if user_id is None:
+        log_warning("api", "list_sessions unauthorized")
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     return session_store.list_sessions(user_id)
-
-
-@router.get("/session/{session_id}", response_model=ConversationState)
-def get_session(
-    session_id: str,
-    http_request: Request,
-    authorization: str | None = Header(default=None),
-) -> ConversationState:
-    """获取某会话状态，必须属于当前 token 用户。"""
-    user_id = resolve_user_id(http_request, authorization=authorization)
-    session = session_store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if session.user_id != user_id:
-        raise HTTPException(status_code=403, detail="无权访问该会话")
-    return session
 
 
 @router.get("/session/{session_id}/messages")
@@ -126,10 +131,21 @@ def get_session_messages(
 ) -> list[dict[str, Any]]:
     """读取某会话的历史消息，必须属于当前 token 用户。"""
     user_id = resolve_user_id(http_request, authorization=authorization)
+    if user_id is None:
+        log_warning("api", "get_session_messages unauthorized session=%s", session_id)
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
+        log_warning("api", "get_session_messages not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
     if owner_id != user_id:
+        log_warning(
+            "api",
+            "get_session_messages forbidden session=%s owner=%s requester=%s",
+            session_id,
+            owner_id,
+            user_id,
+        )
         raise HTTPException(status_code=403, detail="无权访问该会话")
     return session_store.get_messages(session_id)
 
@@ -143,12 +159,24 @@ def rename_session(
 ) -> dict[str, str]:
     """重命名会话，必须属于当前 token 用户。"""
     user_id = resolve_user_id(http_request, authorization=authorization)
+    if user_id is None:
+        log_warning("api", "rename_session unauthorized session=%s", session_id)
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
+        log_warning("api", "rename_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
     if owner_id != user_id:
+        log_warning(
+            "api",
+            "rename_session forbidden session=%s owner=%s requester=%s",
+            session_id,
+            owner_id,
+            user_id,
+        )
         raise HTTPException(status_code=403, detail="无权访问该会话")
     session_store.update_title(session_id, body.title)
+    log_info("api", "rename_session success session=%s user=%s title=%r", session_id, user_id, body.title)
     return {"session_id": session_id, "title": body.title}
 
 
@@ -160,10 +188,22 @@ def delete_session(
 ) -> dict[str, str]:
     """软删除会话，必须属于当前 token 用户。"""
     user_id = resolve_user_id(http_request, authorization=authorization)
+    if user_id is None:
+        log_warning("api", "delete_session unauthorized session=%s", session_id)
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
+        log_warning("api", "delete_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
     if owner_id != user_id:
+        log_warning(
+            "api",
+            "delete_session forbidden session=%s owner=%s requester=%s",
+            session_id,
+            owner_id,
+            user_id,
+        )
         raise HTTPException(status_code=403, detail="无权访问该会话")
     session_store.delete_session(session_id)
+    log_info("api", "delete_session success session=%s user=%s", session_id, user_id)
     return {"session_id": session_id, "status": "deleted"}
