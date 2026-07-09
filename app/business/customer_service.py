@@ -76,7 +76,6 @@ class CustomerServiceAgent:
         builder.add_node("state_tracker", self.state_tracker)
         builder.add_node("policy_layer", self.policy_layer)
         builder.add_node("clarification_node", self.clarification_node)
-        # agent_node 替代 business_tool_executor 和 knowledge_retriever
         builder.add_node("agent_node", self.agent_node)
         builder.add_node("handoff_node", self.handoff_node)
         builder.add_node("response_generator", self.response_generator)
@@ -151,11 +150,6 @@ class CustomerServiceAgent:
         if route == "clarification_node":
             payload = self.clarification_node(payload)
             events.extend(self._node_state_to_events("clarification_node", payload["state"]))
-        elif route == "knowledge_retriever":
-            payload = self.knowledge_retriever(payload)
-            events.extend(self._node_state_to_events("knowledge_retriever", payload["state"]))
-            payload = self.response_generator(payload)
-            events.extend(self._node_state_to_events("response_generator", payload["state"]))
         elif route == "business_tool_executor":
             payload = self.business_tool_executor(payload)
             events.extend(self._node_state_to_events("business_tool_executor", payload["state"]))
@@ -234,9 +228,6 @@ class CustomerServiceAgent:
         route = self.route_after_policy(payload)
         if route == "clarification_node":
             payload = self.clarification_node(payload)
-        elif route == "knowledge_retriever":
-            payload = self.knowledge_retriever(payload)
-            payload = self.response_generator(payload)
         elif route == "business_tool_executor":
             payload = self.business_tool_executor(payload)
             payload = self.response_generator(payload)
@@ -328,12 +319,6 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         logger.debug("node=agent_node session=%s", state.session_id)
         payload["state"] = self.agent_node_service.run(state)
-        return payload
-
-    # knowledge_retriever 已移除，功能由 agent_node 里的 rag_retrieve 工具替代
-        state: ConversationState = payload["state"]
-        logger.debug("node=knowledge_retriever session=%s", state.session_id)
-        payload["state"] = self.rag_retrieval_service.retrieve(state)
         return payload
 
     def business_tool_executor(self, payload: dict[str, Any]) -> dict[str, Any]:
