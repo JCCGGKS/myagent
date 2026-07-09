@@ -9,7 +9,7 @@ This is a customer service Agent MVP with a FastAPI backend and Vue 3 frontend. 
 myagent/
 ├── app/
 │   ├── api/         # FastAPI HTTP / SSE 入口，仅做请求处理与应用装配
-│   ├── business/    # 业务逻辑层（含 auth / rag / prompts 子模块）
+│   ├── business/    # 业务逻辑层（含 auth / rag / tools / prompts 子模块）
 │   ├── config/      # 配置加载
 │   ├── dao/         # 数据访问层（session / user / knowledge / data）
 │   ├── data/        # 独立资源层（orders.json / logistics.json）
@@ -43,7 +43,8 @@ Core backend modules:
   - `state_summary.py`: 共享的状态摘要构建（打破 context ↔ routing 循环依赖）
   - `agent_node.py`: 单轮 Agent 节点执行
   - `customer_service.py`: 客服主 Agent，编排各节点
-  - `app/business/rag`: 知识检索（chunker / ingestion / retriever / retrieval_strategy / rag_tool）
+  - `app/business/rag`: 知识检索（chunker / ingestion / sparse_bm25 / retrieval_strategy / rerank）
+  - `app/business/tools`: 工具层，封装供 LLM 调用的业务工具（如 `rag_tool.py` 的 `RagRetrieveTool` 检索工具）；依赖 `rag` 子包
   - `app/business/prompts`: LLM prompt 定义（intent 等）
   - `app/business/auth`: 认证业务（service / router / models / deps），依赖 `UserDAO` 依赖注入
 - `app/dao`: 数据访问层，对外提供 `SessionStore` / `UserDAO` 抽象接口与 `Memory*` / `Sql*` 双实现

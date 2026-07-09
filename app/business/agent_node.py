@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from app.schema import ConversationState, ToolExecutionResult
-from app.business.rag import RagRetrieveTool
+from app.business.tools.rag_tool import RagRetrieveTool
 
 logger = logging.getLogger(__name__)
 

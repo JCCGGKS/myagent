@@ -15,12 +15,15 @@
 
 查询 query
   └─ RetrievalStrategy   bm25 / semantic / hybrid(rrf)
-       └─ RagRetrieveTool
+       └─ (由 app/business/tools/rag_tool.py 的 RagRetrieveTool 调用)
             ├─ _dedup        按内容去重
             ├─ _rerank        DashScope 重排（配置开关，失败降级）
             │   或 _apply_credibility   doc_type 可信度微调
             └─ top_k 截断
 ```
+
+> 检索工具封装 `RagRetrieveTool` / `get_rag_tool()` 已迁移至 **`app/business/tools/rag_tool.py`**
+> （`app/business/tools` 工具层），不再属于 `rag` 子包。详见该层文档。
 
 ## 各文件落地实现
 
@@ -31,7 +34,7 @@
 - 递归分隔符优先级：`\n\n` > `\n` > `。` > `；` > `，` > ` ` > 硬切（保留 `chunk_overlap`）。
 - 默认 `chunk_size=800`、`chunk_overlap=100`、`min_chunk_size=50`，均在构造参数中可调。
 
-### sparse_bm25.py — 稀疏向量 BM25（已落地，参考 template/rag.md）
+### sparse_bm25.py — 稀疏向量 BM25（已落地）
 - `tokenize()`：小写 ASCII 词 + 单个汉字（`[a-z0-9]+|[一-鿿]`），MVP 简化分词。
 - `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**；IDF 由 Qdrant 在查询时按全局统计计算（`Modifier.IDF`）。
 - 词→索引用 md5 稳定映射到 `VOCAB_SIZE = 1<<20` 的哈希空间，无需维护真实词表。
@@ -67,7 +70,8 @@
 - `rerank(query, documents)`：返回 `[(原索引, 相关性分数)]` 降序；**调用失败不抛异常，降级为原始顺序**，保证链路不中断。
 - `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `api_key` 时返回 `None`。
 
-### rag_tool.py — 检索工具封装（已落地）
+### 检索工具（已迁移至 app/business/tools）
+`RagRetrieveTool` / `get_rag_tool()` 已移至 **`app/business/tools/rag_tool.py`**（工具层），不在 `rag` 子包内：
 - `RagRetrieveTool.run()`：`retrieve → _dedup → (rerank | credibility) → top_k`。
 - `_dedup()`：按 `content` 去重，保留同内容中分数最高的一份。
 - `_apply_credibility()`：未启用 rerank 时，按 `score + DOC_TYPE_CREDIBILITY[doc_type]` 微调排序（`policy 0.05 > faq 0.03 > product 0.02 > help 0.01`）。
@@ -76,7 +80,7 @@
 - 提供 `name / description / to_tool_schema()` 供 LLM 工具调用；`get_rag_tool()` 从 `llm_config.local.yml` 读配置。
 
 ### __init__.py — 统一导出
-导出 `QdrantClient / BM25Strategy / SemanticStrategy / HybridStrategy / RagRetrieveTool / Chunker / Chunk / KnowledgeIngestionService / EmbeddingClient / build_embedding_client / build_sparse_vector / tokenize / RerankClient / build_rerank_client`。
+导出 `QdrantClient / BM25Strategy / SemanticStrategy / HybridStrategy / Chunker / Chunk / KnowledgeIngestionService / EmbeddingClient / build_embedding_client / build_sparse_vector / tokenize / RerankClient / build_rerank_client`（不含 `RagRetrieveTool`，见 tools 层）。
 
 ## 配置说明（config/llm_config.{env}.yml 的 `rag` 段）
 
@@ -128,8 +132,8 @@ rag:
 ## 端到端调用示例
 
 ```python
-from app.business.rag import get_rag_tool, KnowledgeIngestionService, get_qdrant_client
-from app.business.rag import build_embedding_client
+from app.business.rag import KnowledgeIngestionService, get_qdrant_client, build_embedding_client
+from app.business.tools import get_rag_tool
 
 # 入库
 qdrant = get_qdrant_client()

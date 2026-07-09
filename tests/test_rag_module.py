@@ -3,8 +3,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.business.rag import RagRetrieveTool, BM25Strategy, SemanticStrategy, HybridStrategy
+from app.business.rag import BM25Strategy, SemanticStrategy, HybridStrategy
 from app.business.rag.retrieval_strategy import Document
+from app.business.tools.rag_tool import RagRetrieveTool
 from app.pkgs.vector import QdrantClient
 
 
