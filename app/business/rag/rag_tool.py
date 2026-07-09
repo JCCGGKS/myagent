@@ -3,9 +3,20 @@ from __future__ import annotations
 from typing import Any
 
 from app.business.rag.retrieval_strategy import get_strategy_from_config
+from app.config.rag_config import get_rag_config_service
+from app.business.rag.rerank import build_rerank_client
 
 # 后端默认重排模型（前端开启重排但未指定模型时使用）
-DEFAULT_RERANK_MODEL = "bge-reranker-v2-m3"
+DEFAULT_RERANK_MODEL = "gated-rerank"
+
+# doc_type 可信度权重（设计 §7.3：优先保留高可信来源文档）。
+# 仅在不启用 Rerank 时作为相关性分数的微调，作为同分/近分时的来源偏好。
+DOC_TYPE_CREDIBILITY: dict[str, float] = {
+    "policy": 0.05,
+    "faq": 0.03,
+    "product": 0.02,
+    "help": 0.01,
+}
 
 
 class RagRetrieveTool:
@@ -15,14 +26,22 @@ class RagRetrieveTool:
         self,
         strategy: RetrievalStrategy | None = None,
         top_k: int = 5,
-        rerank_enabled: bool = False,
+        rerank_enabled: bool | None = None,
         rerank_model: str = "",
+        credibility_weights: dict[str, float] | None = None,
     ) -> None:
         self.strategy = strategy or get_strategy_from_config()
         self.top_k = top_k
-        self.rerank_enabled = rerank_enabled
+        # None 表示运行时由 RagConfig 决定（支持 /rag/config 动态开关）
+        self._rerank_enabled_override = rerank_enabled
         # 未指定模型时使用后端默认重排模型
         self.rerank_model = rerank_model or DEFAULT_RERANK_MODEL
+        self.credibility_weights = credibility_weights if credibility_weights is not None else DOC_TYPE_CREDIBILITY
+
+    def _is_rerank_enabled(self) -> bool:
+        if self._rerank_enabled_override is not None:
+            return self._rerank_enabled_override
+        return get_rag_config_service().get_config().rerank.enabled
 
     def run(self, query: str) -> list[dict[str, Any]]:
         """执行检索，返回结构化结果。
@@ -36,21 +55,55 @@ class RagRetrieveTool:
         # 1. 执行检索
         docs = self.strategy.retrieve(query)
 
-        # 2. Rerank（如果启用）
-        if self.rerank_enabled:
-            docs = self._rerank(docs, query)
+        # 2. 去重（设计 §7.3）：按内容去重，保留分数更高者
+        docs = self._dedup(docs)
 
-        # 3. 返回 top_k
+        # 3. Rerank（如果启用）或按可信度微调排序
+        if self._is_rerank_enabled():
+            docs = self._rerank(docs, query)
+        else:
+            docs = self._apply_credibility(docs)
+
+        # 4. 返回 top_k
         return [doc.to_dict() for doc in docs[: self.top_k]]
 
-    def _rerank(self, docs: list[Document], query: str) -> list[Document]:
-        """Rerank 结果（TODO: 接入真实 Rerank 模型）。"""
-        # TODO: 接入真实 Rerank 模型（如 bge-reranker）
-        # 当前为模拟实现，随机打乱后返回
-        import random
+    def _dedup(self, docs: list[Document]) -> list[Document]:
+        """按内容去重，保留同内容中分数最高的一份。"""
+        best: dict[str, Document] = {}
+        for d in docs:
+            key = (d.content or "").strip()
+            if not key:
+                continue
+            if key not in best or d.score > best[key].score:
+                best[key] = d
+        return list(best.values())
 
-        random.shuffle(docs)
-        return docs
+    def _apply_credibility(self, docs: list[Document]) -> list[Document]:
+        """按相关性 + doc_type 可信度微调排序（不开 Rerank 时使用）。"""
+        if not self.credibility_weights:
+            return docs
+
+        def _key(d: Document) -> float:
+            dt = (d.metadata or {}).get("doc_type", "")
+            boost = self.credibility_weights.get(dt, 0.0)
+            return (d.score or 0.0) + boost
+
+        return sorted(docs, key=_key, reverse=True)
+
+    def _rerank(self, docs: list[Document], query: str) -> list[Document]:
+        """使用 DashScope 重排模型对检索结果重排（按配置开关启用）。
+
+        未配置或调用失败时降级为原始顺序，不中断检索链路。
+        """
+        client = build_rerank_client()
+        if client is None:
+            return docs
+        scored = client.rerank(query, [d.content for d in docs])
+        ordered: list[Document] = []
+        for idx, _score in scored:
+            if 0 <= idx < len(docs):
+                ordered.append(docs[idx])
+        return ordered or docs
 
     @property
     def name(self) -> str:

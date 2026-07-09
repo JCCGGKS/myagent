@@ -80,12 +80,9 @@ class SemanticStrategy(RetrievalStrategy):
 
     def retrieve(self, query: str) -> list[Document]:
         """执行语义向量检索。"""
-        # TODO: 接入真实 embedding 客户端后，用下面代码
-        # query_vector = self.embedding_client.embed(query)
-        # 当前为模拟实现，生成随机向量
-        import random
-
-        query_vector = [random.random() for _ in range(1024)]  # 模拟 1024 维向量
+        if self.embedding_client is None:
+            raise RuntimeError("SemanticStrategy 未配置 embedding_client，无法生成查询向量")
+        query_vector = self.embedding_client.embed_one(query)
 
         # 2. 调用 Qdrant 向量检索
         results = self.client.search_semantic(
@@ -243,6 +240,24 @@ def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalSt
         rag_config = get_rag_config_service().get_config()
 
     client = get_qdrant_client()
+    return _build_strategy(client, rag_config)
+
+
+def _build_embedding_client() -> Any:
+    """构建语义检索所需的真实 EmbeddingClient（缺失配置时抛错）。"""
+    from app.business.rag.ingestion import build_embedding_client
+
+    embedding_client = build_embedding_client()
+    if embedding_client is None:
+        raise RuntimeError(
+            "未配置 rag.embedding.api_key，无法进行语义/混合检索。"
+            "请在 config/llm_config.{env}.yml 的 rag.embedding 段配置 model/api_key/dimensions。"
+        )
+    return embedding_client
+
+
+def _build_strategy(client: QdrantClient, rag_config: RagConfig) -> RetrievalStrategy:
+    """根据 RagConfig 构建具体检索策略。"""
     retrieval_strategy = rag_config.retrieval_strategy
 
     if retrieval_strategy == "bm25":
@@ -253,7 +268,7 @@ def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalSt
     elif retrieval_strategy == "semantic":
         return SemanticStrategy(
             client=client,
-            embedding_client=None,  # TODO: 接入真实 embedding 客户端
+            embedding_client=_build_embedding_client(),
             min_score_threshold=rag_config.semantic.min_score_threshold,
             metric=rag_config.semantic.metric,
         )
@@ -264,7 +279,7 @@ def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalSt
         )
         semantic_strategy = SemanticStrategy(
             client=client,
-            embedding_client=None,  # TODO: 接入真实 embedding 客户端
+            embedding_client=_build_embedding_client(),
             min_score_threshold=rag_config.semantic.min_score_threshold,
             metric=rag_config.semantic.metric,
         )

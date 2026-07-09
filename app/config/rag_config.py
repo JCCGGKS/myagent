@@ -22,18 +22,21 @@ def _resolve_config_path() -> Path:
 
 
 class BM25Config(BaseModel):
-    min_score_threshold: float = 5.0
+    # Qdrant 稀疏 BM25（modifier=IDF）分数通常在 0~10 量级，强命中约 4~6。
+    min_score_threshold: float = 1.0
 
 
 class SemanticConfig(BaseModel):
     metric: str = "cosine"  # cosine | dot_product | euclidean
-    min_score_threshold: float = 0.7
+    min_score_threshold: float = 0.5
 
 
 class HybridConfig(BaseModel):
     fusion_method: str = "rrf"  # rrf | weighted
     weighted_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
-    min_score_threshold: float = 0.5
+    # RRF 融合后分数为倒数秩（约 1/(k+rank)，k=60 时最大 ~0.016），
+    # 阈值应接近 0，否则会过滤掉全部结果。默认 0.0 表示不按阈值过滤，仅取 top_k。
+    min_score_threshold: float = 0.0
 
 
 class RerankConfig(BaseModel):
@@ -129,3 +132,21 @@ _rag_config_service = RagConfigService()
 
 def get_rag_config_service() -> RagConfigService:
     return _rag_config_service
+
+
+def load_rag_config_raw() -> dict[str, object]:
+    """读取当前环境配置文件中的 `rag` 原始段（dict）。
+
+    用于获取 RagConfig pydantic 模型未涵盖的字段，例如 `embedding` /
+    `qdrant` 等连接与密钥信息。无配置时返回空 dict。
+    """
+    path = _resolve_config_path()
+    if not path.exists():
+        return {}
+    try:
+        file_data = load_yaml_file(path)
+    except Exception:
+        return {}
+    if isinstance(file_data, dict) and isinstance(file_data.get("rag"), dict):
+        return dict(file_data["rag"])
+    return {}

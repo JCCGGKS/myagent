@@ -9,36 +9,29 @@ from fastapi import File, HTTPException, UploadFile
 from fastapi import APIRouter
 
 from app.config import load_llm_config
-from app.config.rag_config import RagConfig, get_rag_config_service
+from app.config.rag_config import RagConfig, get_rag_config_service, load_rag_config_raw
 from app.dao import KnowledgeStore
 from app.pkgs.vector import QdrantClient, get_qdrant_client
 from app.business.rag import (
     Chunker,
-    EmbeddingClient,
     KnowledgeIngestionService,
+    build_embedding_client,
 )
 
 
 def _build_ingestion_service() -> KnowledgeIngestionService:
     """根据配置构建知识库入库服务。"""
     qdrant_client = get_qdrant_client()
-    rag_config = getattr(load_llm_config(), "rag", None) or {}
-    embedding_cfg = rag_config.get("embedding", {})
-    embedding_client = None
-    if embedding_cfg.get("api_key"):
-        embedding_client = EmbeddingClient(
-            model=embedding_cfg.get("model", "text-embedding-v4"),
-            api_key=embedding_cfg.get("api_key", ""),
-            base_url=getattr(load_llm_config(), "base_url", "") or "",
-            dimensions=embedding_cfg.get("dimensions", 1024),
-        )
+    rag_config = load_rag_config_raw()
+    embedding_client = build_embedding_client()
     collection = rag_config.get("qdrant", {}).get("collection_name", "customer_service_knowledge")
+    dimensions = rag_config.get("embedding", {}).get("dimensions", 1024)
     return KnowledgeIngestionService(
         qdrant_client=qdrant_client,
         chunker=Chunker(),
         embedding_client=embedding_client,
         collection_name=collection,
-        vector_size=embedding_cfg.get("dimensions", 1024),
+        vector_size=dimensions,
     )
 
 

@@ -12,12 +12,37 @@ from app.pkgs.vector import QdrantClient
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingClient:
-    """text-embedding-v4 封装（OpenAI 兼容接口）。
+def build_embedding_client() -> EmbeddingClient | None:
+    """从 rag.embedding 配置构建真实 EmbeddingClient（OpenAI 兼容）。
 
-    使用前需在 config/llm_config.local.yml 的 rag.embedding 配置：
+    缺失 api_key 时返回 None（调用方据此跳过向量化或报错）。
+    embedding 配置位于 config/llm_config.{env}.yml 的 `rag.embedding` 段：
         model / api_key / dimensions
-    base_url 复用 llm.base_url（阿里云 DashScope 兼容网关）。
+    base_url 复用 config/llm_config.{env}.yml 的 `llm.base_url`。
+    """
+    from app.config import load_llm_config
+    from app.config.rag_config import load_rag_config_raw
+
+    rag_cfg = load_rag_config_raw()
+    emb_cfg = rag_cfg.get("embedding", {})
+    if not isinstance(emb_cfg, dict) or not emb_cfg.get("api_key"):
+        return None
+
+    llm_cfg = load_llm_config()
+    return EmbeddingClient(
+        model=emb_cfg.get("model", "text-embedding-v4"),
+        api_key=emb_cfg["api_key"],
+        base_url=getattr(llm_cfg, "base_url", "") or "",
+        dimensions=emb_cfg.get("dimensions", 1024),
+    )
+
+
+class EmbeddingClient:
+    """OpenAI 兼容的 Embedding 封装（可对接 DashScope / OpenAI 等网关）。
+
+    使用前需在 config/llm_config.{env}.yml 配置：
+        rag.embedding.model / rag.embedding.api_key / rag.embedding.dimensions
+        llm.base_url（网关地址）
     """
 
     def __init__(
@@ -66,6 +91,9 @@ class KnowledgeIngestionService:
         self.embedding_client = embedding_client
         self.collection_name = collection_name
         self.vector_size = vector_size
+        # 同步集合名与向量维度，便于首次 upsert 时建表
+        self.qdrant_client.collection_name = collection_name
+        self.qdrant_client.vector_size = vector_size
 
     def ingest_markdown_file(
         self,
@@ -113,11 +141,13 @@ class KnowledgeIngestionService:
             logger.warning("未配置 embedding_client，跳过向量化（仅记录分块数=%d）", len(chunks))
             return 0
 
+        from app.business.rag.sparse_bm25 import build_sparse_vector
+
         contents = [c.content for c in chunks]
-        vectors = self.embedding_client.embed(contents)
+        dense_vectors = self.embedding_client.embed(contents)
 
         points: list[dict[str, Any]] = []
-        for chunk, vector in zip(chunks, vectors):
+        for chunk, dense in zip(chunks, dense_vectors):
             pid = str(uuid.uuid4())
             payload = {
                 "content": chunk.content,
@@ -125,7 +155,17 @@ class KnowledgeIngestionService:
                 "heading_path": chunk.heading_path,
                 "metadata": chunk.metadata,
             }
-            points.append({"id": pid, "vector": vector, "payload": payload})
+            # 命名向量：稠密（语义）+ 稀疏（BM25，仅存词频，IDF 由 Qdrant 计算）
+            points.append(
+                {
+                    "id": pid,
+                    "vector": {
+                        "dense": dense,
+                        "bm25": build_sparse_vector(chunk.content),
+                    },
+                    "payload": payload,
+                }
+            )
 
         self.qdrant_client.upsert(points)
         logger.info("已入库 %d 个块", len(points))

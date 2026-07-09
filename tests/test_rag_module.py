@@ -4,24 +4,44 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from app.business.rag import RagRetrieveTool, BM25Strategy, SemanticStrategy, HybridStrategy
+from app.business.rag.retrieval_strategy import Document
 from app.pkgs.vector import QdrantClient
 
 
+def _fake_client() -> QdrantClient:
+    """构造 QdrantClient 但用假底层客户端，避免依赖真实 Qdrant 服务。"""
+    client = QdrantClient.__new__(QdrantClient)
+    client.host = "localhost"
+    client.port = 6333
+    client.collection_name = "test_collection"
+    client.api_key = None
+    client.vector_size = 4
+    client.distance = "Cosine"
+    client._collection_ready = True
+    client._client = MagicMock()
+    return client
+
+
 class TestQdrantClient:
-    """测试 QdrantClient（模拟实现）。"""
+    """测试 QdrantClient 结果转换（底层客户端 mock）。"""
 
     def test_search_bm25_should_return_results(self):
-        """测试 BM25 检索返回结果。"""
-        client = QdrantClient()
+        client = _fake_client()
+        client._client.query_points.return_value.points = [
+            MagicMock(id="1", score=1.2, payload={"content": "测试内容", "doc_type": "faq"})
+        ]
         results = client.search_bm25(query="测试查询", limit=5)
         assert isinstance(results, list)
         assert len(results) > 0
         assert "id" in results[0]
         assert "content" in results[0]
+        assert results[0]["metadata"]["doc_type"] == "faq"
 
     def test_search_semantic_should_return_results(self):
-        """测试语义向量检索返回结果。"""
-        client = QdrantClient()
+        client = _fake_client()
+        client._client.query_points.return_value.points = [
+            MagicMock(id="2", score=0.9, payload={"content": "语义内容"})
+        ]
         results = client.search_semantic(query_vector=[0.1, 0.2, 0.3], limit=5)
         assert isinstance(results, list)
         assert len(results) > 0
@@ -31,13 +51,11 @@ class TestRetrievalStrategy:
     """测试检索策略。"""
 
     def setup_method(self):
-        from app.pkgs.vector import QdrantClient
-
-        self.client = QdrantClient()
+        self.client = _fake_client()
         self.bm25_strategy = BM25Strategy(client=self.client, min_score_threshold=0.0)
         self.semantic_strategy = SemanticStrategy(
             client=self.client,
-            embedding_client=None,  # 模拟实现，不需要真实 embedding 客户端
+            embedding_client=MagicMock(**{"embed_one.return_value": [0.1, 0.2, 0.3, 0.4]}),
             min_score_threshold=0.0,
         )
         self.hybrid_strategy = HybridStrategy(
@@ -47,17 +65,25 @@ class TestRetrievalStrategy:
         )
 
     def test_bm25_strategy_should_retrieve(self):
-        """测试 BM25 策略能够检索。"""
+        self.client._client.query_points.return_value.points = [
+            MagicMock(id="1", score=1.0, payload={"content": "c1", "doc_type": "faq"})
+        ]
         docs = self.bm25_strategy.retrieve(query="测试查询")
         assert isinstance(docs, list)
+        assert len(docs) > 0
 
     def test_semantic_strategy_should_retrieve(self):
-        """测试语义策略能够检索。"""
+        self.client._client.query_points.return_value.points = [
+            MagicMock(id="2", score=0.8, payload={"content": "c2", "doc_type": "policy"})
+        ]
         docs = self.semantic_strategy.retrieve(query="测试查询")
         assert isinstance(docs, list)
+        assert len(docs) > 0
 
     def test_hybrid_strategy_should_retrieve(self):
-        """测试混合策略能够检索。"""
+        self.client._client.query_points.return_value.points = [
+            MagicMock(id="3", score=0.7, payload={"content": "c3", "doc_type": "faq"})
+        ]
         docs = self.hybrid_strategy.retrieve(query="测试查询")
         assert isinstance(docs, list)
 
@@ -65,9 +91,18 @@ class TestRetrievalStrategy:
 class TestRagRetrieveTool:
     """测试 RAG 检索工具。"""
 
+    def _fake_tool(self) -> RagRetrieveTool:
+        from app.business.rag.retrieval_strategy import Document
+
+        fake_strategy = MagicMock()
+        fake_strategy.retrieve.return_value = [
+            Document(id="x1", content="测试内容", metadata={"doc_type": "faq"}, score=0.9)
+        ]
+        return RagRetrieveTool(strategy=fake_strategy)
+
     def test_run_should_return_documents(self):
         """测试工具调用返回文档列表。"""
-        tool = RagRetrieveTool()
+        tool = self._fake_tool()
         results = tool.run(query="测试查询")
         assert isinstance(results, list)
         if results:
@@ -92,3 +127,79 @@ class TestRagRetrieveTool:
         assert "function" in schema
         assert "name" in schema["function"]
         assert "parameters" in schema["function"]
+
+
+class TestRerankClient:
+    """测试 DashScope Rerank 客户端（mock HTTP）。"""
+
+    def test_build_disabled_returns_none(self, monkeypatch):
+        from app.business.rag.rerank import build_rerank_client
+        # 无配置 -> 返回 None
+        monkeypatch.setattr(
+            "app.business.rag.rerank.load_rag_config_raw",
+            lambda: {},
+        )
+        assert build_rerank_client() is None
+
+    def test_rerank_reorders_by_score(self, monkeypatch):
+        import json
+        from app.business.rag.rerank import RerankClient
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            class R:
+                def raise_for_status(self): pass
+                def json(self):
+                    return {"output": {"results": [
+                        {"index": 1, "relevance_score": 0.9},
+                        {"index": 0, "relevance_score": 0.3},
+                    ]}}
+            return R()
+
+        monkeypatch.setattr("app.business.rag.rerank.requests.post", fake_post)
+        client = RerankClient(api_key="test-key")
+        scored = client.rerank("q", ["docA", "docB"])
+        assert [i for i, _ in scored] == [1, 0]  # 降序：docB 在前
+
+    def test_rerank_failure_falls_back(self, monkeypatch):
+        from app.business.rag.rerank import RerankClient
+
+        def fake_post(*a, **k):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr("app.business.rag.rerank.requests.post", fake_post)
+        client = RerankClient(api_key="test-key")
+        scored = client.rerank("q", ["a", "b", "c"])
+        assert [i for i, _ in scored] == [0, 1, 2]  # 降级保持原序
+
+
+class TestRagToolDedupCredibility:
+    """测试去重与可信度排序（设计 §7.3）。"""
+
+    def _tool(self, **kw) -> RagRetrieveTool:
+        from app.business.rag.retrieval_strategy import Document
+        fake = MagicMock()
+        fake.retrieve.return_value = [
+            Document(id="1", content="退款政策A", metadata={"doc_type": "faq"}, score=0.9),
+            Document(id="2", content="退款政策A", metadata={"doc_type": "policy"}, score=0.8),  # 同内容
+            Document(id="3", content="物流说明", metadata={"doc_type": "help"}, score=0.85),
+        ]
+        return RagRetrieveTool(strategy=fake, **kw)
+
+    def test_dedup_keeps_higher_score(self):
+        tool = self._tool()
+        res = tool.run(query="q")
+        contents = [r["content"] for r in res]
+        assert contents.count("退款政策A") == 1  # 去重
+        kept = [r for r in res if r["content"] == "退款政策A"][0]
+        assert kept["metadata"]["doc_type"] == "faq"  # 保留高分那份
+
+    def test_credibility_breaks_tie(self):
+        # faq(0.03) vs help(0.01)：同分时应优先 faq
+        tool = self._tool()
+        docs = [
+            Document(id="h", content="X", metadata={"doc_type": "help"}, score=0.5),
+            Document(id="f", content="Y", metadata={"doc_type": "faq"}, score=0.5),
+        ]
+        tool.strategy.retrieve.return_value = docs
+        res = tool.run(query="q")
+        assert res[0]["metadata"]["doc_type"] == "faq"
