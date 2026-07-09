@@ -55,7 +55,6 @@ services:
     restart: unless-stopped
     ports:
       - "6333:6333"      # REST 端口
-      - "6334:6334"      # gRPC 端口
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
