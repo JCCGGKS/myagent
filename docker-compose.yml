@@ -9,7 +9,7 @@ services:
     container_name: myagent-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: myagent
       MYSQL_USER: myagent
       MYSQL_PASSWORD: myagent
@@ -23,7 +23,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,7 +37,6 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"      # Redis 服务端口
-      - "8001:8001"      # Redis Insight 可视化面板
     volumes:
       - redis_data:/data
     healthcheck:
