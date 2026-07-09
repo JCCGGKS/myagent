@@ -188,7 +188,7 @@ class AgentNodeService:
                 tool_name = msg.get("name", "")
                 content = json.loads(msg.get("content", "{}"))
                 return ToolExecutionResult(
-                    kind=tool_name,
+                    kind=_map_tool_kind(tool_name),
                     raw_result=content,
                     sanitized_result=content,
                     user_facing_summary=str(content)[:200],
@@ -203,3 +203,21 @@ class AgentNodeService:
         """默认工具列表（rag_retrieve, query_order, query_logistics, create_handoff）。"""
         rag_tool = RagRetrieveTool()
         return [rag_tool.to_tool_schema()]
+
+
+# 工具名 → ToolExecutionResult.kind 枚举值
+_TOOL_KIND_MAP: dict[str, str] = {
+    "rag_retrieve": "knowledge",
+    "query_order": "order_query",
+    "query_logistics": "logistics",
+    "request_refund": "aftersale_refund",
+    "create_handoff": "handoff",
+}
+
+
+def _map_tool_kind(tool_name: str) -> str:
+    """把 LLM 调用的工具名映射到 ToolExecutionResult.kind 枚举值。
+
+    未识别的工具名降级为 'knowledge'（最宽松的兜底），避免 Pydantic 校验失败。
+    """
+    return _TOOL_KIND_MAP.get(tool_name, "knowledge")
