@@ -60,8 +60,7 @@ class TestRetrievalStrategy:
             min_score_threshold=0.0,
         )
         self.hybrid_strategy = HybridStrategy(
-            bm25_strategy=self.bm25_strategy,
-            semantic_strategy=self.semantic_strategy,
+            strategies=[self.bm25_strategy, self.semantic_strategy],
         )
 
     def test_bm25_strategy_should_retrieve(self):
