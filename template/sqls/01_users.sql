@@ -1,6 +1,6 @@
 -- 用户表：开放注册、找回密码
 CREATE TABLE IF NOT EXISTS `users` (
-  `id`            BIGINT        NOT NULL AUTO_INCREMENT,
+  `id`            INT           NOT NULL AUTO_INCREMENT,
   `username`      VARCHAR(64)   NOT NULL,
   `email`         VARCHAR(255)  NOT NULL,
   `password_hash` VARCHAR(255)  NOT NULL,
