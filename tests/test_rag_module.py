@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.rag import RagRetrieveTool, BM25Strategy, SemanticStrategy, HybridStrategy
-from app.rag.qdrant_client import QdrantClient
+from app.business.rag import RagRetrieveTool, BM25Strategy, SemanticStrategy, HybridStrategy
+from app.pkgs.vector import QdrantClient
 
 
 class TestQdrantClient:
@@ -31,7 +31,7 @@ class TestRetrievalStrategy:
     """测试检索策略。"""
 
     def setup_method(self):
-        from app.rag.qdrant_client import QdrantClient
+        from app.pkgs.vector import QdrantClient
 
         self.client = QdrantClient()
         self.bm25_strategy = BM25Strategy(client=self.client, min_score_threshold=0.0)

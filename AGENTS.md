@@ -8,42 +8,60 @@ This is a customer service Agent MVP with a FastAPI backend and Vue 3 frontend. 
 ```text
 myagent/
 ├── app/
-│   ├── agents/      # Customer service main agent, orchestrates nodes
-│   ├── api/         # FastAPI / WebSocket entry points
-│   ├── config/      # Configuration loading
-│   ├── mock_data/   # Order, logistics mock data
-│   ├── models/      # Request, response, session, domain models
-│   ├── prompts/     # LLM prompt definitions
-│   ├── rag/         # Knowledge retrieval modules
-│   ├── services/    # Routing / state / policy / dialog / execution / context services
-│   ├── store/       # Session state storage, tool audit, handoff records
-│   └── utils/       # File and text utility functions
-├── config/          # test / prod / local yml configuration files
-├── eval/            # Single-point evaluation scripts, samples, evaluation reports
-├── frontend/        # Vue 3 frontend
-├── tests/           # Backend unit tests
-├── wiki/            # Design documentation
-├── template/        # Research and draft materials
-├── main.py          # Backend entry point (redirects to app/api/app.py)
+│   ├── api/         # FastAPI HTTP / SSE 入口，仅做请求处理与应用装配
+│   ├── business/    # 业务逻辑层（含 auth / rag / prompts 子模块）
+│   ├── config/      # 配置加载
+│   ├── dao/         # 数据访问层（session / user / knowledge / data）
+│   ├── data/        # 独立资源层（orders.json / logistics.json）
+│   ├── model/       # SQLAlchemy ORM 表模型
+│   ├── pkgs/        # 第三方调用封装（auth / llm / vector）
+│   ├── schema/      # Pydantic 请求/响应数据结构
+│   └── utils/       # 文本与状态辅助函数
+├── config/          # test / prod / local yml 配置文件
+├── eval/            # 单点评估脚本、样本、评估报告
+├── frontend/        # Vue 3 前端
+├── tests/           # 后端单元测试
+├── wiki/            # 设计文档
+├── template/        # 调研与草稿材料
+├── main.py          # 后端启动入口（转发到 app/api/app.py）
 └── README.md
 ```
 
+分层依赖方向严格向下、无环：`api → business → dao → model`，`pkgs / utils / schema / data` 为叶子层，不被反向依赖。
+
 Core backend modules:
 
-- `app/api`: Exposes HTTP and SSE (Server-Sent Events) interfaces, handles app assembly
-- `app/agents`: Chains intent recognition, state updates, policy distribution, tool routing, clarification and response generation
-- `app/models`: Unified maintenance of `ChatRequest`, `ChatResponse`, `ConversationState` and other data structures
-- `app/rag`: Hosts knowledge retrieval and subsequent RAG evolution entry points, currently contains `KnowledgeBaseService` and `RagRetrievalService`
-- `app/services/domain`: Order query, logistics query, human handoff and other domain services
-- `app/services/routing`: Intent routing, state tracking, policy layer
-- `app/services/dialog`: Clarification replies, final replies, memory persistence
-- `app/services/execution`: Business tool calls, human handoff execution
-- `app/services/context`: Recent message window and `running_summary` compression
-- `app/services/intent_schema`: Main intent `slot schema` and rule keyword registry, loaded from YAML by default
-- `app/config`: Reads `APP_ENV` corresponding configuration and overlays local overrides
-- `app/prompts`: Independently manages LLM-related prompts for easy viewing and iteration
-- `app/store`: Currently uses in-memory `sessions / messages / state_snapshots / tool_calls / handoff_records`
-- `app/utils/state`: State auxiliary functions like `action_history`
+- `app/api`: 仅暴露 HTTP / SSE 接口与组装应用；按模块拆分为 `chat.py` / `auth.py` / `rag.py`
+- `app/business`: 业务逻辑层，串联意图识别、状态更新、策略分发、工具路由、澄清与回复生成
+  - `routing.py`: 意图路由、状态跟踪
+  - `dialog.py`: 澄清回复、最终回复、memory 持久化
+  - `execution.py`: 业务工具调用、转人工执行
+  - `context.py`: 最近消息窗口与 `running_summary` 压缩
+  - `domain.py`: 订单查询、物流查询、转人工等领域服务
+  - `intent_schema.py`: 主意图 `slot schema` 与规则关键词 registry，默认从 YAML 加载
+  - `llm_fallback.py`: LLM 兜底意图识别
+  - `state_summary.py`: 共享的状态摘要构建（打破 context ↔ routing 循环依赖）
+  - `agent_node.py`: 单轮 Agent 节点执行
+  - `customer_service.py`: 客服主 Agent，编排各节点
+  - `app/business/rag`: 知识检索（chunker / ingestion / retriever / retrieval_strategy / rag_tool）
+  - `app/business/prompts`: LLM prompt 定义（intent 等）
+  - `app/business/auth`: 认证业务（service / router / models / deps），依赖 `UserDAO` 依赖注入
+- `app/dao`: 数据访问层，对外提供 `SessionStore` / `UserDAO` 抽象接口与 `Memory*` / `Sql*` 双实现
+  - `session.py`: `SessionStore`（ABC）、`MemorySessionStore`、`SqlSessionStore`
+  - `user.py`: `UserDAO`（ABC）、`MemoryUserDAO`、`SqlUserDAO`
+  - `knowledge.py`: `KnowledgeStore`，包装 `app.pkgs.vector`
+  - `data.py`: 加载 `app/data` 下的 JSON 资源（容错）
+- `app/model`: SQLAlchemy ORM 表模型
+  - `user.py`: `User` 表（`id` 为 `Integer` 自增主键）
+  - `session.py`: `Session / Message / StateSnapshot / ToolCall / HandoffRecord` 表
+- `app/schema`: Pydantic 数据结构（`ChatRequest` / `ChatResponse` / `ConversationState` 等）
+- `app/pkgs`: 第三方调用封装
+  - `auth`: `jwt`（token 签发/校验）、`password`（bcrypt）、`email`（smtp）
+  - `llm`: `client`（OpenAI 客户端构建）
+  - `vector`: `qdrant`（向量库客户端）
+- `app/config`: 读取 `APP_ENV` 对应配置并叠加 local 覆盖
+- `app/data`: 独立资源层（`orders.json` / `logistics.json`），由 `app/dao/data.py` 容错加载
+- `app/utils`: `config_paths`（统一 ROOT/CONFIG 目录解析）、`state`（`action_history` 等状态辅助）
 
 ## Build, Test, and Development Commands
 
@@ -109,8 +127,12 @@ git diff --cached       # Review staged changes before committing
 
 - `GET /health` - Health check
 - `POST /chat` - Chat endpoint (non-streaming)
+- `POST /chat/init` - Create a new session
 - `POST /chat/stream` - SSE chat endpoint (preferred for web, returns `text/event-stream`)
 - `GET /session/{session_id}` - Get session state
+- `POST /auth/register` / `POST /auth/login` / `POST /auth/forgot-password` / `POST /auth/reset-password` / `GET /auth/me` - 认证
+- `POST /knowledge/upload` - 知识库上传
+- `GET /rag/config` / `PUT /rag/config` - RAG 配置
 
 Example curl request:
 ```bash
@@ -197,16 +219,17 @@ Tests are located in `tests/` directory with `test_*.py` files. Current test cov
 - `test_execution_services.py` - Execution services tests
 - `test_context_services.py` - Context services tests
 - `test_rag_module.py` - RAG module tests
+- `test_auth_services.py` - Auth services tests（基于 sqlite 内存库 + `SqlUserDAO` 依赖注入）
 
 Run tests with `pytest tests/` before committing changes. When adding new functionality, add corresponding test cases in the appropriate test file.
 
 ## Commit & Pull Request Guidelines
-Recent history uses Conventional Commits, for example `docs(template): 补充多轮意图识别调研`. Follow `type(scope): summary` and keep scopes specific, such as `template`, `rag`, `agent`, `api`, `services`, `frontend`.
+Recent history uses Conventional Commits, for example `docs(template): 补充多轮意图识别调研`. Follow `type(scope): summary` and keep scopes specific, such as `template`, `rag`, `agent`, `api`, `business`, `dao`, `frontend`.
 
 Pull requests should include:
 
 - a short description of what changed and why
-- impacted paths, such as `app/services/routing.py`
+- impacted paths, such as `app/business/routing.py`
 - screenshots only when UI or formatting changes materially
 
 Stage only intended files and review `git diff --cached` before committing.

@@ -7,7 +7,7 @@ const props = defineProps<{
   order: OrderToolData;
 }>();
 
-const statusClass = computed(() => props.order.status.toLowerCase().replace(/\s+/g, "-"));
+const statusClass = computed(() => (props.order.status ?? "").toLowerCase().replace(/\s+/g, "-"));
 </script>
 
 <template>

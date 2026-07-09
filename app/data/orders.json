@@ -1,0 +1,14 @@
+[
+  {
+    "order_id": "A1001",
+    "status": "已发货",
+    "product_name": "智能客服机器人 Pro",
+    "amount": 1999.0
+  },
+  {
+    "order_id": "A1002",
+    "status": "待付款",
+    "product_name": "知识库增强包",
+    "amount": 399.0
+  }
+]

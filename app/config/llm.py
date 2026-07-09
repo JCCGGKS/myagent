@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.config.logging_config import LoggingConfig, setup_logging
 from app.utils import load_json_file, load_yaml_file
+from app.utils.config_paths import get_config_dir, get_app_env
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-CONFIG_DIR = ROOT_DIR / "config"
+CONFIG_DIR = get_config_dir()
 DEFAULT_APP_ENV = "test"
 
 
@@ -52,7 +52,7 @@ def load_llm_config(path: Path | None = None) -> LLMConfig:
         setup_logging(config.logging)
         return config
 
-    env_name = os.getenv("APP_ENV", DEFAULT_APP_ENV).strip().lower() or DEFAULT_APP_ENV
+    env_name = os.getenv("APP_ENV", DEFAULT_APP_ENV).strip().lower() or get_app_env() or DEFAULT_APP_ENV
     base_config_path = CONFIG_DIR / f"llm_config.{env_name}.yml"
     local_override_path = CONFIG_DIR / "llm_config.local.yml"
     legacy_local_override_path = CONFIG_DIR / "llm_config.local.json"

@@ -5,18 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from app.utils import load_yaml_file
+from app.utils.config_paths import get_config_dir, get_app_env
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-CONFIG_DIR = ROOT_DIR / "config"
+CONFIG_DIR = get_config_dir()
 
 
 def _env_name() -> str:
     """当前环境名：APP_ENV 为空时默认 'local'。"""
-    env = os.getenv("APP_ENV", "").strip().lower()
-    if not env:
-        env = "local"
-    return env
+    return get_app_env()
 
 
 def _config_path() -> Path:

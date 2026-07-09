@@ -6,10 +6,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from app.utils import load_yaml_file
+from app.utils.config_paths import get_config_dir, get_app_env
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-CONFIG_DIR = ROOT_DIR / "config"
+CONFIG_DIR = get_config_dir()
 
 
 def _resolve_config_path() -> Path:
@@ -17,9 +17,7 @@ def _resolve_config_path() -> Path:
     - APP_ENV 未设置 → env_name 默认 'local' → llm_config.local.yml
     - 其他环境（test / prod …）→ llm_config.{env_name}.yml
     读取与写入统一使用此判定。"""
-    env_name = os.getenv("APP_ENV", "").strip().lower()
-    if not env_name:
-        env_name = "local"
+    env_name = get_app_env()
     return CONFIG_DIR / f"llm_config.{env_name}.yml"
 
 

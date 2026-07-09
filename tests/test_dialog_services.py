@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.models import ConversationState, ToolExecutionResult
-from app.services.dialog import ClarificationService, ResponseService
+from app.schema import ConversationState, ToolExecutionResult
+from app.business.dialog import ClarificationService, ResponseService
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ class DialogServicesTestCase:
 
     def test_clarification_prompt_registry_should_load_default_yaml_prompts(self):
         """测试 ClarificationPromptRegistry 能够加载默认 YAML 配置。"""
-        from app.services.dialog import ClarificationPromptRegistry
+        from app.business.dialog import ClarificationPromptRegistry
 
         registry = ClarificationPromptRegistry()
         prompts = registry.get()
@@ -61,7 +61,7 @@ class DialogServicesTestCase:
 
     def test_response_prompt_registry_should_load_default_yaml_prompts(self):
         """测试 ResponsePromptRegistry 能够加载默认 YAML 配置。"""
-        from app.services.dialog import ResponsePromptRegistry
+        from app.business.dialog import ResponsePromptRegistry
 
         registry = ResponsePromptRegistry()
         prompts = registry.get()
@@ -78,7 +78,7 @@ class DialogServicesTestCase:
 
     def test_memory_service_should_record_messages_and_tool_calls(self):
         """测试 MemoryService 能够记录消息和工具调用。"""
-        from app.services.dialog import MemoryService
+        from app.business.dialog import MemoryService
 
         store = MagicMock()
         service = MemoryService(store=store)

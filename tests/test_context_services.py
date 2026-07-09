@@ -1,8 +1,8 @@
 import unittest
 
-from app.models import ConversationState
-from app.services.context import ContextService
-from app.services.routing import StateTrackerService
+from app.schema import ConversationState
+from app.business.context import ContextService
+from app.business.routing import StateTrackerService
 
 
 class ContextServicesTestCase(unittest.TestCase):

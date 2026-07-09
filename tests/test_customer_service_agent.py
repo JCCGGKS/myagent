@@ -3,9 +3,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.agents.customer_service import CustomerServiceAgent
-from app.models import ChatRequest, ConversationState
-from app.store import SessionStore
+from app.business.customer_service import CustomerServiceAgent
+from app.schema import ChatRequest, ConversationState
+from app.dao import SessionStore
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ class TestCustomerServiceAgent:
             message="帮我查一下订单 A1001",
         )
         # 初始化 state 必填字段
-        from app.models import ConversationState
+        from app.schema import ConversationState
 
         state = ConversationState(
             session_id="test-session",
@@ -57,7 +57,7 @@ class TestCustomerServiceAgent:
             message="你好",
         )
         # 初始化 state 必填字段
-        from app.models import ConversationState
+        from app.schema import ConversationState
 
         state = ConversationState(
             session_id="test-session",

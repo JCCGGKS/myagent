@@ -1,8 +1,8 @@
 import unittest
 
-from app.models import ConversationState
-from app.services import HandoffService, LogisticsService, OrderService
-from app.services.execution import ExecutionService
+from app.schema import ConversationState
+from app.business import HandoffService, LogisticsService, OrderService
+from app.business.execution import ExecutionService
 
 
 class ExecutionServicesTestCase(unittest.TestCase):

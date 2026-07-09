@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.models import ActionRecord
+from app.schema import ActionRecord
 
 
 def build_action_record(action_name: str, summary: str) -> ActionRecord:
