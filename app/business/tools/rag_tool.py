@@ -6,6 +6,11 @@ from app.business.rag.retrieval_strategy import get_strategy_from_config
 from app.config.rag_config import get_rag_config_service
 from app.business.rag.rerank import build_rerank_client
 
+
+def _config_top_k() -> int:
+    """从环境相关的 RagConfig 读取 top_k（默认 5）。"""
+    return get_rag_config_service().get_config().top_k
+
 # 后端默认重排模型（前端开启重排但未指定模型时使用）
 DEFAULT_RERANK_MODEL = "gated-rerank"
 
@@ -25,13 +30,14 @@ class RagRetrieveTool:
     def __init__(
         self,
         strategy: RetrievalStrategy | None = None,
-        top_k: int = 5,
+        top_k: int | None = None,
         rerank_enabled: bool | None = None,
         rerank_model: str = "",
         credibility_weights: dict[str, float] | None = None,
     ) -> None:
         self.strategy = strategy or get_strategy_from_config()
-        self.top_k = top_k
+        # top_k 未显式传入时，从环境相关的 RagConfig 读取（不再写死为 5）
+        self.top_k = top_k if top_k is not None else _config_top_k()
         # None 表示运行时由 RagConfig 决定（支持 /rag/config 动态开关）
         self._rerank_enabled_override = rerank_enabled
         # 未指定模型时使用后端默认重排模型
@@ -139,22 +145,15 @@ class RagRetrieveTool:
 
 
 def get_rag_tool() -> RagRetrieveTool:
-    """从配置文件读取配置，创建 RAG 工具实例。"""
-    from pathlib import Path
+    """从环境相关的 RagConfig 读取配置，创建 RAG 工具实例。
 
-    import yaml
-
-    config_path = Path(__file__).resolve().parents[2] / "config" / "llm_config.local.yml"
-    if not config_path.exists():
-        return RagRetrieveTool()
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-
-    rag_config = config.get("rag", {})
+    不再硬编码读取 llm_config.local.yml：top_k / rerank 开关均来自
+    get_rag_config_service()（按 APP_ENV 解析的目标文件，与 PUT /rag/config 同源）。
+    """
+    cfg = get_rag_config_service().get_config()
     return RagRetrieveTool(
         strategy=get_strategy_from_config(),
-        top_k=rag_config.get("top_k", 5),
-        rerank_enabled=rag_config.get("rerank", {}).get("enabled", False),
-        rerank_model=rag_config.get("rerank", {}).get("model", ""),
+        top_k=cfg.top_k,
+        rerank_enabled=cfg.rerank.enabled,
+        rerank_model=cfg.rerank.model,
     )

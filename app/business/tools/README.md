@@ -11,8 +11,9 @@
   - `_apply_credibility()`：未启用 rerank 时，按 `score + DOC_TYPE_CREDIBILITY[doc_type]` 微调排序（`policy 0.05 > faq 0.03 > product 0.02 > help 0.01`）。
   - `_rerank()`：调用 DashScope `RerankClient` 重排；客户端为 `None` 或调用失败时降级为原始顺序，不中断链路。
   - `rerank_enabled=None` 时运行时由 `RagConfig` 决定（支持 `/rag/config` 动态开关）。
+  - `top_k` 未显式传入时从环境相关的 `RagConfig` 读取（不再写死为 5）。
   - `name / description / to_tool_schema()`：供 LLM function-calling 使用。
-- `get_rag_tool()`：从 `config/llm_config.local.yml` 的 `rag` 段读取配置构建实例。
+- `get_rag_tool()`：从环境相关的 `RagConfig`（`get_rag_config_service()`，按 `APP_ENV` 解析的目标文件，与 `PUT /rag/config` 同源）读取 `top_k` / `rerank` 配置构建实例。
 
 ### 调用关系
 ```

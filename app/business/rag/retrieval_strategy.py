@@ -39,15 +39,18 @@ class RetrievalStrategy(ABC):
 class BM25Strategy(RetrievalStrategy):
     """BM25 关键词检索策略。"""
 
-    def __init__(self, client: QdrantClient, min_score_threshold: float = 5.0) -> None:
+    def __init__(
+        self, client: QdrantClient, min_score_threshold: float = 5.0, top_k: int = 5
+    ) -> None:
         self.client = client
         self.min_score_threshold = min_score_threshold
+        self.top_k = top_k
 
     def retrieve(self, query: str) -> list[Document]:
         """执行 BM25 检索。"""
         results = self.client.search_bm25(
             query=query,
-            limit=20,  # 多召回一些，后续过滤
+            limit=max(self.top_k * 2, 20),  # 多召回一些，后续过滤
         )
         # 过滤低分
         filtered = [
@@ -71,10 +74,12 @@ class SemanticStrategy(RetrievalStrategy):
         client: QdrantClient,
         embedding_client: Any,  # EmbeddingClient
         min_score_threshold: float = 0.7,
+        top_k: int = 5,
     ) -> None:
         self.client = client
         self.embedding_client = embedding_client
         self.min_score_threshold = min_score_threshold
+        self.top_k = top_k
 
     def retrieve(self, query: str) -> list[Document]:
         """执行语义向量检索。"""
@@ -85,7 +90,7 @@ class SemanticStrategy(RetrievalStrategy):
         # 2. 调用 Qdrant 向量检索（距离度量由集合创建时的 qdrant.distance 固定）
         results = self.client.search_semantic(
             query_vector=query_vector,
-            limit=20,
+            limit=max(self.top_k * 2, 20),  # 多召回一些，后续过滤
         )
 
         # 3. 过滤低分
@@ -110,10 +115,14 @@ class HybridStrategy(RetrievalStrategy):
         bm25_strategy: BM25Strategy,
         semantic_strategy: SemanticStrategy,
         min_score_threshold: float = 0.0,
+        top_k: int = 5,
+        rrf_k: int = 60,
     ) -> None:
         self.bm25_strategy = bm25_strategy
         self.semantic_strategy = semantic_strategy
         self.min_score_threshold = min_score_threshold
+        self.top_k = top_k
+        self.rrf_k = rrf_k
 
     def retrieve(self, query: str) -> list[Document]:
         """执行混合检索（分别召回后 RRF 融合）。"""
@@ -124,14 +133,14 @@ class HybridStrategy(RetrievalStrategy):
         # 2. RRF 融合（倒数排序融合，量纲无关，固定使用）
         fused = self._rrf_fusion(bm25_docs, semantic_docs)
 
-        # 3. 过滤低分，返回 top_k
+        # 3. 过滤低分，返回 top_k（此处先做中间截断，最终 top_k 在 RagRetrieveTool 生效）
         filtered = [doc for doc in fused if doc.score >= self.min_score_threshold]
-        return filtered[:20]  # 返回前 20 个
+        return filtered[: max(self.top_k * 2, 20)]  # 返回前 top_k*2 个
 
     def _rrf_fusion(
-        self, bm25_docs: list[Document], semantic_docs: list[Document], k: int = 60
+        self, bm25_docs: list[Document], semantic_docs: list[Document]
     ) -> list[Document]:
-        """倒数排序融合（RRF）。"""
+        """倒数排序融合（RRF），常数 k 由配置 rrf_k 决定（默认 60）。"""
         # 将 doc id 映射到分数
         scores: dict[str, float] = {}
 
@@ -140,14 +149,14 @@ class HybridStrategy(RetrievalStrategy):
             doc_id = doc.id
             if doc_id not in scores:
                 scores[doc_id] = 0.0
-            scores[doc_id] += 1.0 / (k + rank)
+            scores[doc_id] += 1.0 / (self.rrf_k + rank)
 
         # 语义向量结果
         for rank, doc in enumerate(semantic_docs, start=1):
             doc_id = doc.id
             if doc_id not in scores:
                 scores[doc_id] = 0.0
-            scores[doc_id] += 1.0 / (k + rank)
+            scores[doc_id] += 1.0 / (self.rrf_k + rank)
 
         # 构建融合后的文档列表
         doc_map: dict[str, Document] = {}
@@ -204,30 +213,37 @@ def _build_strategy(client: QdrantClient, rag_config: RagConfig) -> RetrievalStr
     """
     retrieval_strategy = rag_config.retrieval_strategy
     threshold = rag_config.min_score_threshold
+    top_k = rag_config.top_k
 
     if retrieval_strategy == "bm25":
         return BM25Strategy(
             client=client,
             min_score_threshold=threshold,
+            top_k=top_k,
         )
     elif retrieval_strategy == "semantic":
         return SemanticStrategy(
             client=client,
             embedding_client=_build_embedding_client(),
             min_score_threshold=threshold,
+            top_k=top_k,
         )
     else:  # hybrid
         bm25_strategy = BM25Strategy(
             client=client,
             min_score_threshold=threshold,
+            top_k=top_k,
         )
         semantic_strategy = SemanticStrategy(
             client=client,
             embedding_client=_build_embedding_client(),
             min_score_threshold=threshold,
+            top_k=top_k,
         )
         return HybridStrategy(
             bm25_strategy=bm25_strategy,
             semantic_strategy=semantic_strategy,
             min_score_threshold=threshold,
+            top_k=top_k,
+            rrf_k=rag_config.rrf_k,
         )

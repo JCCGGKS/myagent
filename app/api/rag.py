@@ -25,12 +25,18 @@ def _build_ingestion_service() -> KnowledgeIngestionService:
     qdrant 连接参数（host/port/collection_name/vector_size/distance）与
     embedding 配置均来自顶层配置段，由 get_qdrant_client / build_embedding_client
     读取；collection_name 与 vector_size 直接沿用 client 上已解析的值。
+    切块参数（chunk_size/overlap/min_chunk_size）来自 rag 段，前端可控。
     """
+    rag_config = get_rag_config_service().get_config()
     qdrant_client = get_qdrant_client()
     embedding_client = build_embedding_client()
     return KnowledgeIngestionService(
         qdrant_client=qdrant_client,
-        chunker=Chunker(),
+        chunker=Chunker(
+            chunk_size=rag_config.chunk_size,
+            chunk_overlap=rag_config.chunk_overlap,
+            min_chunk_size=rag_config.min_chunk_size,
+        ),
         embedding_client=embedding_client,
         collection_name=qdrant_client.collection_name,
         vector_size=qdrant_client.vector_size,

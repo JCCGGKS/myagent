@@ -37,9 +37,11 @@ const strategyLabel = computed(() => {
 // 当前检索策略下，哪些配置项是“激活”的（其余置灰）
 const activeFields = computed<Set<string>>(() => {
   const s = ragForm.retrieval_strategy;
-  const set = new Set<string>(["top_k", "threshold"]); // 所有策略通用
+  // 切块参数与 top_k / 阈值对所有策略通用（切块在入库时生效，与检索策略无关）
+  const set = new Set<string>(["top_k", "threshold", "chunk_size", "chunk_overlap", "min_chunk_size"]);
   if (s === "hybrid") {
     set.add("rerank");
+    set.add("rrf_k");
   }
   return set;
 });
@@ -93,6 +95,10 @@ const defaultConfig: RagConfig = {
   retrieval_strategy: "hybrid",
   top_k: 5,
   min_score_threshold: 0.0,
+  chunk_size: 800,
+  chunk_overlap: 100,
+  min_chunk_size: 50,
+  rrf_k: 60,
   rerank: { enabled: false, model: "" },
 };
 const ragForm = reactive<RagConfig>(structuredClone(defaultConfig));
@@ -120,6 +126,10 @@ function applySnapshot(cfg: RagConfig) {
   ragForm.retrieval_strategy = next.retrieval_strategy;
   ragForm.top_k = next.top_k;
   ragForm.min_score_threshold = next.min_score_threshold;
+  ragForm.chunk_size = next.chunk_size;
+  ragForm.chunk_overlap = next.chunk_overlap;
+  ragForm.min_chunk_size = next.min_chunk_size;
+  ragForm.rrf_k = next.rrf_k;
   ragForm.rerank = next.rerank;
 }
 
@@ -301,6 +311,50 @@ function statusLabel(item: KnowledgeFileItem): string {
               :max="thresholdAttrs.max"
               :disabled="!isActive('threshold')"
             />
+          </div>
+
+          <!-- RRF 常数 k（仅 hybrid 生效） -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('rrf_k') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">RRF 常数 k</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">混合检索 RRF 融合的常数 k，分母 1/(k+rank)。k 越大头部权重越集中，越小则尾部越有机会；典型 40–100，默认 60。仅 hybrid 策略生效。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.rrf_k" type="number" min="1" max="200" step="1" :disabled="!isActive('rrf_k')" />
+          </div>
+
+          <!-- 切块大小（入库参数，对所有策略生效） -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('chunk_size') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">切块大小 (chunk_size)</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">入库时每个文本块的最大字符数。越小粒度越细、命中越精确但上下文越少；建议 400–1200。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.chunk_size" type="number" min="50" max="4000" step="50" :disabled="!isActive('chunk_size')" />
+          </div>
+
+          <!-- 切块重叠（入库参数） -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('chunk_overlap') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">切块重叠 (overlap)</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">硬切时相邻块保留的重叠字符数，避免句子被截断丢上下文；应小于 chunk_size，通常 50–200。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.chunk_overlap" type="number" min="0" max="1000" step="10" :disabled="!isActive('chunk_overlap')" />
+          </div>
+
+          <!-- 最小块长度（入库参数） -->
+          <div class="kb-config-card" :class="{ 'is-disabled': !isActive('min_chunk_size') }">
+            <div class="kb-card-head">
+              <span class="kb-card-title">最小块长度</span>
+              <span class="kb-info">ⓘ
+                <span class="kb-tooltip">硬切时丢弃短于此长度的碎块，避免噪声；应小于 chunk_size，通常 20–100。</span>
+              </span>
+            </div>
+            <input v-model.number="ragForm.min_chunk_size" type="number" min="1" max="1000" step="10" :disabled="!isActive('min_chunk_size')" />
           </div>
 
           <!-- 结果重排 -->

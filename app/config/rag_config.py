@@ -36,6 +36,12 @@ class RagConfig(BaseModel):
     #   - hybrid  ：RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016，应接近 0
     # 默认 0.0 表示不按阈值过滤，仅取 top_k。
     min_score_threshold: float = 0.0
+    # 切块参数（入库时使用，影响检索质量）：直接传 Chunker，前端可控。
+    chunk_size: int = Field(default=800, ge=50)
+    chunk_overlap: int = Field(default=100, ge=0)
+    min_chunk_size: int = Field(default=50, ge=1)
+    # RRF 融合常数 k（仅 hybrid 策略生效），分越小权重越大。
+    rrf_k: int = Field(default=60, ge=1)
     rerank: RerankConfig = RerankConfig()
 
 

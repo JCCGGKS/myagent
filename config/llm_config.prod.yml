@@ -34,6 +34,14 @@ rag:
   # 默认 0.0 表示不按阈值过滤，仅取 top_k。
   min_score_threshold: 0.0
 
+  # 切块参数（入库时生效，影响检索质量）
+  chunk_size: 800        # 每个文本块最大字符数
+  chunk_overlap: 100     # 硬切时相邻块重叠字符数
+  min_chunk_size: 50     # 丢弃短于此长度的碎块
+
+  # RRF 融合常数 k（仅 hybrid 策略生效），默认 60
+  rrf_k: 60
+
   # Rerank 配置
   rerank:
     # 是否启用 Rerank

@@ -32,7 +32,7 @@
 - `Chunker.chunk_markdown()`：按 `#`~`######` 标题切分逻辑块，每个块继承其上层 `heading_path`；超长块用递归字符切块继续切。
 - `Chunker.chunk_text()`：无 Markdown 结构时的通用文本切块。
 - 递归分隔符优先级：`\n\n` > `\n` > `。` > `；` > `，` > ` ` > 硬切（保留 `chunk_overlap`）。
-- 默认 `chunk_size=800`、`chunk_overlap=100`、`min_chunk_size=50`，均在构造参数中可调。
+- 默认 `chunk_size=800`、`chunk_overlap=100`、`min_chunk_size=50`，均由 `rag` 配置段驱动（前端可控），`KnowledgeIngestionService` 构造时由 `api/rag.py:_build_ingestion_service` 传入。
 
 ### sparse_bm25.py — 稀疏向量 BM25（已落地）
 - `tokenize()`：小写 ASCII 词 + 单个汉字（`[a-z0-9]+|[一-鿿]`），MVP 简化分词。
@@ -62,7 +62,7 @@
 - `Document`：统一结果结构 `id / content / metadata / score`。
 - `BM25Strategy`：调用 `search_bm25`，按单一 `min_score_threshold` 过滤。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`（不再用 mock 随机分）。
-- `HybridStrategy`：`_rrf_fusion()`（倒数排序融合，`k=60`，量纲无关、固定使用），按单一 `min_score_threshold` 过滤后取前 20。加权融合已移除（BM25 与余弦分数量纲不同，跨量纲线性混合不可靠）。
+- `HybridStrategy`：`_rrf_fusion()`（倒数排序融合，量纲无关、固定使用），常数 `k` 由 `rag.rrf_k` 决定（默认 60），按单一 `min_score_threshold` 过滤后取前 `top_k*2`。加权融合已移除（BM25 与余弦分数量纲不同，跨量纲线性混合不可靠）。
 - `get_strategy_from_config()` / `_build_strategy()`：按 `RagConfig.retrieval_strategy` 装配；语义/混合缺 embedding 配置时抛错。单一 `min_score_threshold` 由 `rag` 顶层读出即用于三路过滤，不做归一化。
 
 ### rerank.py — 重排（已落地，DashScope，配置开关）
@@ -77,7 +77,7 @@
 - `_apply_credibility()`：未启用 rerank 时，按 `score + DOC_TYPE_CREDIBILITY[doc_type]` 微调排序（`policy 0.05 > faq 0.03 > product 0.02 > help 0.01`）。
 - `_rerank()`：用 `build_rerank_client()` 重排，`None` 或失败则回退原序。
 - `rerank_enabled=None` 时运行时由 `RagConfig` 决定，支持 `/rag/config` 动态开关。
-- 提供 `name / description / to_tool_schema()` 供 LLM 工具调用；`get_rag_tool()` 从 `llm_config.local.yml` 读配置。
+- 提供 `name / description / to_tool_schema()` 供 LLM 工具调用；`get_rag_tool()` 从环境相关的 `RagConfig`（`get_rag_config_service()`）读 `top_k` / `rerank` 配置，不再硬编码 `llm_config.local.yml`。
 
 ### __init__.py — 统一导出
 导出 `QdrantClient / BM25Strategy / SemanticStrategy / HybridStrategy / Chunker / Chunk / KnowledgeIngestionService / EmbeddingClient / build_embedding_client / build_sparse_vector / tokenize / RerankClient / build_rerank_client`（不含 `RagRetrieveTool`，见 tools 层）。
@@ -92,6 +92,12 @@ rag:
   # 不同策略量纲不同，前端按 retrieval_strategy 控制可输入范围：
   #   bm25    0~10（强命中 4~6）  semantic 0~1  hybrid ~0（RRF 分数约 1/(k+rank)）
   min_score_threshold: 0.0
+  # 切块参数（入库时生效，影响检索质量）
+  chunk_size: 800
+  chunk_overlap: 100
+  min_chunk_size: 50
+  # RRF 融合常数 k（仅 hybrid 策略生效），默认 60
+  rrf_k: 60
   rerank:
     enabled: false                 # true 时启用 DashScope 重排
     model: gated-rerank
