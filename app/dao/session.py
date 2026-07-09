@@ -135,11 +135,7 @@ class MemorySessionStore(SessionStore):
                 "user_id": state.user_id,
                 "channel": state.channel,
                 "status": "handoff" if state.handoff else "active",
-                "current_intent": state.current_main_intent,
-                "current_stage": state.stage,
-                "risk_level": state.risk_level,
                 "summary": state.running_summary or state.summary,
-                "handoff_required": state.handoff,
                 "updated_at": _now(),
             }
         )
@@ -301,11 +297,7 @@ class SqlSessionStore(SessionStore):
             row.user_id = state.user_id
             row.channel = state.channel
             row.status = "handoff" if state.handoff else "active"
-            row.current_intent = state.current_main_intent
-            row.current_stage = state.stage
-            row.risk_level = state.risk_level
             row.summary = state.running_summary or state.summary
-            row.handoff_required = state.handoff
             db.commit()
         return state
 

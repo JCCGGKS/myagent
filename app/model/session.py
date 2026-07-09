@@ -19,11 +19,7 @@ class Session(Base):
     channel: Mapped[str] = mapped_column(String(32), default="web")
     title: Mapped[str] = mapped_column(String(128), default="新会话")
     status: Mapped[str] = mapped_column(String(32), default="active")
-    current_intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    handoff_required: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
