@@ -47,7 +47,7 @@ def test_register_and_login_and_token():
     assert token.access_token
 
     payload = decode_token(token.access_token, expected_purpose="access")
-    assert payload["user_id"] == str(user.id)
+    assert payload["user_id"] == user.id
     assert payload["username"] == "alice"
     assert payload["email"] == "a@x.com"
 

@@ -7,14 +7,14 @@ import { postForgotPassword, postResetPassword } from "@/lib/api";
 const route = useRoute();
 const router = useRouter();
 
-const token = ref<string>((route.query.token as string) || "");
+// 步骤：1=输入邮箱发链接，2=输入 token+新密码重置
+const step = ref<number>((route.query.token as string) ? 2 : 1);
 const email = ref("");
+const token = ref<string>((route.query.token as string) || "");
 const newPassword = ref("");
 const message = ref("");
 const error = ref("");
 const loading = ref(false);
-
-const needsReset = ref(Boolean(token.value));
 
 async function requestLink() {
   error.value = "";
@@ -27,6 +27,7 @@ async function requestLink() {
   try {
     const res = await postForgotPassword({ email: email.value });
     message.value = res.detail || "若账号存在，重置链接已发送";
+    step.value = 2;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "请求失败";
   } finally {
@@ -59,10 +60,11 @@ async function doReset() {
     <div class="auth-card">
       <h1>找回密码</h1>
 
-      <form v-if="!needsReset" class="auth-form" @submit.prevent="requestLink">
+      <!-- 步骤 1：输入邮箱 -->
+      <form v-if="step === 1" class="auth-form" @submit.prevent="requestLink">
         <label>
           <span>邮箱</span>
-          <input v-model="email" type="email" />
+          <input v-model="email" type="email" placeholder="请输入注册邮箱" />
         </label>
         <p v-if="error" class="auth-error">{{ error }}</p>
         <p v-if="message" class="auth-ok">{{ message }}</p>
@@ -72,14 +74,22 @@ async function doReset() {
         </div>
       </form>
 
+      <!-- 步骤 2：输入 token + 新密码 -->
       <form v-else class="auth-form" @submit.prevent="doReset">
         <label>
+          <span>重置凭证</span>
+          <input v-model="token" type="text" placeholder="从邮件链接中获取的重置凭证" />
+        </label>
+        <label>
           <span>新密码（至少 6 位）</span>
-          <input v-model="newPassword" type="password" />
+          <input v-model="newPassword" type="password" placeholder="输入新密码" />
         </label>
         <p v-if="error" class="auth-error">{{ error }}</p>
         <p v-if="message" class="auth-ok">{{ message }}</p>
         <button type="submit" :disabled="loading">{{ loading ? "重置中…" : "重置密码" }}</button>
+        <div class="auth-links">
+          <a href="#" @click.prevent="step = 1">返回上一步</a>
+        </div>
       </form>
     </div>
   </div>

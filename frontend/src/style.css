@@ -117,6 +117,142 @@ button {
   background: #fef2f2;
 }
 
+.sidebar-user-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.sidebar-user-btn {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.sidebar-user-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+/* 修改密码弹窗 */
+.pwd-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.pwd-modal {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+.pwd-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.pwd-modal-head h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.pwd-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: #6b7280;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pwd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pwd-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.pwd-form input {
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.pwd-form input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.pwd-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.pwd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pwd-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pwd-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pwd-btn-primary {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+}
+
+.pwd-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.pwd-btn-ghost {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+}
+
+.pwd-btn-ghost:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
 .workspace {
   flex: 1;
   display: flex;

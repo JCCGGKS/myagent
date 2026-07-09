@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from app.business.auth.models import (
+    ChangePassword,
     ForgotPassword,
+    LoginResponse,
     ResetPassword,
     Token,
     UserInfo,
@@ -43,13 +45,16 @@ def register(data: UserRegister, user_dao: UserDAO) -> UserInfo:
     return UserInfo(id=user["id"], username=user["username"], email=user["email"])
 
 
-def login(data: UserLogin, user_dao: UserDAO) -> Token:
-    """校验用户名与密码，成功返回 access token。"""
+def login(data: UserLogin, user_dao: UserDAO) -> LoginResponse:
+    """校验用户名与密码，成功返回 access token 及用户信息。"""
     user = user_dao.get_by_username(data.username)
     if user is None or not verify_password(data.password, user["password_hash"]):
         raise AuthError("用户名或密码错误", status_code=401)
     token = create_access_token(user["id"], user["username"], user["email"])
-    return Token(access_token=token)
+    return LoginResponse(
+        access_token=token,
+        user=UserInfo(id=user["id"], username=user["username"], email=user["email"]),
+    )
 
 
 def forgot_password(data: ForgotPassword, user_dao: UserDAO) -> None:
@@ -68,9 +73,19 @@ def reset_password(data: ResetPassword, user_dao: UserDAO) -> None:
     except Exception as exc:  # noqa: BLE001
         raise AuthError(f"重置凭证无效: {exc}", status_code=400) from exc
 
-    user_id = int(payload.get("user_id"))
+    user_id = payload.get("user_id")
     user = user_dao.get_by_id(user_id)
     if user is None:
         raise AuthError("用户不存在", status_code=404)
 
+    user_dao.update_password(user_id, hash_password(data.new_password))
+
+
+def change_password(user_id: int, data: ChangePassword, user_dao: UserDAO) -> None:
+    """登录用户修改密码：验证旧密码后设新密码。"""
+    user = user_dao.get_by_id(user_id)
+    if user is None:
+        raise AuthError("用户不存在", status_code=404)
+    if not verify_password(data.old_password, user["password_hash"]):
+        raise AuthError("原密码错误", status_code=400)
     user_dao.update_password(user_id, hash_password(data.new_password))

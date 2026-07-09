@@ -21,8 +21,3 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(rag_router)
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}

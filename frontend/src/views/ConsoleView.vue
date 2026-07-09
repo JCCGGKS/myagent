@@ -7,6 +7,7 @@ import TurnTracePanel from "@/components/TurnTracePanel.vue";
 import KnowledgeBuildPanel from "@/views/KnowledgeBuildPanel.vue";
 import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
+import { postChangePassword } from "@/lib/api";
 
 const store = useChatStore();
 const auth = useAuthStore();
@@ -16,6 +17,49 @@ const fileInput = ref<HTMLInputElement | null>(null);
 function handleLogout() {
   auth.logout();
   router.push("/login");
+}
+
+// 修改密码
+const showPwdModal = ref(false);
+const oldPwd = ref("");
+const newPwd = ref("");
+const confirmPwd = ref("");
+const pwdError = ref("");
+const pwdLoading = ref(false);
+
+function openPwdModal() {
+  oldPwd.value = "";
+  newPwd.value = "";
+  confirmPwd.value = "";
+  pwdError.value = "";
+  showPwdModal.value = true;
+}
+
+async function submitChangePwd() {
+  pwdError.value = "";
+  if (!oldPwd.value || !newPwd.value || !confirmPwd.value) {
+    pwdError.value = "请填写所有字段";
+    return;
+  }
+  if (newPwd.value.length < 6) {
+    pwdError.value = "新密码至少 6 位";
+    return;
+  }
+  if (newPwd.value !== confirmPwd.value) {
+    pwdError.value = "两次输入的新密码不一致";
+    return;
+  }
+  pwdLoading.value = true;
+  try {
+    await postChangePassword({ old_password: oldPwd.value, new_password: newPwd.value });
+    showPwdModal.value = false;
+    auth.logout();
+    router.push("/login");
+  } catch (e) {
+    pwdError.value = e instanceof Error ? e.message : "修改失败";
+  } finally {
+    pwdLoading.value = false;
+  }
 }
 
 const prompts = [
@@ -127,10 +171,8 @@ function toggleStatsPanel() {
 }
 
 onMounted(async () => {
-  await store.refreshHealth();
   await store.initFromLocalStorage();
   await store.connectSocket();
-  await auth.fetchMe();
 });
 </script>
 
@@ -258,11 +300,49 @@ onMounted(async () => {
           <span class="sidebar-user-name">{{ auth.user?.username || '未登录' }}</span>
           <span class="sidebar-user-email">{{ auth.user?.email || '' }}</span>
         </div>
-        <button type="button" class="sidebar-logout" @click="handleLogout">
-          退出登录
-        </button>
+        <div class="sidebar-user-actions">
+          <button type="button" class="sidebar-user-btn" @click="openPwdModal">
+            修改密码
+          </button>
+          <button type="button" class="sidebar-logout" @click="handleLogout">
+            退出登录
+          </button>
+        </div>
       </div>
     </aside>
+
+    <!-- 修改密码弹窗 -->
+    <div v-if="showPwdModal" class="pwd-modal-mask" @click.self="showPwdModal = false">
+      <div class="pwd-modal">
+        <div class="pwd-modal-head">
+          <h3>修改密码</h3>
+          <button class="pwd-modal-close" type="button" @click="showPwdModal = false">✕</button>
+        </div>
+        <div class="pwd-form">
+          <label>
+            <span>原密码</span>
+            <input v-model="oldPwd" type="password" />
+          </label>
+          <label>
+            <span>新密码（至少 6 位）</span>
+            <input v-model="newPwd" type="password" />
+          </label>
+          <label>
+            <span>确认新密码</span>
+            <input v-model="confirmPwd" type="password" />
+          </label>
+          <p v-if="pwdError" class="pwd-error">{{ pwdError }}</p>
+          <div class="pwd-actions">
+            <button type="button" class="pwd-btn pwd-btn-ghost" :disabled="pwdLoading" @click="showPwdModal = false">
+              取消
+            </button>
+            <button type="button" class="pwd-btn pwd-btn-primary" :disabled="pwdLoading" @click="submitChangePwd">
+              {{ pwdLoading ? "提交中…" : "确认" }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Main Workspace -->
     <main class="workspace">

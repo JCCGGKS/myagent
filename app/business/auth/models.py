@@ -39,6 +39,11 @@ class ResetPassword(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
+class ChangePassword(BaseModel):
+    old_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -48,3 +53,9 @@ class UserInfo(BaseModel):
     id: int
     username: str
     email: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserInfo

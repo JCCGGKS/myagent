@@ -125,12 +125,11 @@ git diff --cached       # Review staged changes before committing
 
 ## Backend API Endpoints
 
-- `GET /health` - Health check
 - `POST /chat` - Chat endpoint (non-streaming)
 - `POST /chat/init` - Create a new session
 - `POST /chat/stream` - SSE chat endpoint (preferred for web, returns `text/event-stream`)
 - `GET /session/{session_id}` - Get session state
-- `POST /auth/register` / `POST /auth/login` / `POST /auth/forgot-password` / `POST /auth/reset-password` / `GET /auth/me` - 认证
+- `POST /auth/register` / `POST /auth/login` / `POST /auth/forgot-password` / `POST /auth/reset-password` / `POST /auth/change-password` - 认证
 - `POST /knowledge/upload` - 知识库上传
 - `GET /rag/config` / `PUT /rag/config` - RAG 配置
 

@@ -23,7 +23,7 @@ def get_current_user(authorization: Annotated[str | None, Header()] = None) -> U
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     return UserInfo(
-        id=str(payload.get("user_id", "")),
+        id=int(payload.get("user_id", 0)),
         username=str(payload.get("username", "")),
         email=str(payload.get("email", "")),
     )

@@ -4,14 +4,22 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.business.auth.deps import get_current_user
 from app.business.auth.models import (
+    ChangePassword,
     ForgotPassword,
+    LoginResponse,
     ResetPassword,
-    Token,
     UserInfo,
     UserLogin,
     UserRegister,
 )
-from app.business.auth.service import AuthError, forgot_password, login, register, reset_password
+from app.business.auth.service import (
+    AuthError,
+    change_password,
+    forgot_password,
+    login,
+    register,
+    reset_password,
+)
 from app.dao import UserDAO, get_user_dao
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -25,8 +33,8 @@ def api_register(data: UserRegister, user_dao: UserDAO = Depends(get_user_dao)) 
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
 
-@router.post("/login", response_model=Token)
-def api_login(data: UserLogin, user_dao: UserDAO = Depends(get_user_dao)) -> Token:
+@router.post("/login", response_model=LoginResponse)
+def api_login(data: UserLogin, user_dao: UserDAO = Depends(get_user_dao)) -> LoginResponse:
     try:
         return login(data, user_dao)
     except AuthError as exc:
@@ -49,6 +57,15 @@ def api_reset_password(data: ResetPassword, user_dao: UserDAO = Depends(get_user
     return {"detail": "密码已重置"}
 
 
-@router.get("/me", response_model=UserInfo)
-def api_me(user: UserInfo = Depends(get_current_user)) -> UserInfo:
-    return user
+@router.post("/change-password")
+def api_change_password(
+    data: ChangePassword,
+    user: UserInfo = Depends(get_current_user),
+    user_dao: UserDAO = Depends(get_user_dao),
+) -> dict[str, str]:
+    """登录用户修改密码（需 Authorization 头）。"""
+    try:
+        change_password(user.id, data, user_dao)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return {"detail": "密码已修改"}

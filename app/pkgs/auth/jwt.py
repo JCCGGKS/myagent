@@ -25,10 +25,9 @@ def _now() -> datetime.datetime:
 
 
 def create_access_token(user_id: str | int, username: str, email: str) -> str:
-    user_id = str(user_id)
     expire_minutes = int(get_jwt_config().get("access_expire_minutes", 1440))
     payload: dict[str, Any] = {
-        "sub": user_id,
+        "sub": str(user_id),
         "user_id": user_id,
         "username": username,
         "email": email,
@@ -40,10 +39,9 @@ def create_access_token(user_id: str | int, username: str, email: str) -> str:
 
 
 def create_reset_token(user_id: str | int, email: str) -> str:
-    user_id = str(user_id)
     expire_minutes = int(get_jwt_config().get("reset_expire_minutes", 15))
     payload: dict[str, Any] = {
-        "sub": user_id,
+        "sub": str(user_id),
         "user_id": user_id,
         "email": email,
         "purpose": "reset",

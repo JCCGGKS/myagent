@@ -3,7 +3,6 @@ import { defineStore } from "pinia";
 
 import {
   clearToken,
-  getAuthMe,
   getToken,
   postLogin,
   postRegister,
@@ -11,27 +10,34 @@ import {
   type AuthUser,
 } from "@/lib/api";
 
+const USER_KEY = "myagent_user";
+
+function loadUser(): AuthUser | null {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = defineStore("auth", () => {
   const token = ref<string | null>(getToken());
-  const user = ref<AuthUser | null>(null);
+  const user = ref<AuthUser | null>(loadUser());
 
   const isLoggedIn = computed(() => Boolean(token.value));
 
-  function _setSession(tk: string, usr: AuthUser | null) {
+  function _setSession(tk: string, usr: AuthUser) {
     token.value = tk;
     user.value = usr;
     setToken(tk);
+    localStorage.setItem(USER_KEY, JSON.stringify(usr));
   }
 
   async function login(username: string, password: string) {
     const res = await postLogin({ username, password });
-    _setSession(res.access_token, null);
-    // 尝试拉取用户信息（失败不阻断登录态）
-    try {
-      user.value = await getAuthMe();
-    } catch {
-      /* ignore */
-    }
+    _setSession(res.access_token, res.user);
     return res;
   }
 
@@ -40,20 +46,12 @@ export const useAuthStore = defineStore("auth", () => {
     return usr;
   }
 
-  async function fetchMe() {
-    if (!token.value) return;
-    try {
-      user.value = await getAuthMe();
-    } catch {
-      /* ignore */
-    }
-  }
-
   function logout() {
     token.value = null;
     user.value = null;
     clearToken();
+    localStorage.removeItem(USER_KEY);
   }
 
-  return { token, user, isLoggedIn, login, register, fetchMe, logout };
+  return { token, user, isLoggedIn, login, register, logout };
 });
