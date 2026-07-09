@@ -54,7 +54,7 @@ Core backend modules:
   - `data.py`: 加载 `app/data` 下的 JSON 资源（容错）
 - `app/model`: SQLAlchemy ORM 表模型
   - `user.py`: `User` 表（`id` 为 `Integer` 自增主键）
-  - `session.py`: `Session / Message / StateSnapshot / ToolCall / HandoffRecord` 表
+  - `session.py`: `Session / Message` 表（会话持久化通道使用；`StateSnapshot / ToolCall / HandoffRecord` 早期审计表已移除）
 - `app/schema`: Pydantic 数据结构（`ChatRequest` / `ChatResponse` / `ConversationState` 等）
 - `app/pkgs`: 第三方调用封装
   - `auth`: `jwt`（token 签发/校验）、`password`（bcrypt）、`email`（smtp）

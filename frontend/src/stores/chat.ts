@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { getSession, postChat, postChatInit, uploadKnowledgeFile } from "@/lib/api";
+import { getSession, postChat, postChatInit, uploadKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
@@ -63,18 +63,23 @@ function createInitialMessage(): MessageItem {
   };
 }
 
-function createSession(title = "新会话", sessionId?: string): ChatSessionItem {
+function createSession(
+  title = "新会话",
+  sessionId?: string,
+  messages?: MessageItem[],
+  preview = "",
+): ChatSessionItem {
   const timestamp = nowLabel();
   const day = todayLabel();
   return {
     id: sessionId || createSessionId(),
     title,
-    preview: "",
+    preview,
     createdDay: day,
     createdAt: timestamp,
     updatedDay: day,
     updatedAt: timestamp,
-    messages: [createInitialMessage()],
+    messages: messages && messages.length ? messages : [createInitialMessage()],
     turns: [],
     session: null,
   };
@@ -85,7 +90,6 @@ export const useChatStore = defineStore("chat", () => {
   const sessions = ref<ChatSessionItem[]>([createSession("客服咨询")]);
   const activeSessionId = ref(sessions.value[0].id);
   const sessionSearch = ref("");
-  const userId = ref("user-001");
   const channel = ref("web");
   const draft = ref("");
   const knowledgeFiles = ref<KnowledgeFileItem[]>([]);
@@ -183,8 +187,8 @@ export const useChatStore = defineStore("chat", () => {
     try {
       statusText.value = "正在创建会话...";
       const response = await postChatInit({
-        user_id: userId.value.trim() || "user-001",
         channel: channel.value.trim() || "web",
+        title: "新会话",
       });
       const newSession = createSession(response.title || "新会话", response.session_id);
       sessions.value.unshift(newSession);
@@ -251,27 +255,54 @@ export const useChatStore = defineStore("chat", () => {
     renameDraft.value = "";
   }
 
-  function submitRenameSession(id: string) {
+  async function submitRenameSession(id: string) {
     const target = sessions.value.find((session) => session.id === id);
     const nextTitle = renameDraft.value.trim();
     if (!target || !nextTitle) {
       cancelRenameSession();
       return;
     }
-    target.title = nextTitle.slice(0, 20);
+    const trimmed = nextTitle.slice(0, 20);
+    target.title = trimmed;
     touchTargetSession(target, target.preview);
     cancelRenameSession();
+    try {
+      await updateSession(id, trimmed);
+    } catch (error) {
+      // 后端不可用时静默忽略，前端标题已更新
+    }
   }
 
-  function removeSession(id: string) {
-    if (sessions.value.length === 1) {
-      createNewSession();
+  async function removeSession(id: string) {
+    try {
+      await deleteSession(id);
+    } catch (error) {
+      // 纯本地会话后端可能不存在，忽略
     }
     sessions.value = sessions.value.filter((session) => session.id !== id);
-    if (!sessions.value.some((session) => session.id === activeSessionId.value)) {
+    if (sessions.value.length === 0) {
+      await createNewSession();
+    } else if (!sessions.value.some((session) => session.id === activeSessionId.value)) {
       activeSessionId.value = sessions.value[0].id;
     }
     statusText.value = "已删除会话";
+  }
+
+  async function renameSessionDirect(id: string, title: string) {
+    const trimmed = title.trim().slice(0, 20);
+    if (!trimmed) {
+      return;
+    }
+    const target = sessions.value.find((session) => session.id === id);
+    if (target) {
+      target.title = trimmed;
+      touchTargetSession(target, target.preview);
+    }
+    try {
+      await updateSession(id, trimmed);
+    } catch (error) {
+      // 后端不可用时保留本地标题
+    }
   }
 
   async function switchSession(id: string) {
@@ -287,6 +318,20 @@ export const useChatStore = defineStore("chat", () => {
         // Ignore 404 for brand new local sessions.
       }
     }
+
+    // 懒加载历史消息：仅当会话只有初始问候或为空时从后端回放
+    const msgs = activeSession.value.messages;
+    const onlyGreeting = msgs.length === 1 && msgs[0].id.startsWith("assistant-initial");
+    if (msgs.length === 0 || onlyGreeting) {
+      try {
+        const history = await getSessionMessages(id);
+        if (history.length) {
+          activeSession.value.messages = history;
+        }
+      } catch (error) {
+        // 后端不可用时保留本地消息
+      }
+    }
   }
 
   function saveSessionIdToStorage(sessionId: string) {
@@ -295,17 +340,38 @@ export const useChatStore = defineStore("chat", () => {
 
   async function initFromLocalStorage() {
     const savedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (savedSessionId) {
-      try {
-        const sessionState = await getSession(savedSessionId);
-        const restoredSession = createSession("恢复的会话", savedSessionId);
-        restoredSession.session = sessionState;
-        sessions.value = [restoredSession];
-        activeSessionId.value = savedSessionId;
-        statusText.value = "已恢复上次会话";
-      } catch (error) {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        statusText.value = "会话已过期，请新建会话";
+    try {
+      const list = await getSessionList();
+      if (list.length) {
+        sessions.value = list.map((s) =>
+          createSession(s.title || "新会话", s.session_id, undefined, s.preview),
+        );
+        if (savedSessionId && sessions.value.some((s) => s.id === savedSessionId)) {
+          await switchSession(savedSessionId);
+        } else {
+          activeSessionId.value = sessions.value[0].id;
+        }
+        statusText.value = "已加载历史会话";
+      } else {
+        await createNewSession();
+        statusText.value = "已新建会话";
+      }
+    } catch (error) {
+      // 后端不可用，退回本地恢复
+      if (savedSessionId) {
+        try {
+          const sessionState = await getSession(savedSessionId);
+          const restoredSession = createSession("恢复的会话", savedSessionId);
+          restoredSession.session = sessionState;
+          sessions.value = [restoredSession];
+          activeSessionId.value = savedSessionId;
+          statusText.value = "已恢复上次会话";
+        } catch {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+          statusText.value = "会话已过期，请新建会话";
+        }
+      } else {
+        await createNewSession();
       }
     }
   }
@@ -432,7 +498,6 @@ export const useChatStore = defineStore("chat", () => {
     try {
       await client.send({
         session_id: sessionId.value,
-        user_id: userId.value.trim() || "user-001",
         channel: channel.value.trim() || "web",
         message,
       });
@@ -443,7 +508,6 @@ export const useChatStore = defineStore("chat", () => {
       try {
         const response = await postChat({
           session_id: sessionId.value,
-          user_id: userId.value.trim() || "user-001",
           channel: channel.value.trim() || "web",
           message,
         });
@@ -479,6 +543,7 @@ export const useChatStore = defineStore("chat", () => {
     knowledgeFiles,
     removeKnowledgeFile,
     removeSession,
+    renameSessionDirect,
     renameDraft,
     renamingSessionId,
     sendMessage,
@@ -495,6 +560,5 @@ export const useChatStore = defineStore("chat", () => {
     switchSession,
     turns,
     uploadKnowledgeFiles,
-    userId,
   };
 });

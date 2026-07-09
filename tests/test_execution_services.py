@@ -14,7 +14,7 @@ class ExecutionServicesTestCase(unittest.TestCase):
         )
         state = ConversationState(
             session_id="s2",
-            user_id="u1",
+            user_id=1,
             channel="web",
             current_sub_intent="order_query.query_status",
             slots={"order_id": "A1001"},
@@ -33,7 +33,7 @@ class ExecutionServicesTestCase(unittest.TestCase):
         )
         state = ConversationState(
             session_id="s3",
-            user_id="u1",
+            user_id=1,
             channel="web",
             summary="需要人工处理",
         )

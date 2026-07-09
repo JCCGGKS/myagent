@@ -32,7 +32,6 @@ export interface ActionRecord {
 }
 
 export interface SessionInitRequest {
-  user_id: string;
   channel: string;
   title?: string;
 }
@@ -44,7 +43,6 @@ export interface SessionInitResponse {
 
 export interface ChatRequest {
   session_id: string;
-  user_id: string;
   message: string;
   channel: string;
 }
@@ -69,7 +67,7 @@ export interface ChatResponse {
 
 export interface ConversationState {
   session_id: string;
-  user_id: string;
+  user_id: number;
   channel: string;
   current_main_intent: MainIntentCode;
   current_sub_intent: SubIntentCode;

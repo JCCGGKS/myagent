@@ -30,7 +30,7 @@ class TestCustomerServiceAgent:
         """测试意图为 order_query 时，路由到 agent_node。"""
         request = ChatRequest(
             session_id="test-session",
-            user_id="user-001",
+            user_id=1,
             message="帮我查一下订单 A1001",
         )
         # 初始化 state 必填字段
@@ -38,7 +38,7 @@ class TestCustomerServiceAgent:
 
         state = ConversationState(
             session_id="test-session",
-            user_id="user-001",
+            user_id=1,
             channel="web",
         )
         state.intent_clarification_count = 0
@@ -53,7 +53,7 @@ class TestCustomerServiceAgent:
         """测试意图为 chitchat 时，直接路由到 response_generator。"""
         request = ChatRequest(
             session_id="test-session",
-            user_id="user-001",
+            user_id=1,
             message="你好",
         )
         # 初始化 state 必填字段
@@ -61,7 +61,7 @@ class TestCustomerServiceAgent:
 
         state = ConversationState(
             session_id="test-session",
-            user_id="user-001",
+            user_id=1,
             channel="web",
         )
         state.intent_clarification_count = 0

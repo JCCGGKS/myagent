@@ -129,9 +129,11 @@ function toggleSessionMenu(sessionId: string) {
 }
 
 function renameSession(sessionId: string) {
-  // TODO: Implement rename functionality
-  console.log('Rename session:', sessionId);
-  alert('重命名功能开发中...');
+  const target = store.sessions.find((s) => s.id === sessionId);
+  const next = window.prompt("重命名会话", target?.title ?? "新会话");
+  if (next && next.trim()) {
+    store.renameSessionDirect(sessionId, next.trim());
+  }
 }
 
 function deleteSession(sessionId: string) {
@@ -227,6 +229,7 @@ onMounted(async () => {
             >
                 <div class="session-item-content" @click="store.switchSession(session.id)">
                   <div class="session-item-title">{{ session.title }}</div>
+                  <div v-if="session.preview" class="session-item-preview">{{ session.preview }}</div>
                 </div>
               <button
                 type="button"

@@ -8,7 +8,7 @@ from app.business.routing import StateTrackerService
 class ContextServicesTestCase(unittest.TestCase):
     def test_context_service_should_keep_recent_window_and_append_running_summary(self) -> None:
         service = ContextService(state_tracker=StateTrackerService(), max_recent_messages=4, soft_summary_turns=2)
-        state = ConversationState(session_id="s1", user_id="u1", channel="web", reply="本轮回复")
+        state = ConversationState(session_id="s1", user_id=1, channel="web", reply="本轮回复")
         state.recent_messages = [
             {"role": "user", "content": "m1"},
             {"role": "assistant", "content": "m2"},

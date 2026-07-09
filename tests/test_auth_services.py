@@ -116,14 +116,14 @@ def test_reset_with_bad_token_fails():
 def test_get_request_user_prefers_token():
     from app.api.chat import get_request_user
 
-    token = create_access_token("u-123", "tokenuser", "t@x.com")
-    req = ChatRequest(session_id="s1", user_id="body-user", message="hi", channel="web")
-    assert get_request_user(req, f"Bearer {token}") == "u-123"
+    token = create_access_token(123, "tokenuser", "t@x.com")
+    req = ChatRequest(session_id="s1", user_id=123, message="hi", channel="web")
+    assert get_request_user(req, f"Bearer {token}") == 123
 
 
 def test_get_request_user_falls_back_to_body():
     from app.api.chat import get_request_user
 
-    req = ChatRequest(session_id="s1", user_id="body-user", message="hi", channel="web")
-    assert get_request_user(req, None) == "body-user"
-    assert get_request_user(req, "Bearer garbage") == "body-user"
+    req = ChatRequest(session_id="s1", user_id=123, message="hi", channel="web")
+    assert get_request_user(req, None) == 123
+    assert get_request_user(req, "Bearer garbage") == 123

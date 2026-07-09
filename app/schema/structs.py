@@ -81,7 +81,7 @@ class ArchivedTaskState(BaseModel):
 
 
 class SessionInitRequest(BaseModel):
-    user_id: str = Field(min_length=1)
+    user_id: int | None = None
     channel: str = Field(default="web", min_length=1)
     title: str = Field(default="新会话", max_length=128)
 
@@ -91,9 +91,13 @@ class SessionInitResponse(BaseModel):
     title: str = "新会话"
 
 
+class SessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=128)
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
-    user_id: str = Field(min_length=1)
+    user_id: int | None = None
     message: str = Field(min_length=1)
     channel: str = Field(default="web", min_length=1)
 
@@ -114,7 +118,7 @@ class IntentResult(BaseModel):
 
 class ConversationState(BaseModel):
     session_id: str
-    user_id: str
+    user_id: int
     channel: str
     current_main_intent: MainIntentCode = "unsupported"
     current_sub_intent: SubIntentCode = "unsupported.unknown"

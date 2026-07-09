@@ -7,20 +7,19 @@
 | 文件 | 说明 | 对应 ORM |
 |------|------|----------|
 | `01_users.sql` | 用户表（注册 / 登录 / 找回密码） | `app/model/user.py` |
-| `02_sessions.sql` | 会话相关 5 张表（sessions / messages / state_snapshots / tool_calls / handoff_records） | `app/model/session.py` |
+| `02_sessions.sql` | 会话相关 2 张表（sessions / messages） | `app/model/session.py` |
 | `run.sh` | 建表执行脚本（按文件名顺序遍历执行 `*.sql`） | — |
 
 ## 表概览
 
 ```
-users (1) ──── (N) sessions (1) ─┬─ (N) messages           会话消息流
-                                 ├─ (N) state_snapshots    会话状态快照
-                                 ├─ (N) tool_calls         工具调用审计
-                                 └─ (N) handoff_records    转人工记录
+users (1) ──── (N) sessions (1) ── (N) messages   会话消息流
 ```
 
 - `users` 与 `sessions` 通过 `user_id` 逻辑关联（未设外键，便于匿名/游客会话）
-- `sessions` 下 4 张子表均通过 `session_id` 外键关联，`ON DELETE CASCADE` 跟随会话清理
+- `messages` 通过 `session_id` 外键关联 `sessions`，`ON DELETE CASCADE` 跟随会话清理
+
+> 注：`state_snapshots` / `tool_calls` / `handoff_records` 为早期审计表，未在会话持久化通道中使用，已从 ORM 模型与 DDL 中移除。
 
 ## 执行方式
 

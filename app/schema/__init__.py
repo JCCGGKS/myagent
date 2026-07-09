@@ -14,6 +14,7 @@ from app.schema.structs import (
     OrderInfo,
     SessionInitRequest,
     SessionInitResponse,
+    SessionRenameRequest,
     SubIntentCode,
     ToolExecutionResult,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "OrderInfo",
     "SessionInitRequest",
     "SessionInitResponse",
+    "SessionRenameRequest",
     "SubIntentCode",
     "ToolExecutionResult",
 ]
