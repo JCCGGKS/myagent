@@ -6,11 +6,14 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
 from app.agents import CustomerServiceAgent
+from app.auth.deps import get_current_user
+from app.auth.jwt import decode_token
+from app.auth.router import router as auth_router
 from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
 from app.models import ChatRequest, ChatResponse, ConversationState, SessionInitRequest, SessionInitResponse
@@ -74,6 +77,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(auth_router)
+
+
+def get_request_user(
+    request: ChatRequest,
+    authorization: str | None = Header(default=None),
+) -> str:
+    """解析当前请求的最终 user_id。
+
+    规则：
+    - 携带可解析的 Authorization Bearer token → 以 token 内 user_id 为准（不信任 Body）。
+    - 无 token / 解析失败 → 回退使用请求体中的 user_id（向后兼容未登录对话）。
+    """
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        try:
+            payload = decode_token(token, expected_purpose="access")
+            user_id = payload.get("user_id")
+            if user_id:
+                return str(user_id)
+        except Exception:
+            pass
+    return request.user_id
 
 
 @app.get("/health")
@@ -81,14 +107,29 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/auth/me")
+def auth_me(user=Depends(get_current_user)) -> dict:
+    """返回当前登录用户信息（需 Authorization 头）。"""
+    return {"id": user.id, "username": user.username, "email": user.email}
+
+
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
+def chat(request: ChatRequest, authorization: str | None = Header(default=None)) -> ChatResponse:
+    request.user_id = get_request_user(request, authorization)
     return agent.chat(request)
 
 
 @app.post("/chat/init", response_model=SessionInitResponse)
-def chat_init(request: SessionInitRequest) -> SessionInitResponse:
+def chat_init(request: SessionInitRequest, authorization: str | None = Header(default=None)) -> SessionInitResponse:
     """初始化会话，返回 session_id。"""
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        try:
+            payload = decode_token(token, expected_purpose="access")
+            if payload.get("user_id"):
+                request.user_id = str(payload["user_id"])
+        except Exception:
+            pass
     session_id = session_store.create_session(request.user_id, request.channel)
     return SessionInitResponse(session_id=session_id)
 
@@ -108,12 +149,13 @@ async def _chat_stream_generator(request: ChatRequest) -> AsyncGenerator[str, No
 
 
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest) -> StreamingResponse:
+async def chat_stream(request: ChatRequest, authorization: str | None = Header(default=None)) -> StreamingResponse:
     """SSE 流式对话接口。
 
     前端使用 EventSource 或 fetch + ReadableStream 消费，
     每行格式：data: {JSON}\n\n
     """
+    request.user_id = get_request_user(request, authorization)
     return StreamingResponse(
         _chat_stream_generator(request),
         media_type="text/event-stream",

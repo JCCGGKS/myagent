@@ -92,6 +92,34 @@ mysql:
   # 是否启用（关闭时后端回退到内存存储）
   enabled: true
 
+# JWT 配置
+jwt:
+  # 签名密钥（生产环境务必替换为强随机值）
+  secret: "change-me-in-prod"
+  # 签名算法
+  algorithm: "HS256"
+  # 登录 token 有效期（分钟）
+  access_expire_minutes: 1440
+  # 找回密码 token 有效期（分钟）
+  reset_expire_minutes: 15
+
+# SMTP 配置（找回密码邮件）
+smtp:
+  # 是否启用真实发送（关闭时仅打印重置链接到日志）
+  enabled: false
+  # SMTP 服务器地址
+  host: ""
+  # SMTP 端口（465 通常为 SSL，587 通常为 STARTTLS）
+  port: 465
+  # 登录用户名
+  user: ""
+  # 登录密码 / 授权码
+  password: ""
+  # 发件人地址
+  from_addr: "no-reply@myagent.local"
+  # 是否使用 TLS
+  use_tls: true
+
 # Qdrant 配置
 qdrant:
   # 连接地址（Docker Compose 内用服务名 qdrant）
