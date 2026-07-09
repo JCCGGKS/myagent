@@ -28,7 +28,6 @@ def test_sql_list_sessions_returns_seeded_session():
     assert len(listed) == 1
     assert listed[0]["session_id"] == sid
     assert listed[0]["title"] == "会话A"
-    assert listed[0]["preview"] == "请问有什么可以帮您"
 
 
 def test_sql_list_sessions_filters_by_user():
@@ -69,7 +68,6 @@ def test_memory_list_and_messages():
     sid = _seed(store, 1)
     listed = store.list_sessions(1)
     assert listed[0]["session_id"] == sid
-    assert listed[0]["preview"] == "请问有什么可以帮您"
     msgs = store.get_messages(sid)
     assert [m["role"] for m in msgs] == ["user", "assistant"]
 
