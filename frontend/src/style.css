@@ -529,6 +529,38 @@ button {
   animation: slideDown 0.2s ease;
 }
 
+.submenu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 2px 0;
+  min-height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.submenu-item:hover {
+  background: var(--ai-bubble);
+}
+
+.submenu-item.active {
+  background: var(--accent-soft, rgba(37, 99, 235, 0.12));
+  color: var(--accent, #2563eb);
+  font-weight: 500;
+}
+
+.submenu-title {
+  display: block;
+}
+
 @keyframes slideDown {
   from {
     opacity: 0;
@@ -543,6 +575,8 @@ button {
 /* Session List in Sidebar - Flat Design */
 .session-item-flat {
   padding: 8px 12px;
+  border-radius: 8px;
+  margin: 2px 0;
   cursor: pointer;
   transition: background 0.2s ease;
   position: relative;
@@ -557,7 +591,8 @@ button {
 }
 
 .session-item-flat.active {
-  background: var(--ai-bubble);
+  background: var(--accent-soft, rgba(37, 99, 235, 0.12));
+  color: var(--accent, #2563eb);
   font-weight: 500;
 }
 
@@ -565,13 +600,11 @@ button {
   flex: 1;
   cursor: pointer;
   min-width: 0;
-  padding: 4px 0;
 }
 
 .session-item-title {
   font-size: 0.95rem;
   font-weight: 500;
-  padding: 4px 0;
 }
 
 .session-menu-trigger {

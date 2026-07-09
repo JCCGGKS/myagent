@@ -174,8 +174,10 @@ export interface KnowledgeFileItem {
   name: string;
   sizeLabel: string;
   uploadedAt: string;
-  status: "ready" | "indexing";
+  status: "ready" | "indexing" | "uploading" | "success" | "error";
   typeLabel: string;
+  chunkCount?: number;
+  error?: string;
 }
 
 export interface ChatSocketStatusEvent {

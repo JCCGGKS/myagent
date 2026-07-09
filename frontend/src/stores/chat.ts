@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { getHealth, getSession, postChat, postChatInit } from "@/lib/api";
+import { getHealth, getSession, postChat, postChatInit, uploadKnowledgeFile } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
@@ -198,7 +198,7 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  function uploadKnowledgeFiles(fileList: FileList | null) {
+  async function uploadKnowledgeFiles(fileList: FileList | null, docType = "markdown") {
     if (!fileList?.length) {
       return;
     }
@@ -208,11 +208,28 @@ export const useChatStore = defineStore("chat", () => {
       name: file.name,
       sizeLabel: fileSizeLabel(file.size),
       uploadedAt,
-      status: "ready",
+      status: "uploading",
       typeLabel: fileTypeLabel(file.name),
     }));
     knowledgeFiles.value.unshift(...newItems);
-    statusText.value = `已上传 ${newItems.length} 个知识库文件`;
+
+    await Promise.all(
+      newItems.map(async (item, index) => {
+        const file = fileList[index];
+        try {
+          const result = await uploadKnowledgeFile(file, docType);
+          item.status = "success";
+          item.chunkCount = result.chunk_count;
+        } catch (error) {
+          item.status = "error";
+          item.error = error instanceof Error ? error.message : String(error);
+        }
+      }),
+    );
+
+    const failed = newItems.filter((item) => item.status === "error").length;
+    const ok = newItems.length - failed;
+    statusText.value = `已上传 ${ok} 个文件${failed ? `，${failed} 个失败` : ""}`;
   }
 
   function removeKnowledgeFile(id: string) {
