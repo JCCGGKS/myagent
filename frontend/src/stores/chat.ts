@@ -328,7 +328,7 @@ export const useChatStore = defineStore("chat", () => {
   async function loadSessions() {
     const list = await getSessionList();
     sessions.value = list.map((s) =>
-      createSession(s.title || "新会话", s.session_id, undefined, s.preview),
+      createSession(s.title || "新会话", s.session_id),
     );
   }
 
@@ -450,7 +450,7 @@ export const useChatStore = defineStore("chat", () => {
 
   async function refreshSession() {
     // 当前会话的最新状态由 SSE final 事件回填，刷新按钮无需再拉后端。
-    touchSession(activeSession.value.preview);
+    touchSession();
     statusText.value = "状态已刷新";
   }
 
