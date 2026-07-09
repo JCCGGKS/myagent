@@ -472,7 +472,7 @@ export const useChatStore = defineStore("chat", () => {
     });
 
     pending.value = true;
-    statusText.value = "WebSocket 请求处理中...";
+    statusText.value = "请求处理中...";
     resetLiveTurn();
 
     try {
