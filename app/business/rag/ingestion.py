@@ -99,28 +99,31 @@ class KnowledgeIngestionService:
         file_path: str | Path,
         doc_type: str = "faq",
         source: str | None = None,
+        user_id: int | None = None,
     ) -> int:
         """入库单个 Markdown 文档。返回写入的块数量。"""
         path = Path(file_path)
         text = path.read_text(encoding="utf-8")
         source = source or path.name
-        return self.ingest_markdown_text(text, doc_type=doc_type, source=source)
+        return self.ingest_markdown_text(text, doc_type=doc_type, source=source, user_id=user_id)
 
     def ingest_markdown_text(
         self,
         text: str,
         doc_type: str = "faq",
         source: str = "",
+        user_id: int | None = None,
     ) -> int:
         """入库 Markdown 文本。"""
         chunks = self.chunker.chunk_markdown(text, doc_type=doc_type, source=source)
-        return self._ingest_chunks(chunks)
+        return self._ingest_chunks(chunks, user_id=user_id)
 
     def ingest_json_records(
         self,
         records: list[dict[str, Any]],
         doc_type: str = "faq",
         text_field: str = "content",
+        user_id: int | None = None,
     ) -> int:
         """入库 JSON 记录列表（如 FAQ 数据）。"""
         total = 0
@@ -130,10 +133,10 @@ class KnowledgeIngestionService:
                 continue
             meta = {k: v for k, v in rec.items() if k != text_field}
             chunks = self.chunker.chunk_text(content, doc_type=doc_type, source=json.dumps(meta, ensure_ascii=False))
-            total += self._ingest_chunks(chunks)
+            total += self._ingest_chunks(chunks, user_id=user_id)
         return total
 
-    def _ingest_chunks(self, chunks: list) -> int:
+    def _ingest_chunks(self, chunks: list, user_id: int | None = None) -> int:
         if not chunks:
             return 0
         if self.embedding_client is None:
@@ -148,12 +151,14 @@ class KnowledgeIngestionService:
         points: list[dict[str, Any]] = []
         for chunk, dense in zip(chunks, dense_vectors):
             pid = str(uuid.uuid4())
-            payload = {
+            payload: dict[str, Any] = {
                 "content": chunk.content,
                 "doc_type": chunk.doc_type,
                 "heading_path": chunk.heading_path,
                 "metadata": chunk.metadata,
             }
+            if user_id is not None:
+                payload["user_id"] = user_id
             # 命名向量：稠密（语义）+ 稀疏（BM25，仅存词频，IDF 由 Qdrant 计算）
             points.append(
                 {

@@ -44,8 +44,8 @@
 - `EmbeddingClient`（OpenAI 兼容）：封装 `openai.OpenAI`，`embed()` / `embed_one()` 批量与单条向量化；可对接 DashScope / OpenAI 等网关。
 - `build_embedding_client()`：从顶层 `embedding` 段（model / api_key）+ `llm.base_url` 构建，缺 `api_key` 返回 `None`。向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 - `KnowledgeIngestionService`：
-  - `ingest_markdown_file()` / `ingest_markdown_text()` / `ingest_json_records()` 三种入口。
-  - `_ingest_chunks()`：对每个块同时构建 `dense`（语义）与 `bm25`（稀疏）向量，写入命名向量 `{"dense": ..., "bm25": SparseVector(...)}`，payload 含 `content / doc_type / heading_path / metadata`。
+  - `ingest_markdown_file()` / `ingest_markdown_text()` / `ingest_json_records()` 三种入口，均支持 `user_id` 参数；`user_id` 会写入每块的 payload，检索结果通过 `_hit_to_dict` 回到 `metadata.user_id`。
+  - `_ingest_chunks()`：对每个块同时构建 `dense`（语义）与 `bm25`（稀疏）向量，写入命名向量 `{"dense": ..., "bm25": SparseVector(...)}`，payload 含 `content / doc_type / heading_path / metadata / user_id`。
   - `embedding_client` 为 `None` 时跳过向量化（仅记日志），不会崩溃。
 
 ### 向量层 — app/pkgs/vector/qdrant.py（已落地，真实 Qdrant）
@@ -59,7 +59,7 @@
 - 默认 `host=localhost`、`port=6333`、`collection_name=customer_service_knowledge`、无鉴权。
 
 ### retrieval_strategy.py — 检索策略（已落地）
-- `Document`：统一结果结构 `id / content / metadata / score`。
+- `Document`：统一结果结构 `id / content / metadata / score`；`metadata` 包含 `doc_type`、`heading_path`、`source`，以及入库时传入的 `user_id`（如有）。
 - `BM25Strategy`：调用 `search_bm25`，按单一 `min_score_threshold` 过滤。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`（不再用 mock 随机分）。
 - `HybridStrategy`：`_rrf_fusion()`（倒数排序融合，量纲无关、固定使用），常数 `k` 由 `rag.rrf_k` 决定（默认 60），按单一 `min_score_threshold` 过滤后取前 `top_k*2`。加权融合已移除（BM25 与余弦分数量纲不同，跨量纲线性混合不可靠）。
@@ -136,7 +136,7 @@ from app.business.tools import get_rag_tool
 qdrant = get_qdrant_client()
 emb = build_embedding_client()
 svc = KnowledgeIngestionService(qdrant_client=qdrant, embedding_client=emb)
-svc.ingest_markdown_text("# 退款政策\n...\n# 物流时效\n...", doc_type="policy")
+svc.ingest_markdown_text("# 退款政策\n...\n# 物流时效\n...", doc_type="policy", user_id=1)
 
 # 检索
 tool = get_rag_tool()

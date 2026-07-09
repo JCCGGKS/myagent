@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import File, HTTPException, UploadFile
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.business.auth.deps import get_current_user
+from app.business.auth.models import UserInfo
 from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
 from app.dao import KnowledgeStore
@@ -50,8 +52,9 @@ router = APIRouter(tags=["knowledge"])
 async def knowledge_upload(
     file: UploadFile = File(...),
     doc_type: str = "faq",
+    current_user: UserInfo = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """知识库文件上传接口。
+    """知识库文件上传接口（需登录，写入 user_id 到元数据）。
 
     支持格式：.md / .markdown / .json。
     """
@@ -80,10 +83,10 @@ async def knowledge_upload(
             raise HTTPException(status_code=400, detail="JSON 解析失败")
         if not isinstance(records, list):
             records = [records]
-        chunk_count = ingestion.ingest_json_records(records, doc_type=doc_type)
+        chunk_count = ingestion.ingest_json_records(records, doc_type=doc_type, user_id=current_user.id)
     else:
         chunk_count = ingestion.ingest_markdown_text(
-            content, doc_type=doc_type, source=file.filename
+            content, doc_type=doc_type, source=file.filename, user_id=current_user.id
         )
 
     return {

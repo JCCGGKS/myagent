@@ -216,6 +216,8 @@ def _hit_to_dict(hit: Any) -> dict[str, Any]:
         metadata["doc_type"] = payload["doc_type"]
     if payload.get("heading_path") is not None:
         metadata["heading_path"] = payload["heading_path"]
+    if payload.get("user_id") is not None:
+        metadata["user_id"] = payload["user_id"]
     return {
         "id": str(hit.id),
         "content": payload.get("content", ""),
