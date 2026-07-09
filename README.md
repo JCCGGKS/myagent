@@ -31,7 +31,6 @@ npm run dev
 - `POST /chat`
 - `POST /chat/init` - 创建会话
 - `POST /chat/stream` - SSE 流式对话（Web 端首选）
-- `GET /session/{session_id}`
 - `POST /auth/register` / `POST /auth/login` / `POST /auth/forgot-password` / `POST /auth/reset-password` / `POST /auth/change-password`
 - `POST /knowledge/upload` - 知识库上传
 - `GET /rag/config` / `PUT /rag/config`
