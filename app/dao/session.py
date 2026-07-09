@@ -17,7 +17,7 @@ class SessionStore(ABC):
     """会话存储接口（dao 层）。业务层只依赖此接口，实现可注入。"""
 
     @abstractmethod
-    def create_session(self, user_id: str, channel: str = "web") -> str:
+    def create_session(self, user_id: str, channel: str = "web", title: str = "新会话") -> str:
         ...
 
     @abstractmethod
@@ -74,13 +74,14 @@ class MemorySessionStore(SessionStore):
     def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
 
-    def create_session(self, user_id: str, channel: str = "web") -> str:
+    def create_session(self, user_id: str, channel: str = "web", title: str = "新会话") -> str:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self._sessions[session_id] = {
             "session": {
                 "session_id": session_id,
                 "user_id": user_id,
                 "channel": channel,
+                "title": title,
                 "status": "active",
                 "created_at": _now(),
                 "updated_at": _now(),
@@ -269,7 +270,7 @@ class SqlSessionStore(SessionStore):
     def _db(self):
         return self._session_factory()
 
-    def create_session(self, user_id: str, channel: str = "web") -> str:
+    def create_session(self, user_id: str, channel: str = "web", title: str = "新会话") -> str:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self._states[session_id] = None
         with self._db() as db:
@@ -280,6 +281,7 @@ class SqlSessionStore(SessionStore):
                     session_id=session_id,
                     user_id=user_id,
                     channel=channel,
+                    title=title,
                     status="active",
                 )
             )

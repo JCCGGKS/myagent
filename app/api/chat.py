@@ -77,8 +77,8 @@ def chat_init(request: SessionInitRequest, authorization: str | None = Header(de
                 request.user_id = str(payload["user_id"])
         except Exception:
             pass
-    session_id = session_store.create_session(request.user_id, request.channel)
-    return SessionInitResponse(session_id=session_id)
+    session_id = session_store.create_session(request.user_id, request.channel, request.title)
+    return SessionInitResponse(session_id=session_id, title=request.title)
 
 
 def _event_to_sse(event: dict[str, Any]) -> str:

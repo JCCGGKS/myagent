@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { getHealth, getSession, postChat, postChatInit, uploadKnowledgeFile } from "@/lib/api";
+import { getSession, postChat, postChatInit, uploadKnowledgeFile } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
@@ -186,7 +186,7 @@ export const useChatStore = defineStore("chat", () => {
         user_id: userId.value.trim() || "user-001",
         channel: channel.value.trim() || "web",
       });
-      const newSession = createSession("新会话", response.session_id);
+      const newSession = createSession(response.title || "新会话", response.session_id);
       sessions.value.unshift(newSession);
       activeSessionId.value = newSession.id;
       saveSessionIdToStorage(response.session_id);
@@ -395,15 +395,6 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  async function refreshHealth() {
-    try {
-      await getHealth();
-      backendReady.value = true;
-    } catch (error) {
-      backendReady.value = false;
-    }
-  }
-
   async function connectSocket() {
     try {
       await client.connect();
@@ -484,7 +475,6 @@ export const useChatStore = defineStore("chat", () => {
     liveTrace,
     messages,
     pending,
-    refreshHealth,
     refreshSession,
     knowledgeFiles,
     removeKnowledgeFile,

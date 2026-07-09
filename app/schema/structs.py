@@ -83,10 +83,12 @@ class ArchivedTaskState(BaseModel):
 class SessionInitRequest(BaseModel):
     user_id: str = Field(min_length=1)
     channel: str = Field(default="web", min_length=1)
+    title: str = Field(default="新会话", max_length=128)
 
 
 class SessionInitResponse(BaseModel):
     session_id: str
+    title: str = "新会话"
 
 
 class ChatRequest(BaseModel):

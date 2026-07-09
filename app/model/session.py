@@ -16,6 +16,7 @@ class Session(Base):
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     channel: Mapped[str] = mapped_column(String(32), default="web")
+    title: Mapped[str] = mapped_column(String(128), default="新会话")
     status: Mapped[str] = mapped_column(String(32), default="active")
     current_intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
     current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)

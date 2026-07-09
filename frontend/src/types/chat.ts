@@ -34,10 +34,12 @@ export interface ActionRecord {
 export interface SessionInitRequest {
   user_id: string;
   channel: string;
+  title?: string;
 }
 
 export interface SessionInitResponse {
   session_id: string;
+  title?: string;
 }
 
 export interface ChatRequest {

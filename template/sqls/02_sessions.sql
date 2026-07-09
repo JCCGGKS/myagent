@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   `session_id`        VARCHAR(64)   NOT NULL,
   `user_id`           VARCHAR(64)   NOT NULL,
   `channel`           VARCHAR(32)   NOT NULL DEFAULT 'web',
+  `title`             VARCHAR(128)  NOT NULL DEFAULT '新会话',
   `status`            VARCHAR(32)   NOT NULL DEFAULT 'active',
   `current_intent`    VARCHAR(64)   DEFAULT NULL,
   `current_stage`     VARCHAR(64)   DEFAULT NULL,
