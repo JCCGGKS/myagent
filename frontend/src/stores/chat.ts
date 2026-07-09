@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { getSession, postChat, postChatInit, uploadKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
+import { postChat, postChatInit, uploadKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
@@ -311,14 +311,6 @@ export const useChatStore = defineStore("chat", () => {
     statusText.value = "已切换会话";
     resetLiveTurn();
 
-    if (!activeSession.value.session) {
-      try {
-        activeSession.value.session = await getSession(id);
-      } catch (error) {
-        // Ignore 404 for brand new local sessions.
-      }
-    }
-
     // 懒加载历史消息：仅当会话只有初始问候或为空时从后端回放
     const msgs = activeSession.value.messages;
     const onlyGreeting = msgs.length === 1 && msgs[0].id.startsWith("assistant-initial");
@@ -361,22 +353,10 @@ export const useChatStore = defineStore("chat", () => {
         statusText.value = "已新建会话";
       }
     } catch (error) {
-      // 后端不可用，退回本地恢复
-      if (savedSessionId) {
-        try {
-          const sessionState = await getSession(savedSessionId);
-          const restoredSession = createSession("恢复的会话", savedSessionId);
-          restoredSession.session = sessionState;
-          sessions.value = [restoredSession];
-          activeSessionId.value = savedSessionId;
-          statusText.value = "已恢复上次会话";
-        } catch {
-          localStorage.removeItem(SESSION_STORAGE_KEY);
-          statusText.value = "会话已过期，请新建会话";
-        }
-      } else {
-        await createNewSession();
-      }
+      // 后端不可用：退回新建会话，本地缓存的旧 session_id 直接清掉。
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      statusText.value = "后端不可用，已新建会话";
+      await createNewSession();
     }
   }
 
@@ -474,13 +454,9 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   async function refreshSession() {
-    try {
-      activeSession.value.session = await getSession(sessionId.value);
-      touchSession(activeSession.value.preview);
-      statusText.value = "状态已刷新";
-    } catch (error) {
-      statusText.value = "当前还没有会话状态";
-    }
+    // 当前会话的最新状态由 SSE final 事件回填，刷新按钮无需再拉后端。
+    touchSession(activeSession.value.preview);
+    statusText.value = "状态已刷新";
   }
 
   async function sendMessage(rawMessage?: string) {
