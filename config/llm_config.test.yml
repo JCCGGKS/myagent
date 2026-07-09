@@ -54,6 +54,57 @@ rag:
     # Rerank 模型名称（启用时必填）
     model: ""
 
+# Redis 配置
+redis:
+  # 连接地址（Docker Compose 内用服务名 redis）
+  host: redis
+  # 服务端口
+  port: 6379
+  # 数据库编号
+  db: 0
+  # 访问密码（为空则不鉴权）
+  password: ""
+  # 连接超时（秒）
+  socket_timeout: 5.0
+  # 是否启用（关闭时后端回退到内存存储）
+  enabled: true
+
+# MySQL 配置
+mysql:
+  # 连接地址（Docker Compose 内用服务名 mysql）
+  host: mysql
+  # 服务端口
+  port: 3306
+  # 数据库名
+  database: myagent
+  # 用户名
+  user: myagent
+  # 密码
+  password: myagent
+  # 连接池大小
+  pool_size: 5
+  # 连接超时（秒）
+  connect_timeout: 10
+  # 是否启用（关闭时后端回退到内存存储）
+  enabled: true
+
+# Qdrant 配置
+qdrant:
+  # 连接地址（Docker Compose 内用服务名 qdrant）
+  host: qdrant
+  # REST 端口
+  port: 6333
+  # 集合（collection）名称
+  collection_name: customer_service_knowledge
+  # 向量维度（与嵌入模型对齐）
+  vector_size: 1536
+  # 距离度量方式：cosine | dot_product | euclidean
+  distance: cosine
+  # API Key（为空则不鉴权）
+  api_key: ""
+  # 是否启用（关闭时后端回退到模拟检索）
+  enabled: true
+
 # 日志配置
 logging:
   # 日志级别：DEBUG | INFO | WARNING | ERROR

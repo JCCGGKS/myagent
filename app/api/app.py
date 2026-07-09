@@ -12,6 +12,7 @@ from starlette.responses import StreamingResponse
 
 from app.agents import CustomerServiceAgent
 from app.config import load_llm_config
+from app.config.rag_config import RagConfig, get_rag_config_service
 from app.models import ChatRequest, ChatResponse, ConversationState, SessionInitRequest, SessionInitResponse
 from app.rag import (
     Chunker,
@@ -189,3 +190,15 @@ async def knowledge_upload(
         "doc_type": doc_type,
         "chunk_count": chunk_count,
     }
+
+
+@app.get("/rag/config", response_model=RagConfig)
+def get_rag_config() -> RagConfig:
+    """获取当前 RAG 检索配置。"""
+    return get_rag_config_service().get_config()
+
+
+@app.put("/rag/config", response_model=RagConfig)
+def update_rag_config(patch: dict[str, Any]) -> RagConfig:
+    """更新 RAG 检索配置（局部更新，写回 llm_config.local.yml）。"""
+    return get_rag_config_service().update_config(patch)

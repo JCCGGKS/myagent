@@ -232,67 +232,46 @@ class HybridStrategy(RetrievalStrategy):
         return fused
 
 
-def get_strategy_from_config() -> RetrievalStrategy:
-    """从配置文件读取检索策略，创建对应策略实例。"""
-    config_path = Path(__file__).resolve().parents[2] / "config" / "llm_config.local.yml"
-    if not config_path.exists():
-        # 默认使用混合检索
-        client = get_qdrant_client()
-        bm25_strategy = BM25Strategy(client=client, min_score_threshold=5.0)
-        semantic_strategy = SemanticStrategy(
-            client=client,
-            embedding_client=None,  # TODO: 接入真实 embedding 客户端
-            min_score_threshold=0.7,
-            metric="cosine",
-        )
-        return HybridStrategy(
-            bm25_strategy=bm25_strategy,
-            semantic_strategy=semantic_strategy,
-            fusion_method="rrf",
-            weighted_alpha=0.5,
-            min_score_threshold=0.5,
-        )
+def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalStrategy:
+    """从 RAG 配置创建对应检索策略实例。
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    rag_config 为 None 时，从运行时 RagConfigService 读取最新配置。
+    """
+    from app.config.rag_config import get_rag_config_service
 
-    rag_config = config.get("rag", {})
-    retrieval_strategy = rag_config.get("retrieval_strategy", "hybrid")
+    if rag_config is None:
+        rag_config = get_rag_config_service().get_config()
 
     client = get_qdrant_client()
+    retrieval_strategy = rag_config.retrieval_strategy
 
     if retrieval_strategy == "bm25":
-        bm25_config = rag_config.get("bm25", {})
         return BM25Strategy(
             client=client,
-            min_score_threshold=bm25_config.get("min_score_threshold", 5.0),
+            min_score_threshold=rag_config.bm25.min_score_threshold,
         )
     elif retrieval_strategy == "semantic":
-        semantic_config = rag_config.get("semantic", {})
         return SemanticStrategy(
             client=client,
             embedding_client=None,  # TODO: 接入真实 embedding 客户端
-            min_score_threshold=semantic_config.get("min_score_threshold", 0.7),
-            metric=semantic_config.get("metric", "cosine"),
+            min_score_threshold=rag_config.semantic.min_score_threshold,
+            metric=rag_config.semantic.metric,
         )
     else:  # hybrid
-        hybrid_config = rag_config.get("hybrid", {})
-        bm25_config = rag_config.get("bm25", {})
-        semantic_config = rag_config.get("semantic", {})
         bm25_strategy = BM25Strategy(
             client=client,
-            min_score_threshold=bm25_config.get("min_score_threshold", 5.0),
+            min_score_threshold=rag_config.bm25.min_score_threshold,
         )
         semantic_strategy = SemanticStrategy(
             client=client,
             embedding_client=None,  # TODO: 接入真实 embedding 客户端
-            min_score_threshold=semantic_config.get("min_score_threshold", 0.7),
-            metric=semantic_config.get("metric", "cosine"),
+            min_score_threshold=rag_config.semantic.min_score_threshold,
+            metric=rag_config.semantic.metric,
         )
         return HybridStrategy(
             bm25_strategy=bm25_strategy,
             semantic_strategy=semantic_strategy,
-            fusion_method=hybrid_config.get("fusion_method", "rrf"),
-            weighted_alpha=hybrid_config.get("weighted_alpha", 0.5),
-            min_score_threshold=hybrid_config.get("min_score_threshold", 0.5),
+            fusion_method=rag_config.hybrid.fusion_method,
+            weighted_alpha=rag_config.hybrid.weighted_alpha,
+            min_score_threshold=rag_config.hybrid.min_score_threshold,
         )
