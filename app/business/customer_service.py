@@ -105,21 +105,21 @@ class CustomerServiceAgent:
         builder.add_edge("memory_writer", END)
         return builder.compile()
 
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        logger.info("chat start session=%s message=%r", request.session_id, request.message[:80])
-        state = self._execute_request(request)
+    def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
+        logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
+        state = self._execute_request(request, user_id)
         logger.info(
-            "chat done session=%s intent=%s.%s action=%s",
-            request.session_id,
+            "chat done session=%s user=%s intent=%s.%s action=%s",
+            request.session_id, user_id,
             state.current_main_intent, state.current_sub_intent, state.current_action,
         )
         return self._build_chat_response(state)
 
-    def chat_events(self, request: ChatRequest) -> list[dict[str, Any]]:
+    def chat_events(self, request: ChatRequest, user_id: int) -> list[dict[str, Any]]:
         """LangGraph 图驱动的事件生成（与 chat() 行为一致）。"""
         if self.graph is None:
-            return self._chat_events_fallback(request)
-        payload = self._build_payload(request)
+            return self._chat_events_fallback(request, user_id)
+        payload = self._build_payload(request, user_id)
         events: list[dict[str, Any]] = []
         for chunk in self.graph.stream(payload):
             for node_name, node_payload in chunk.items():
@@ -129,9 +129,9 @@ class CustomerServiceAgent:
                     events.extend(self._node_state_to_events(node_name, state))
         return events
 
-    def _chat_events_fallback(self, request: ChatRequest) -> list[dict[str, Any]]:
+    def _chat_events_fallback(self, request: ChatRequest, user_id: int) -> list[dict[str, Any]]:
         """LangGraph 不可用时的降级路径（手动串联，逻辑与图一致）。"""
-        payload = self._build_payload(request)
+        payload = self._build_payload(request, user_id)
         events: list[dict[str, Any]] = []
 
         payload = self.input_normalizer(payload)
@@ -204,18 +204,18 @@ class CustomerServiceAgent:
         # 其他节点不推事件（或推通用 trace）
         return events
 
-    def _execute_request(self, request: ChatRequest) -> ConversationState:
-        payload = self._build_payload(request)
+    def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
+        payload = self._build_payload(request, user_id)
         if self.graph is None:
             payload = self._run_without_langgraph(payload)
         else:
             payload = self.graph.invoke(payload)
         return payload["state"]
 
-    def _build_payload(self, request: ChatRequest) -> dict[str, Any]:
+    def _build_payload(self, request: ChatRequest, user_id: int) -> dict[str, Any]:
         state = self.store.get(request.session_id) or ConversationState(
             session_id=request.session_id,
-            user_id=request.user_id,
+            user_id=user_id,
             channel=request.channel,
         )
         return {"state": state, "request": request}
@@ -256,7 +256,7 @@ class CustomerServiceAgent:
 
         state.last_user_message = message
         state.channel = request.channel
-        state.user_id = request.user_id
+        # state.user_id 已在 _build_payload 初始化时设置
         state.message_history.append({"role": "user", "content": message})
         state.recent_messages.append({"role": "user", "content": message})
         payload["state"] = state

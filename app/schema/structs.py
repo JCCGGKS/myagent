@@ -81,7 +81,6 @@ class ArchivedTaskState(BaseModel):
 
 
 class SessionInitRequest(BaseModel):
-    user_id: int | None = None
     channel: str = Field(default="web", min_length=1)
     title: str = Field(default="新会话", max_length=128)
 
@@ -97,7 +96,6 @@ class SessionRenameRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
-    user_id: int | None = None
     message: str = Field(min_length=1)
     channel: str = Field(default="web", min_length=1)
 

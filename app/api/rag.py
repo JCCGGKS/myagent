@@ -97,12 +97,17 @@ async def knowledge_upload(
 
 
 @router.get("/rag/config", response_model=RagConfig)
-def get_rag_config() -> RagConfig:
-    """获取当前 RAG 检索配置。"""
+def get_rag_config(
+    current_user: UserInfo = Depends(get_current_user),
+) -> RagConfig:
+    """获取当前 RAG 检索配置（需登录）。"""
     return get_rag_config_service().get_config()
 
 
 @router.put("/rag/config", response_model=RagConfig)
-def update_rag_config(patch: dict[str, Any]) -> RagConfig:
-    """更新 RAG 检索配置（局部更新，写回配置文件）。"""
+def update_rag_config(
+    patch: dict[str, Any],
+    current_user: UserInfo = Depends(get_current_user),
+) -> RagConfig:
+    """更新 RAG 检索配置（需登录，局部更新，写回配置文件）。"""
     return get_rag_config_service().update_config(patch)

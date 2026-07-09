@@ -151,21 +151,6 @@ class MemoryService:
                 user_facing_summary=state.tool_result.user_facing_summary,
             )
 
-        if state.handoff:
-            self.store.record_handoff(
-                session_id=state.session_id,
-                handoff_reason=state.handoff_reason or "policy_decision",
-                handoff_summary=state.summary,
-                state_snapshot={
-                    "current_main_intent": state.current_main_intent,
-                    "current_sub_intent": state.current_sub_intent,
-                    "stage": state.stage,
-                    "slots": state.slots,
-                    "missing_slots": state.missing_slots,
-                    "summary": state.summary,
-                },
-            )
-
         self.store.save(state)
         return state
 

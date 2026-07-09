@@ -53,17 +53,7 @@ class SessionStore(ABC):
         user_facing_summary: str,
         status: str = "success",
     ) -> None:
-        ...
-
-    @abstractmethod
-    def record_handoff(
-        self,
-        session_id: str,
-        handoff_reason: str,
-        handoff_summary: str,
-        state_snapshot: dict[str, Any],
-    ) -> None:
-        ...
+        """记录一次工具调用（MVP 通道下为 no-op，保留接口以备后续接入 tool_calls 表）。"""
 
     @abstractmethod
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
@@ -76,6 +66,10 @@ class SessionStore(ABC):
     @abstractmethod
     def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         """读取某会话的历史消息（role / content），按 sequence_no 正序。"""
+
+    @abstractmethod
+    def get_user_id(self, session_id: str) -> int | None:
+        """获取某会话的归属 user_id，不存在返回 None。"""
 
     @abstractmethod
     def update_title(self, session_id: str, title: str) -> None:
@@ -185,17 +179,7 @@ class MemorySessionStore(SessionStore):
         user_facing_summary: str,
         status: str = "success",
     ) -> None:
-        # tool_calls 表已从本通道移除，这里保持接口兼容但不落库。
-        return None
-
-    def record_handoff(
-        self,
-        session_id: str,
-        handoff_reason: str,
-        handoff_summary: str,
-        state_snapshot: dict[str, Any],
-    ) -> None:
-        # handoff_records 表已从本通道移除，这里保持接口兼容但不落库。
+        # tool_calls 表已从本通道移除，这里保留接口但不落库。
         return None
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
@@ -232,6 +216,12 @@ class MemorySessionStore(SessionStore):
             {"role": m["role"], "content": m["content"], "sequence_no": m["sequence_no"]}
             for m in sorted(messages, key=lambda m: m.get("sequence_no", 0))
         ]
+
+    def get_user_id(self, session_id: str) -> int | None:
+        record = self._sessions.get(session_id)
+        if record is None:
+            return None
+        return record.get("session", {}).get("user_id")
 
     def update_title(self, session_id: str, title: str) -> None:
         record = self._sessions.get(session_id)
@@ -343,17 +333,7 @@ class SqlSessionStore(SessionStore):
         user_facing_summary: str,
         status: str = "success",
     ) -> None:
-        # tool_calls 表已从本通道移除，这里保持接口兼容但不落库。
-        return None
-
-    def record_handoff(
-        self,
-        session_id: str,
-        handoff_reason: str,
-        handoff_summary: str,
-        state_snapshot: dict[str, Any],
-    ) -> None:
-        # handoff_records 表已从本通道移除，这里保持接口兼容但不落库。
+        # tool_calls 表已从本通道移除，这里保留接口但不落库。
         return None
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
@@ -410,6 +390,17 @@ class SqlSessionStore(SessionStore):
                 {"role": r.role, "content": r.content, "sequence_no": r.sequence_no}
                 for r in rows
             ]
+
+    def get_user_id(self, session_id: str) -> int | None:
+        with self._db() as db:
+            from app.model.session import Session as SessionRow
+
+            row = (
+                db.query(SessionRow.user_id)
+                .filter(SessionRow.session_id == session_id)
+                .one_or_none()
+            )
+            return row.user_id if row is not None else None
 
     def update_title(self, session_id: str, title: str) -> None:
         with self._db() as db:

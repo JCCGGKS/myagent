@@ -30,7 +30,6 @@ class TestCustomerServiceAgent:
         """测试意图为 order_query 时，路由到 agent_node。"""
         request = ChatRequest(
             session_id="test-session",
-            user_id=1,
             message="帮我查一下订单 A1001",
         )
         # 初始化 state 必填字段
@@ -45,7 +44,7 @@ class TestCustomerServiceAgent:
         state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
-        response = agent.chat(request)
+        response = agent.chat(request, user_id=1)
         assert response.main_intent == "order_query"
         # 后续接入真实 LLM 后，断言会调用 agent_node
 
@@ -53,7 +52,6 @@ class TestCustomerServiceAgent:
         """测试意图为 chitchat 时，直接路由到 response_generator。"""
         request = ChatRequest(
             session_id="test-session",
-            user_id=1,
             message="你好",
         )
         # 初始化 state 必填字段
@@ -68,7 +66,7 @@ class TestCustomerServiceAgent:
         state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
-        response = agent.chat(request)
+        response = agent.chat(request, user_id=1)
         assert response.main_intent == "chitchat"
 
     def test_agent_node_should_call_tools(self, agent):

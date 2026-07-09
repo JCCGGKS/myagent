@@ -113,17 +113,41 @@ def test_reset_with_bad_token_fails():
         raise AssertionError("无效 token 应被拒绝")
 
 
-def test_get_request_user_prefers_token():
-    from app.api.chat import get_request_user
+from starlette.requests import Request
 
+from app.business.auth.deps import resolve_user_id
+from app.pkgs.auth import create_access_token
+
+
+def _make_request(user: object | None = None) -> Request:
+    scope = {"type": "http", "headers": []}
+    req = Request(scope, receive=None)
+    if user is not None:
+        req.state.user = user
+    return req
+
+
+def test_resolve_user_id_prefers_middleware_state():
+    class FakeUser:
+        id = 123
+
+    req = _make_request(FakeUser())
+    assert resolve_user_id(req, authorization="Bearer invalid") == 123
+
+
+def test_resolve_user_id_falls_back_to_token():
     token = create_access_token(123, "tokenuser", "t@x.com")
-    req = ChatRequest(session_id="s1", user_id=123, message="hi", channel="web")
-    assert get_request_user(req, f"Bearer {token}") == 123
+    req = _make_request()
+    assert resolve_user_id(req, authorization=f"Bearer {token}") == 123
 
 
-def test_get_request_user_falls_back_to_body():
-    from app.api.chat import get_request_user
+def test_resolve_user_id_missing_raises_401():
+    from fastapi import HTTPException
 
-    req = ChatRequest(session_id="s1", user_id=123, message="hi", channel="web")
-    assert get_request_user(req, None) == 123
-    assert get_request_user(req, "Bearer garbage") == 123
+    req = _make_request()
+    try:
+        resolve_user_id(req)
+    except HTTPException as e:
+        assert e.status_code == 401
+    else:
+        raise AssertionError("缺失 user_id 应返回 401")
