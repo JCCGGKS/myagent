@@ -4,6 +4,9 @@ from typing import Any
 
 from app.rag.retrieval_strategy import get_strategy_from_config
 
+# 后端默认重排模型（前端开启重排但未指定模型时使用）
+DEFAULT_RERANK_MODEL = "bge-reranker-v2-m3"
+
 
 class RagRetrieveTool:
     """RAG 检索工具封装（供 LLM 调用）。"""
@@ -18,7 +21,8 @@ class RagRetrieveTool:
         self.strategy = strategy or get_strategy_from_config()
         self.top_k = top_k
         self.rerank_enabled = rerank_enabled
-        self.rerank_model = rerank_model
+        # 未指定模型时使用后端默认重排模型
+        self.rerank_model = rerank_model or DEFAULT_RERANK_MODEL
 
     def run(self, query: str) -> list[dict[str, Any]]:
         """执行检索，返回结构化结果。
