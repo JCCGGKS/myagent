@@ -10,6 +10,20 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const dragOver = ref(false);
 const docType = ref<"markdown" | "json">("markdown");
 const showConfigModal = ref(false);
+const errorModal = ref({ visible: false, title: "", message: "" });
+
+function showError(title: string, message: string) {
+  errorModal.value = { visible: true, title, message };
+}
+
+function closeError() {
+  errorModal.value.visible = false;
+}
+
+function isValidExtension(fileName: string): boolean {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  return ["md", "markdown", "json"].includes(ext);
+}
 
 const isUploading = computed(() =>
   store.knowledgeFiles.some((file) => file.status === "uploading"),
@@ -169,15 +183,40 @@ function triggerUpload() {
 
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
-  store.uploadKnowledgeFiles(input.files, docType.value);
+  const files = input.files;
+  if (!files?.length) return;
+
+  const invalid = Array.from(files).filter((file) => !isValidExtension(file.name));
+  if (invalid.length) {
+    const names = invalid.map((f) => f.name).join(", ");
+    showError(
+      "文件类型不支持",
+      `以下文件不是允许的格式，请上传 .md / .markdown / .json：\n${names}`,
+    );
+    input.value = "";
+    return;
+  }
+
+  store.uploadKnowledgeFiles(files, docType.value);
   input.value = "";
 }
 
 function onDrop(event: DragEvent) {
   dragOver.value = false;
-  if (event.dataTransfer?.files?.length) {
-    store.uploadKnowledgeFiles(event.dataTransfer.files, docType.value);
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+
+  const invalid = Array.from(files).filter((file) => !isValidExtension(file.name));
+  if (invalid.length) {
+    const names = invalid.map((f) => f.name).join(", ");
+    showError(
+      "文件类型不支持",
+      `以下文件不是允许的格式，请上传 .md / .markdown / .json：\n${names}`,
+    );
+    return;
   }
+
+  store.uploadKnowledgeFiles(files, docType.value);
 }
 
 function statusLabel(item: KnowledgeFileItem): string {
@@ -203,29 +242,28 @@ function statusLabel(item: KnowledgeFileItem): string {
       <p class="kb-subtitle">上传 Markdown / JSON 文档，自动分块并写入向量库。</p>
     </header>
 
-    <section class="kb-stats">
-      <div class="kb-stat">
-        <span class="kb-stat-value">{{ stats.total }}</span>
-        <span class="kb-stat-label">总计</span>
-      </div>
-      <div class="kb-stat">
-        <span class="kb-stat-value success">{{ stats.success }}</span>
-        <span class="kb-stat-label">已入库</span>
-      </div>
-      <div class="kb-stat">
-        <span class="kb-stat-value warning">{{ stats.indexing }}</span>
-        <span class="kb-stat-label">索引中</span>
-      </div>
-      <div class="kb-stat">
-        <span class="kb-stat-value danger">{{ stats.error }}</span>
-        <span class="kb-stat-label">失败</span>
-      </div>
+    <section class="kb-toolbar">
+      <label class="kb-field">
+        <select v-model="docType">
+          <option value="markdown">文档类型：Markdown</option>
+          <option value="json">文档类型：JSON</option>
+        </select>
+      </label>
+
+      <button class="kb-strategy-trigger" type="button" @click="showConfigModal = true">
+        <span class="kb-strategy-label">检索策略</span>
+        <span class="kb-strategy-value">{{ strategyLabel }}</span>
+        <span class="kb-strategy-caret">⚙</span>
+      </button>
+
+      <button class="kb-upload-btn" type="button" @click="triggerUpload">
+        ⬆ 上传文件
+      </button>
     </section>
 
     <section
       class="kb-dropzone"
       :class="{ 'is-over': dragOver }"
-      @click="triggerUpload"
       @dragover.prevent="dragOver = true"
       @dragleave.prevent="dragOver = false"
       @drop.prevent="onDrop"
@@ -238,25 +276,8 @@ function statusLabel(item: KnowledgeFileItem): string {
         hidden
         @change="onFileChange"
       />
-      <div class="kb-dropzone-icon">⬆</div>
-      <p class="kb-dropzone-text">点击或拖拽文件到此处上传</p>
+      <p class="kb-dropzone-text">拖拽文件到此处上传</p>
       <p class="kb-dropzone-hint">支持 .md / .markdown / .json</p>
-    </section>
-
-    <section class="kb-toolbar">
-      <label class="kb-field">
-        <span>文档类型</span>
-        <select v-model="docType">
-          <option value="markdown">Markdown</option>
-          <option value="json">JSON</option>
-        </select>
-      </label>
-
-      <button class="kb-strategy-trigger" type="button" @click="showConfigModal = true">
-        <span class="kb-strategy-label">检索策略</span>
-        <span class="kb-strategy-value">{{ strategyLabel }}</span>
-        <span class="kb-strategy-caret">⚙</span>
-      </button>
     </section>
 
     <!-- 检索配置弹窗 -->
@@ -387,6 +408,20 @@ function statusLabel(item: KnowledgeFileItem): string {
       </div>
     </div>
 
+    <!-- 通用错误提示弹窗 -->
+    <div v-if="errorModal.visible" class="kb-modal-mask" @click.self="closeError">
+      <div class="kb-modal" style="max-width: 420px;">
+        <div class="kb-modal-head">
+          <h3>{{ errorModal.title }}</h3>
+          <button class="kb-modal-close" type="button" @click="closeError">✕</button>
+        </div>
+        <p class="kb-error-message">{{ errorModal.message }}</p>
+        <div class="kb-modal-actions">
+          <button class="kb-btn kb-btn-primary" type="button" @click="closeError">知道了</button>
+        </div>
+      </div>
+    </div>
+
     <section class="kb-list">
       <h2>已上传文件</h2>
       <p v-if="!store.knowledgeFiles.length" class="kb-empty">暂无文件</p>
@@ -475,9 +510,8 @@ function statusLabel(item: KnowledgeFileItem): string {
 .kb-dropzone {
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
-  padding: 40px;
+  padding: 28px;
   text-align: center;
-  cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -506,16 +540,35 @@ function statusLabel(item: KnowledgeFileItem): string {
 .kb-toolbar {
   display: flex;
   align-items: center;
-  gap: 32px;
-  margin: 20px 0;
+  gap: 16px;
+  margin: 24px 0 16px;
   flex-wrap: wrap;
 }
 
-.kb-field {
+.kb-upload-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
   font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.kb-upload-btn:hover {
+  background: #1d4ed8;
+}
+
+.kb-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .kb-field select {
@@ -632,6 +685,18 @@ function statusLabel(item: KnowledgeFileItem): string {
   margin: 0;
   font-size: 12px;
   color: #dc2626;
+}
+
+.kb-error-message {
+  white-space: pre-line;
+  line-height: 1.6;
+  color: #374151;
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.kb-error-message + .kb-modal-actions {
+  margin-top: 16px;
 }
 
 .kb-uploading-tip {
