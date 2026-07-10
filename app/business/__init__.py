@@ -5,6 +5,8 @@ from app.business.dialog import (
     MessageService,
     ResponsePromptRegistry,
     ResponseService,
+    SessionService,
+    get_session_service,
 )
 from app.business.tools.domain import (
     HandoffService,
@@ -35,6 +37,8 @@ __all__ = [
     "MessageService",
     "ResponsePromptRegistry",
     "OrderService",
+    "SessionService",
+    "get_session_service",
     "ResponseService",
     "StateTrackerService",
     "extract_order_id",

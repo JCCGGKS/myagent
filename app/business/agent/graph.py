@@ -23,7 +23,7 @@ from app.business import (
     ResponseService,
     StateTrackerService,
 )
-from app.dao import SessionStore
+from app.business.dialog import SessionService
 from app.config.context_config import get_context_config_service
 from app.utils import normalize_whitespace
 
@@ -82,7 +82,7 @@ def _make_summary_fold_fn(
 class CustomerServiceAgent:
     def __init__(
         self,
-        store: SessionStore,
+        store: SessionService,
         order_service: OrderService,
         logistics_service: LogisticsService,
         handoff_service: HandoffService,

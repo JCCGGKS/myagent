@@ -15,23 +15,21 @@ from app.business import (
     OrderService,
 )
 from app.config import load_llm_config
-from app.dao import SessionStore, get_session_store
+from app.business.dialog import SessionService, get_session_service
 from app.pkgs.llm import build_openai_client
 from app.schema import (
     ChatRequest,
     ChatResponse,
     ConversationState,
-    SessionInitRequest,
-    SessionInitResponse,
     SessionRenameRequest,
 )
 from app.utils import log_error, log_info, log_warning
 
-session_store: SessionStore = get_session_store()
+session_service: SessionService = get_session_service()
 llm_config = load_llm_config()
 llm_client = build_openai_client(llm_config)
 agent = CustomerServiceAgent(
-    store=session_store,
+    store=session_service,
     order_service=OrderService(),
     logistics_service=LogisticsService(),
     handoff_service=HandoffService(),
@@ -50,18 +48,6 @@ def chat(
 ) -> ChatResponse:
     user_id = http_request.state.user.id
     return agent.chat(request, user_id=user_id)
-
-
-@router.post("/init", response_model=SessionInitResponse)
-def chat_init(
-    http_request: Request,
-    request: SessionInitRequest,
-) -> SessionInitResponse:
-    """初始化会话，返回 session_id。user_id 必须来自 token。"""
-    user_id = http_request.state.user.id
-    session_id = session_store.create_session(user_id, request.channel, request.title)
-    log_info("api", "chat_init success session=%s user=%s channel=%s", session_id, user_id, request.channel)
-    return SessionInitResponse(session_id=session_id, title=request.title)
 
 
 def _event_to_sse(event: dict[str, Any]) -> str:
@@ -107,7 +93,7 @@ def list_sessions(
 ) -> list[dict[str, Any]]:
     """列出当前 token 用户的历史会话（含 title / updated_at）。"""
     user_id = http_request.state.user.id
-    return session_store.list_sessions(user_id)
+    return session_service.list_sessions(user_id)
 
 
 @router.get("/session/{session_id}/messages")
@@ -117,7 +103,7 @@ def get_session_messages(
 ) -> list[dict[str, Any]]:
     """读取某会话的历史消息，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_store.get_user_id(session_id)
+    owner_id = session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "get_session_messages not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -130,7 +116,7 @@ def get_session_messages(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    return session_store.get_messages(session_id)
+    return session_service.get_messages(session_id)
 
 
 @router.put("/session/{session_id}")
@@ -141,7 +127,7 @@ def rename_session(
 ) -> dict[str, str]:
     """重命名会话，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_store.get_user_id(session_id)
+    owner_id = session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "rename_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -154,7 +140,7 @@ def rename_session(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    session_store.update_title(session_id, body.title)
+    session_service.rename(session_id, body.title)
     log_info("api", "rename_session success session=%s user=%s title=%r", session_id, user_id, body.title)
     return {"session_id": session_id, "title": body.title}
 
@@ -166,7 +152,7 @@ def delete_session(
 ) -> dict[str, str]:
     """软删除会话，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_store.get_user_id(session_id)
+    owner_id = session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "delete_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -179,6 +165,6 @@ def delete_session(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    session_store.delete_session(session_id)
+    session_service.delete(session_id)
     log_info("api", "delete_session success session=%s user=%s", session_id, user_id)
     return {"session_id": session_id, "status": "deleted"}

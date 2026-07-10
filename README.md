@@ -29,7 +29,6 @@ npm run dev
 后端接口：
 
 - `POST /chat`
-- `POST /chat/init` - 创建会话
 - `POST /chat/stream` - SSE 流式对话（Web 端首选）
 - `POST /auth/register` / `POST /auth/login` / `POST /auth/forgot-password` / `POST /auth/reset-password` / `POST /auth/change-password`
 - `POST /knowledge/upload` - 知识库上传

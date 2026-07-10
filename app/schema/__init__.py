@@ -2,7 +2,7 @@
 
 按职责拆分为子模块，此处统一再导出，保持 ``from app.schema import X`` 的兼容性：
 - ``intent``：意图与情绪（MainIntentCode / SubIntentCode / ActionCode / EmotionState / IntentResult）
-- ``session``：会话管理（SessionInitRequest / SessionInitResponse / SessionRenameRequest）
+- ``session``：会话管理（SessionRenameRequest）
 - ``business``：业务领域（OrderInfo / LogisticsEvent / LogisticsInfo / HandoffResult）
 - ``state``：会话状态与执行产物（ActionRecord / ToolExecutionResult / ArchivedTaskState / ConversationState）
 - ``chat``：对话 I/O（ChatRequest / ChatResponse）
@@ -24,8 +24,6 @@ from app.schema.intent import (
     SubIntentCode,
 )
 from app.schema.session import (
-    SessionInitRequest,
-    SessionInitResponse,
     SessionRenameRequest,
 )
 from app.schema.state import (
@@ -49,8 +47,6 @@ __all__ = [
     "LogisticsInfo",
     "MainIntentCode",
     "OrderInfo",
-    "SessionInitRequest",
-    "SessionInitResponse",
     "SessionRenameRequest",
     "SubIntentCode",
     "ToolExecutionResult",
