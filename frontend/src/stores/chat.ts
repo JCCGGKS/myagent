@@ -399,12 +399,6 @@ export const useChatStore = defineStore("chat", () => {
         role: "assistant",
         content: response.reply,
       });
-      appendMessage({
-        id: `system-${Date.now()}`,
-        role: "system",
-        tone: "meta",
-        content: `main_intent=${response.main_intent} | sub_intent=${response.sub_intent} | stage=${response.stage} | clarify=${response.needs_clarification} | slots=${JSON.stringify(response.slots)}`,
-      });
       activeSession.value.session = response.session_state;
       activeSession.value.turns.unshift({
         id: `turn-${Date.now()}`,
