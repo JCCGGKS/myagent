@@ -8,6 +8,7 @@ from app.schema import ChatRequest, ConversationState
 
 logger = logging.getLogger(__name__)
 from app.dao import SessionStore
+from app.business.prompts import build_response_system_prompt
 from app.utils import build_action_record, load_yaml_file
 from app.utils.config_paths import get_config_dir
 
@@ -91,7 +92,7 @@ class ResponseService:
             return state
 
         # 构造 LLM 输入
-        system_prompt = self._build_system_prompt(state)
+        system_prompt = build_response_system_prompt(state)
         messages = self._build_messages(state)
         # messages 第一个位置是 system，剩余是 user/assistant
         llm_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -105,20 +106,6 @@ class ResponseService:
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
             state.action_history.append(build_action_record("response_generator", reply))
         return state
-
-    def _build_system_prompt(self, state: ConversationState) -> str:
-        """构造系统提示（包含意图、槽位、情绪等上下文）。"""
-        prompt = "你是一个客服助手，负责回答用户问题。"
-        prompt += f"\n当前意图：{state.current_main_intent}.{state.current_sub_intent}"
-        prompt += f"\n当前阶段：{state.stage}"
-        if state.slots:
-            prompt += f"\n已填槽位：{state.slots}"
-        if state.missing_slots:
-            prompt += f"\n缺失槽位：{state.missing_slots}"
-        if state.tool_result:
-            prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
-        prompt += "\n请根据以上信息，生成友好的客服响应。"
-        return prompt
 
     def _build_messages(self, state: ConversationState) -> list[dict]:
         """构造 messages（包含历史消息）。"""

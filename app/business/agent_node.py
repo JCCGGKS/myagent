@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from app.schema import ConversationState, ToolExecutionResult
+from app.business.prompts import build_agent_system_prompt
 from app.business.tools.rag_tool import RagRetrieveTool
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class AgentNodeService:
         messages = []
 
         # 系统提示
-        system_prompt = self._build_system_prompt(state)
+        system_prompt = build_agent_system_prompt(state)
         messages.append({"role": "system", "content": system_prompt})
 
         # 历史消息（最近 10 条）
@@ -105,18 +106,6 @@ class AgentNodeService:
         messages.extend(recent_messages)
 
         return messages
-
-    def _build_system_prompt(self, state: ConversationState) -> str:
-        """构造系统提示（包含意图、槽位、情绪等上下文）。"""
-        prompt = "你是一个客服助手，负责回答用户问题。"
-        prompt += f"\n当前意图：{state.current_main_intent}.{state.current_sub_intent}"
-        prompt += f"\n当前阶段：{state.stage}"
-        if state.slots:
-            prompt += f"\n已填槽位：{state.slots}"
-        if state.missing_slots:
-            prompt += f"\n缺失槽位：{state.missing_slots}"
-        prompt += "\n请根据以上信息，选择合适的工具回答问题。如果用户问题不需要工具，直接回答。"
-        return prompt
 
     def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """调用 LLM，返回响应（包含 content 或 tool_calls）。
