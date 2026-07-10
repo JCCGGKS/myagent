@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.schema import ConversationState
-from app.business.state_summary import build_state_summary
+from app.business.context.state_summary import build_state_summary
 
 
 class ContextService:

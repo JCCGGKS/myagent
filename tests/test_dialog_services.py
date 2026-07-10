@@ -84,7 +84,7 @@ class DialogServicesTestCase:
 
     def test_message_service_should_record_messages_and_tool_calls(self):
         """测试 MessageService 能够记录消息和工具调用。"""
-        from app.business.memory import MessageService
+        from app.business.dialog import MessageService
 
         store = MagicMock()
         service = MessageService(store=store)

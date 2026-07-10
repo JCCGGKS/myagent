@@ -4,10 +4,10 @@ import logging
 from typing import Any
 
 from app.schema import ConversationState, IntentResult
-from app.business.domain import extract_order_id
-from app.business.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
-from app.business.llm_fallback import LLMIntentFallbackService
-from app.business.state_summary import build_state_summary
+from app.business.tools.domain import extract_order_id
+from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
+from app.business.intent.llm_fallback import LLMIntentFallbackService
+from app.business.context.state_summary import build_state_summary
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class IntentRouterService:
     @classmethod
     def from_env(cls, use_llm: bool = True) -> IntentRouterService:
         from app.config import load_llm_config
-        from app.business.llm_fallback import LLMIntentFallbackService
+        from app.business.intent.llm_fallback import LLMIntentFallbackService
 
         config = load_llm_config()
         llm_fallback = LLMIntentFallbackService(config) if (config.enabled and use_llm) else None

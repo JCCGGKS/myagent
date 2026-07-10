@@ -6,12 +6,11 @@ from typing import Any
 from app.schema import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
 
 logger = logging.getLogger(__name__)
-from app.business.agent_node import AgentNodeService
-from app.business.tool_executor import ToolExecutor
+from app.business.agent.agent_node import AgentNodeService
+from app.business.tools.tool_executor import ToolExecutor
 from app.business import (
     ClarificationService,
     ContextService,
-    ExecutionService,
     HandoffClarificationPolicy,
     HandoffService,
     IntentRouterService,
@@ -57,11 +56,6 @@ class CustomerServiceAgent:
             llm_client=llm_client,
             llm_model=llm_model,
         )
-        self.execution_service = ExecutionService(
-            order_service=order_service,
-            logistics_service=logistics_service,
-            handoff_service=handoff_service,
-        )
         self.context_service = ContextService(state_tracker=self.state_tracker_service)
         self.response_service = ResponseService(
             llm_client=llm_client,
@@ -69,7 +63,11 @@ class CustomerServiceAgent:
         )
         self.message_service = MessageService(store)
         # 统一工具执行服务（覆盖 LLM 函数调用工具与业务工具）
-        self.tool_executor = ToolExecutor(execution_service=self.execution_service)
+        self.tool_executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=logistics_service,
+            handoff_service=handoff_service,
+        )
         # agent_node 初始化（工具编排节点）
         self.agent_node_service = AgentNodeService(
             llm_client=llm_client,
@@ -277,7 +275,7 @@ class CustomerServiceAgent:
     def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.info("node=handoff_node session=%s reason=%s", state.session_id, state.handoff_reason)
-        payload["state"] = self.execution_service.create_handoff(state)
+        payload["state"] = self.tool_executor.create_handoff(state)
         return payload
 
     def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:

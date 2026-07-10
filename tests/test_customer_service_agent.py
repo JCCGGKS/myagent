@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.business.graph import CustomerServiceAgent
+from app.business.agent import CustomerServiceAgent
 from app.schema import ChatRequest, ConversationState
 from app.dao import SessionStore
 

@@ -6,27 +6,25 @@ from app.business.dialog import (
     ResponsePromptRegistry,
     ResponseService,
 )
-from app.business.domain import (
+from app.business.tools.domain import (
     HandoffService,
     LogisticsService,
     OrderService,
     extract_order_id,
 )
-from app.business.execution import ExecutionService
-from app.business.intent_schema import IntentRuleRegistry, IntentSchemaRegistry
-from app.business.llm_fallback import LLMIntentFallbackService
-from app.business.routing import (
+from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
+from app.business.intent.llm_fallback import LLMIntentFallbackService
+from app.business.intent.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
     StateTrackerService,
 )
-from app.business.graph import CustomerServiceAgent
+from app.business.agent.graph import CustomerServiceAgent
 
 __all__ = [
     "ClarificationPromptRegistry",
     "ClarificationService",
     "ContextService",
-    "ExecutionService",
     "HandoffService",
     "HandoffClarificationPolicy",
     "IntentRouterService",

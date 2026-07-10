@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from app.schema import ConversationState, IntentResult
-from app.business.routing import (
+from app.business.intent.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
     StateTrackerService,

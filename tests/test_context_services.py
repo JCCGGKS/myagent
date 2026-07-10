@@ -2,7 +2,7 @@ import unittest
 
 from app.schema import ConversationState
 from app.business.context import ContextService
-from app.business.routing import StateTrackerService
+from app.business.intent.routing import StateTrackerService
 
 
 class ContextServicesTestCase(unittest.TestCase):
