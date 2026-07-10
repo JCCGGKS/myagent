@@ -95,6 +95,8 @@ export const useChatStore = defineStore("chat", () => {
   const renamingSessionId = ref<string | null>(null);
   const statusText = ref("等待发送");
   const pending = ref(false);
+  const requestStart = ref(0);
+  const responseStats = ref({ count: 0, totalMs: 0, lastMs: 0 });
   const backendReady = ref<boolean | null>(null);
   const socketConnected = ref(false);
   const liveTrace = ref<string[]>([]);
@@ -415,7 +417,17 @@ export const useChatStore = defineStore("chat", () => {
         }),
       });
       touchSession(response.reply);
-      statusText.value = "发送成功";
+      const cost = requestStart.value ? Date.now() - requestStart.value : 0;
+      responseStats.value = {
+        count: responseStats.value.count + 1,
+        totalMs: responseStats.value.totalMs + cost,
+        lastMs: cost,
+      };
+      const avg = Math.round(responseStats.value.totalMs / responseStats.value.count);
+      console.info(
+        `[chat] 发送成功 响应时间=${cost}ms 平均=${avg}ms 次数=${responseStats.value.count}`,
+      );
+      statusText.value = `发送成功 (响应时间: ${cost} ms)`;
       pending.value = false;
       draft.value = "";
       resetLiveTurn();
@@ -450,6 +462,7 @@ export const useChatStore = defineStore("chat", () => {
 
     pending.value = true;
     statusText.value = "请求处理中...";
+    requestStart.value = Date.now();
     resetLiveTurn();
 
     try {
@@ -496,6 +509,7 @@ export const useChatStore = defineStore("chat", () => {
     liveTrace,
     messages,
     pending,
+    responseStats,
     refreshSession,
     knowledgeFiles,
     removeKnowledgeFile,
