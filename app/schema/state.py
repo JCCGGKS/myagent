@@ -62,7 +62,6 @@ class ConversationState(BaseModel):
     summary: str = ""
     running_summary: str = ""
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
-    last_user_message: str = ""
     intent_result: IntentResult | None = None
     tool_result: ToolExecutionResult | None = None
     handoff: bool = False

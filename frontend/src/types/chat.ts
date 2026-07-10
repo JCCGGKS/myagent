@@ -83,7 +83,6 @@ export interface ConversationState {
   summary: string;
   running_summary?: string;
   recent_messages?: Array<Record<string, string>>;
-  last_user_message: string;
   handoff: boolean;
   handoff_reason?: string;
   reply: string;

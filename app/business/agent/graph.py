@@ -256,7 +256,6 @@ class CustomerServiceAgent:
         state.current_action = ""
         state.latest_action_result = None
 
-        state.last_user_message = message
         state.channel = request.channel
         # state.user_id 已在 _build_payload 初始化时设置
         state.recent_messages.append({"role": "user", "content": message})
@@ -266,7 +265,9 @@ class CustomerServiceAgent:
     def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=intent_router session=%s", state.session_id)
-        state.intent_result = self.intent_router_service.route(state, state.last_user_message)
+        state.intent_result = self.intent_router_service.route(
+            state, state.recent_messages[-1]["content"]
+        )
         logger.debug(
             "node=intent_router result intent=%s.%s source=%s",
             state.intent_result.main_intent if state.intent_result else None,
