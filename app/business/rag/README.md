@@ -4,9 +4,6 @@
 
 模块定位：仅负责知识检索链路，不负责对话编排（见 `app/business/customer_service.py`）。
 
-> 检索工具封装 `RagRetrieveTool` / `get_rag_tool()` 已迁移至 **`app/business/tools/rag_tool.py`**
-> （`app/business/tools` 工具层），不在 `rag` 子包内。详见该层文档。
-
 ## 全链路概览
 
 ```
@@ -19,6 +16,23 @@
 ```
 
 > 各阶段对应参数（chunk_size/top_k/rrf_k/...）来源详见末尾"参数来源对照表"。
+
+---
+
+## 文档上传链路（POST /knowledge/upload）
+
+入口在 `app/api/rag.py:knowledge_upload`，把前端上传的文件驱动走完 1→3 阶段，并维护 `knowledge_files` 元信息状态（`app/dao/knowledge_file.py`）。链路：
+
+1. **落元信息（PROCESSING）**：`file_dao.create(user_id, filename, file_size, doc_type, status=PROCESSING)`；返回 `record["id"]` 作为 `doc_id`，透传后续入库，用于按文档删向量。
+2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段构造 `Chunker`、按顶层配置构造 `EmbeddingClient` 与 `QdrantClient`。
+3. **向量化前置校验**：`embedding_client is None`（缺 `embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
+4. **分块 + 向量化 + 批量入库**：`.json` → `ingest_json_records`；`.md/.markdown` → `ingest_markdown_text`；二者汇聚到 `_ingest_chunks`：批量算 dense、逐块算 BM25 sparse，一次性 upsert 命名向量 `{dense, bm25}`（payload 含 `user_id` / `doc_id`）。
+5. **状态变更**：
+   - 成功 → `update_status(doc_id, SUCCESS, chunk_count=实际写入块数)`；
+   - 异常 → `update_status(doc_id, ERROR, error_message=str(exc))` 并重抛。
+6. **返回结果**：序列化的文件记录（含 `status` / `chunk_count` / 文件名等）。
+
+> 文件名与后缀合法性、后缀与 `doc_type` 一致性由前端校验（仅支持 `.md/.markdown/.json`），后端不再做这两类校验。
 
 ---
 
@@ -63,7 +77,7 @@
   - `ingest_json_records(records, ...)` — JSON 数组
 - 三者均支持 `user_id: int | None` 参数；**`user_id` 写入每块 payload**（`payload["user_id"]`），检索结果通过 `_hit_to_dict` 回到 `metadata.user_id`。
 - `_ingest_chunks()`：对每个块同时构建 `dense` 与 `bm25` 向量，写入命名向量 `{"dense": ..., "bm25": SparseVector(...)}`，payload 含 `content / doc_type / heading_path / metadata / user_id`。
-- `embedding_client` 为 `None` 时跳过向量化（仅记日志），不会崩溃。
+- `embedding_client` 为 `None` 时跳过向量化（仅记日志），作为安全网；但上传接口已在更前置拦截（`embedding_client is None` 直接判 ERROR，见「文档上传链路」第 3 步），正常不会走到这里。
 
 ### QdrantClient
 - 真实 `qdrant_client.QdrantClient`，命名向量 `dense`（稠密）+ `bm25`（稀疏，`Modifier.IDF`）。
@@ -208,13 +222,13 @@ rag:
 
 ```yaml
 embedding:                          # 与 rag 同级
-  model: text-embedding-v3
+  model: text-embedding-v4
   api_key: sk-xxx
 qdrant:                             # 与 rag 同级
   host: localhost
   port: 6333
   collection_name: customer_service_knowledge
-  vector_size: 1024
+  vector_size: 1536
   distance: Cosine
 ```
 
@@ -286,7 +300,7 @@ Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
 ## 已落地 vs 未实现
 
 已落地：
-- 真实 Qdrant（dense + bm25/IDF 双向量、RRF 原生融合）
+- 真实 Qdrant（dense + bm25/IDF 双向量、客户端 RRF 融合）
 - 真实 OpenAI 兼容 Embedding
 - 真实 DashScope Rerank（配置开关、失败降级）
 - 检索结果去重 + doc_type 可信度排序
@@ -297,9 +311,6 @@ Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
 - 多租户隔离：`user_id` 写入 payload 且检索按 `user_id` 过滤（keyword 索引加速）
 - 文档管理接口：`GET /knowledge/files`（按用户列出）、`DELETE /knowledge/files/{id}`（软删除元信息 + 清向量）、`POST /knowledge/upload` 落 `knowledge_files` 元信息记录
 - 标量索引：`doc_id` / `user_id` keyword 索引
-
-按需求**未实现**：
-- 文档版本管理（version）与 get 单文档详情接口。
 
 ---
 
