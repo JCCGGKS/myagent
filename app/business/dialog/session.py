@@ -37,28 +37,6 @@ class SessionService:
     ) -> None:
         self._store.append_message(session_id, role, content, message_type, sanitized_content)
 
-    def record_tool_call(
-        self,
-        session_id: str,
-        tool_name: str,
-        tool_category: str,
-        request_args: dict[str, Any],
-        raw_result: dict[str, Any] | None,
-        sanitized_result: dict[str, Any] | None,
-        user_facing_summary: str,
-        status: str = "success",
-    ) -> None:
-        self._store.record_tool_call(
-            session_id,
-            tool_name,
-            tool_category,
-            request_args,
-            raw_result,
-            sanitized_result,
-            user_facing_summary,
-            status,
-        )
-
     # ---- 会话管理（供 api 端点使用）----
 
     def list_sessions(self, user_id: int) -> list[dict[str, Any]]:

@@ -22,10 +22,9 @@
   - `ResponsePromptRegistry`：从 `config/response_prompts.yml` 加载**示例配置**。
   - `ResponseService.generate(state)`：若 `state.reply` 已由 `agent_node` 生成则直接返回；否则组装 `running_summary + recent_messages` 上下文，把 yml 全部示例注入提示词后调用 LLM 生成回复，失败兜底统一道歉语。提示词定义本身在 `prompts/`（`build_response_system_prompt`）。
 - **`message.py`** — 对话消息持久化。
-  - `MessageService.persist(state, request)`：把用户消息、助手回复（澄清/普通）、工具调用结果写入会话存储；依赖 `SessionService`。
-  - `_tool_category(state)`：按 `current_action` 区分工具类别（`handoff_human` → `workflow`，其余 → `query`）。
+  - `MessageService.persist(state, request)`：把用户消息、助手回复（澄清/普通）写入会话存储；依赖 `SessionService`。工具调用结果由 `tools/ToolExecutor` 处理，不在此落库。
 - **`session.py`** — 会话业务服务（封装 `dao.SessionStore`）。
-  - `SessionService`：对上层暴露稳定接口——状态读写 `get/save/append_message/record_tool_call`（方法名对齐 `SessionStore`，供 agent / `MessageService` 内部使用），以及会话管理 `list_sessions/get_messages/get_owner/rename/delete/create`（供 api 端点使用）。
+  - `SessionService`：对上层暴露稳定接口——状态读写 `get/save/append_message`（方法名对齐 `SessionStore`，供 agent / `MessageService` 内部使用），以及会话管理 `list_sessions/get_messages/get_owner/rename/delete/create`（供 api 端点使用）。
   - `get_session_service()`：按配置构造默认实现（内存 / MySQL）。
   - 存储实现（内存 / MySQL）仍由 `SessionStore` 负责，本模块只做业务层编排，避免上层直接依赖数据访问细节。
 | `memory/` | 对话记忆（占位） | 仅保留目录，真正的记忆能力后续实现；消息落库属于 `dialog` 模块 |

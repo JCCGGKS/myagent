@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
-
 from app.schema import ChatRequest, ConversationState
 
 from app.business.dialog.session import SessionService
 
 
-def _tool_category(state: ConversationState) -> str:
-    if state.current_action == "handoff_human":
-        return "workflow"
-    return "query"
-
-
 class MessageService:
-    """对话消息持久化：把用户消息、助手回复、工具调用写入会话存储。"""
+    """对话消息持久化：把用户消息、助手回复写入会话存储。"""
 
     def __init__(self, store: SessionService) -> None:
         self.store = store
@@ -27,17 +19,6 @@ class MessageService:
             state.reply,
             message_type="clarification" if state.current_action.startswith("ask_") else "text",
         )
-
-        if state.tool_result:
-            self.store.record_tool_call(
-                session_id=state.session_id,
-                tool_name=state.latest_action_name or state.tool_result.kind,
-                tool_category=_tool_category(state),
-                request_args=dict(state.slots),
-                raw_result=state.tool_result.raw_result,
-                sanitized_result=state.tool_result.sanitized_result,
-                user_facing_summary=state.tool_result.user_facing_summary,
-            )
 
         self.store.save(state)
         return state

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
@@ -95,31 +94,6 @@ def log_warning(module: str, message: str, *args: Any) -> None:
 
 def log_error(module: str, message: str, *args: Any) -> None:
     get_module_logger(module).error(message, *args)
-
-
-# ---- tool 专用：JSON 行 ----
-
-def log_tool_call(
-    session_id: str,
-    tool_name: str,
-    tool_category: str,
-    request_args: dict[str, Any] | None = None,
-    sanitized_result: Any = None,
-    user_facing_summary: str | None = None,
-    status: str = "success",
-) -> None:
-    """记录一次工具调用：每行一个 JSON，方便 grep / jq。"""
-    payload = {
-        "event": "tool_call",
-        "session_id": session_id,
-        "tool_name": tool_name,
-        "tool_category": tool_category,
-        "request_args": request_args or {},
-        "sanitized_result": sanitized_result,
-        "user_facing_summary": user_facing_summary,
-        "status": status,
-    }
-    get_module_logger("tool").info(json.dumps(payload, ensure_ascii=False, default=str))
 
 
 # ---- 兼容旧 API（tool_logger）----

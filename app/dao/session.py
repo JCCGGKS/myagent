@@ -10,7 +10,6 @@ from typing import Any
 from sqlalchemy import func, update
 
 from app.schema import ConversationState
-from app.utils import log_tool_call
 
 
 logger = logging.getLogger(__name__)
@@ -49,20 +48,6 @@ class SessionStore(ABC):
         sanitized_content: str | None = None,
     ) -> None:
         ...
-
-    @abstractmethod
-    def record_tool_call(
-        self,
-        session_id: str,
-        tool_name: str,
-        tool_category: str,
-        request_args: dict[str, Any],
-        raw_result: dict[str, Any] | None,
-        sanitized_result: dict[str, Any] | None,
-        user_facing_summary: str,
-        status: str = "success",
-    ) -> None:
-        """记录一次工具调用（MVP 通道下为 no-op，保留接口以备后续接入 tool_calls 表）。"""
 
     @abstractmethod
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
@@ -176,28 +161,6 @@ class MemorySessionStore(SessionStore):
             }
         )
         record["session"]["updated_at"] = _now()
-
-    def record_tool_call(
-        self,
-        session_id: str,
-        tool_name: str,
-        tool_category: str,
-        request_args: dict[str, Any],
-        raw_result: dict[str, Any] | None,
-        sanitized_result: dict[str, Any] | None,
-        user_facing_summary: str,
-        status: str = "success",
-    ) -> None:
-        # tool_calls 表已从本通道移除；改为写入独立 tool.log，便于调试与评测采样。
-        log_tool_call(
-            session_id=session_id,
-            tool_name=tool_name,
-            tool_category=tool_category,
-            request_args=request_args,
-            sanitized_result=sanitized_result,
-            user_facing_summary=user_facing_summary,
-            status=status,
-        )
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         record = self._sessions.get(session_id)
@@ -335,28 +298,6 @@ class SqlSessionStore(SessionStore):
                 .values(updated_at=datetime.now(UTC))
             )
             db.commit()
-
-    def record_tool_call(
-        self,
-        session_id: str,
-        tool_name: str,
-        tool_category: str,
-        request_args: dict[str, Any],
-        raw_result: dict[str, Any] | None,
-        sanitized_result: dict[str, Any] | None,
-        user_facing_summary: str,
-        status: str = "success",
-    ) -> None:
-        # tool_calls 表已从本通道移除；改为写入独立 tool.log，便于调试与评测采样。
-        log_tool_call(
-            session_id=session_id,
-            tool_name=tool_name,
-            tool_category=tool_category,
-            request_args=request_args,
-            sanitized_result=sanitized_result,
-            user_facing_summary=user_facing_summary,
-            status=status,
-        )
 
     def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         state = self._states.get(session_id)

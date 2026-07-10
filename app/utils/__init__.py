@@ -5,7 +5,6 @@ from app.utils.module_logger import (
     log_error,
     log_event,
     log_info,
-    log_tool_call,
     log_warning,
 )
 from app.utils.state import build_action_record
@@ -20,7 +19,6 @@ __all__ = [
     "log_error",
     "log_event",
     "log_info",
-    "log_tool_call",
     "log_warning",
     "normalize_whitespace",
 ]
