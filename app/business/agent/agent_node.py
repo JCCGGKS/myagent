@@ -8,6 +8,7 @@ from app.schema import ConversationState
 from app.business.prompts import build_agent_system_prompt
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas
+from app.utils.llm import call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -92,37 +93,4 @@ class AgentNodeService:
     def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """调用 LLM，返回响应（包含 content 或 tool_calls）。"""
         logger.debug("agent_node: calling LLM with %d messages", len(messages))
-        if self.llm_client is None or not self.llm_model:
-            raise RuntimeError(
-                "LLM client is not configured; a real LLM client is required "
-                "to run the agent node."
-            )
-
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=messages,
-                tools=self.tools if self.tools else None,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("agent_node: LLM call failed err=%r", exc)
-            return {"content": "抱歉，我暂时无法回答这个问题。", "tool_calls": []}
-
-        if not response.choices:
-            return {"content": "", "tool_calls": []}
-
-        message = response.choices[0].message
-        content = message.content or ""
-        tool_calls: list[dict[str, Any]] = []
-        for tc in getattr(message, "tool_calls", None) or []:
-            tool_calls.append(
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments or "{}",
-                    },
-                }
-            )
-        return {"content": content, "tool_calls": tool_calls}
+        return call_llm(self.llm_client, self.llm_model, messages, tools=self.tools)

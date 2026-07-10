@@ -11,6 +11,7 @@ from app.dao import SessionStore
 from app.business.prompts import build_clarification_system_prompt, build_response_system_prompt
 from app.utils import build_action_record, load_yaml_file
 from app.utils.config_paths import get_config_dir
+from app.utils.llm import call_llm, LLM_CALL_FAILED_REPLY
 
 
 DEFAULT_CLARIFICATION_PROMPT_PATH = (
@@ -109,23 +110,15 @@ class ClarificationService:
         return state
 
     def _call_llm(self, system_prompt: str) -> str:
-        """调用 LLM 生成澄清话术（需配置真实 LLM client）。"""
+        """调用 LLM 生成澄清话术（需配置真实 LLM client）。失败时返回空串，由上层模板兜底。"""
         logger.debug("ClarificationService: calling LLM")
-        if self.llm_client is None or not self.llm_model:
-            raise RuntimeError(
-                "LLM client is not configured; a real LLM client is required "
-                "to generate clarifications."
-            )
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=[{"role": "system", "content": system_prompt}],
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("ClarificationService: LLM call failed err=%r", exc)
-            return ""
-        content = (response.choices[0].message.content or "") if response.choices else ""
-        return content.strip()
+        result = call_llm(
+            self.llm_client,
+            self.llm_model,
+            [{"role": "system", "content": system_prompt}],
+            fallback_content="",
+        )
+        return result["content"].strip()
 
 
 class ResponseService:
@@ -191,25 +184,10 @@ class ResponseService:
         return "\n".join(lines) if lines else None
 
     def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
-        """调用 LLM 生成响应（需配置真实 LLM client）。"""
+        """调用 LLM 生成响应（需配置真实 LLM client）。失败时兜底为统一道歉语。"""
         logger.debug("ResponseService: calling LLM with %d messages", len(messages))
-        if self.llm_client is None or not self.llm_model:
-            raise RuntimeError(
-                "LLM client is not configured; a real LLM client is required "
-                "to generate responses."
-            )
-
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=messages,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("ResponseService: LLM call failed err=%r", exc)
-            return "抱歉，我暂时无法回答这个问题。"
-
-        content = (response.choices[0].message.content or "") if response.choices else ""
-        return content.strip() or "抱歉，我暂时无法回答这个问题。"
+        result = call_llm(self.llm_client, self.llm_model, messages)
+        return result["content"].strip() or LLM_CALL_FAILED_REPLY
 
 
 def _tool_category(state: ConversationState) -> str:

@@ -12,6 +12,62 @@ from app.utils import build_action_record
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# 工具单点注册表
+# 新增工具 = 在此加一项 + 实现对应 handler 方法（签名统一为 (args, state)）。
+# - schema：走 LLM function calling 的 tools 参数
+# - handler：ToolExecutor 上的方法名，统一签名 (args: dict, state) -> ToolExecutionResult
+# ---------------------------------------------------------------------------
+_ORDER_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "query_order",
+        "description": "查询指定订单的状态、商品、金额等信息。当用户提供订单号并询问订单状态、发货情况、订单详情时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string", "description": "订单号"}},
+            "required": ["order_id"],
+        },
+    },
+}
+_LOGISTICS_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "query_logistics",
+        "description": "查询指定订单的物流配送进度与最新节点。当用户询问快递到哪了、物流更新、配送进度、是否签收时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string", "description": "订单号"}},
+            "required": ["order_id"],
+        },
+    },
+}
+_HANDOFF_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "create_handoff",
+        "description": "转接人工客服：创建人工服务单，并基于当前会话上下文继续处理。当用户明确要求人工客服、情绪激动/投诉升级，或多次澄清仍无法解决时调用。",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+}
+
+TOOLS: dict[str, dict[str, Any]] = {
+    "rag_retrieve": {"schema": RagRetrieveTool().to_tool_schema(), "handler": "_rag_retrieve"},
+    "query_order": {"schema": _ORDER_SCHEMA, "handler": "_query_order"},
+    "query_logistics": {"schema": _LOGISTICS_SCHEMA, "handler": "_query_logistics"},
+    "create_handoff": {"schema": _HANDOFF_SCHEMA, "handler": "_handle_handoff"},
+}
+# LLM 可能返回的历史别名，统一归并到规范名
+TOOL_ALIASES: dict[str, str] = {
+    "order_query": "query_order",
+    "logistics": "query_logistics",
+    "handoff_service": "create_handoff",
+    "request_human": "create_handoff",
+}
+# 供 registry.build_tool_schemas() 读取
+TOOL_SCHEMAS: dict[str, dict[str, Any]] = {name: spec["schema"] for name, spec in TOOLS.items()}
+
+
 class ToolExecutor:
     """统一的工具执行服务：覆盖 LLM 函数调用工具与业务工具。
 
@@ -32,6 +88,8 @@ class ToolExecutor:
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
         self.rag_tool = rag_tool or RagRetrieveTool()
+        # 从单点注册表构建 名称 -> handler 方法 的映射
+        self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
 
     def run(
         self, tool_calls: list[dict[str, Any]], state: ConversationState
@@ -40,8 +98,16 @@ class ToolExecutor:
         last_result: ToolExecutionResult | None = None
         for tc in tool_calls:
             name = tc["function"]["name"]
-            args = json.loads(tc["function"].get("arguments") or "{}")
-            result = self._execute_one(name, args, state)
+            try:
+                args = json.loads(tc["function"].get("arguments") or "{}")
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("ToolExecutor: invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
+                result = ToolExecutionResult(
+                    kind="error",
+                    user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。",
+                )
+            else:
+                result = self._execute_one(name, args, state)
             tool_messages.append(
                 {
                     "role": "tool",
@@ -63,17 +129,11 @@ class ToolExecutor:
         self, name: str, args: dict[str, Any], state: ConversationState
     ) -> ToolExecutionResult:
         logger.info("ToolExecutor: executing %s args=%s", name, args)
-        if name == "rag_retrieve":
-            return self._rag_retrieve(args, state)
-        if name in ("query_order", "order_query"):
-            order_id = args.get("order_id") or state.slots.get("order_id")
-            return self._query_order(order_id)
-        if name in ("query_logistics", "logistics"):
-            order_id = args.get("order_id") or state.slots.get("order_id")
-            return self._query_logistics(order_id)
-        if name in ("create_handoff", "handoff_service", "request_human"):
-            return self.create_handoff(state)
-        return ToolExecutionResult(kind="error", user_facing_summary=f"未知工具: {name}")
+        canonical = TOOL_ALIASES.get(name, name)
+        handler = self._handlers.get(canonical)
+        if handler is None:
+            return ToolExecutionResult(kind="error", user_facing_summary=f"未知工具: {name}")
+        return handler(args, state)
 
     def _rag_retrieve(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         docs = self.rag_tool.run(args.get("query", ""), user_id=state.user_id)
@@ -84,7 +144,8 @@ class ToolExecutor:
             user_facing_summary=f"检索到 {len(docs)} 条相关文档",
         )
 
-    def _query_order(self, order_id: str | None) -> ToolExecutionResult:
+    def _query_order(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        order_id = args.get("order_id") or state.slots.get("order_id")
         if not order_id:
             return ToolExecutionResult(
                 kind="error",
@@ -105,7 +166,8 @@ class ToolExecutor:
             user_facing_summary=summary,
         )
 
-    def _query_logistics(self, order_id: str | None) -> ToolExecutionResult:
+    def _query_logistics(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        order_id = args.get("order_id") or state.slots.get("order_id")
         if not order_id:
             return ToolExecutionResult(
                 kind="error",
@@ -134,6 +196,9 @@ class ToolExecutor:
             sanitized_result=raw,
             user_facing_summary=summary,
         )
+
+    def _handle_handoff(self, args: dict[str, Any], state: ConversationState) -> ConversationState:
+        return self.create_handoff(state)
 
     def create_handoff(self, state: ConversationState) -> ConversationState:
         if self.handoff_service is None:
