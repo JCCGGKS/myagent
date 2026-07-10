@@ -4,15 +4,19 @@ import json
 import logging
 from typing import Any
 
-from app.schema import ConversationState, ToolExecutionResult
+from app.schema import ConversationState
 from app.business.prompts import build_agent_system_prompt
 from app.business.tools.rag_tool import RagRetrieveTool
+from app.business.tool_executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
 
 class AgentNodeService:
-    """Agent 节点服务（ReAct 循环，工具调用）。"""
+    """Agent 节点服务（ReAct 循环，仅负责决策与工具编排）。
+
+    最终答案由 response_generator 节点统一生成；本节点不写 ``state.reply``。
+    """
 
     def __init__(
         self,
@@ -20,77 +24,43 @@ class AgentNodeService:
         llm_client: Any | None = None,
         llm_model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        tool_executor: ToolExecutor | None = None,
         max_tool_rounds: int = 3,
     ) -> None:
         # 兼容旧字段 llm：仍允许直接传入已构造的 client。
         self.llm_client = llm if llm is not None else llm_client
         self.llm_model = llm_model
         self.tools = tools or self._default_tools()
+        self.tool_executor = tool_executor or ToolExecutor()
         self.max_tool_rounds = max_tool_rounds
 
     def run(self, state: ConversationState) -> ConversationState:
-        """执行 ReAct 循环，直到 LLM 返回最终响应。"""
-        # 1. 构造 messages
+        """执行 ReAct 循环：调 LLM → 无 tool_calls 则交给 generator；有 tool_calls 则执行后继续。"""
         messages = self._build_messages(state)
 
-        # 2. ReAct 循环（最多 max_tool_rounds 轮）
-        for round in range(self.max_tool_rounds):
-            logger.debug("agent_node: round %d, session=%s", round, state.session_id)
+        for _round in range(self.max_tool_rounds):
+            logger.debug("agent_node: round %d, session=%s", _round, state.session_id)
 
-            # 2.1 调用 LLM，传入 tools 参数
             response = self._call_llm(messages)
 
-            # 2.2 如果 LLM 返回 tool_calls，执行工具
             if response.get("tool_calls"):
                 for tool_call in response["tool_calls"]:
-                    tool_name = tool_call["function"]["name"]
-                    tool_args = json.loads(tool_call["function"]["arguments"])
-
-                    # 执行工具
-                    tool_result = self._execute_tool(tool_name, tool_args, state)
-
-                    # 把工具调用和结果追加到 messages
                     messages.append(
                         {
                             "role": "assistant",
                             "content": None,
-                            "tool_calls": [
-                                {
-                                    "id": tool_call["id"],
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_name,
-                                        "arguments": json.dumps(tool_args, ensure_ascii=False),
-                                    },
-                                }
-                            ],
+                            "tool_calls": [tool_call],
                         }
                     )
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "name": tool_name,
-                            "content": json.dumps(tool_result, ensure_ascii=False),
-                        }
-                    )
-
+                tool_messages = self.tool_executor.run(response["tool_calls"], state)
+                messages.extend(tool_messages)
                 # 继续循环，让 LLM 根据工具结果决定下一步
                 continue
 
-            # 2.3 如果 LLM 返回最终响应，结束循环
-            else:
-                state.reply = response.get("content", "")
-                break
+            # 无 tool_calls：信息已足够，交给 response_generator 生成最终答案
+            break
 
-        # 3. 如果超过最大轮次，强制生成响应（fallback）
-        if not state.reply:
-            logger.warning("agent_node: max tool rounds reached, session=%s", state.session_id)
-            state.reply = self._fallback_response(state)
-
-        # 4. 把工具结果写到 state（供 response_generator 使用）
-        state.tool_result = self._collect_tool_results(messages)
-
+        # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_result 兜底生成
         return state
 
     def _build_messages(self, state: ConversationState) -> list[dict[str, Any]]:
@@ -145,64 +115,7 @@ class AgentNodeService:
             )
         return {"content": content, "tool_calls": tool_calls}
 
-    def _execute_tool(self, tool_name: str, tool_args: dict, state: ConversationState) -> dict[str, Any]:
-        """执行单个工具，返回结构化结果。"""
-        logger.info("agent_node: executing tool %s with args %s", tool_name, tool_args)
-
-        if tool_name == "rag_retrieve":
-            rag_tool = RagRetrieveTool()
-            return {"retrieved_docs": rag_tool.run(tool_args.get("query", ""), user_id=state.user_id)}
-        elif tool_name == "query_order":
-            # TODO: 接入真实订单查询服务
-            return {"order_id": tool_args.get("order_id"), "status": "模拟状态"}
-        elif tool_name == "query_logistics":
-            # TODO: 接入真实物流查询服务
-            return {"order_id": tool_args.get("order_id"), "tracking_status": "模拟物流状态"}
-        elif tool_name == "create_handoff":
-            state.handoff = True
-            state.handoff_reason = tool_args.get("reason", "agent_decision")
-            return {"ticket_id": "mock_ticket_1", "summary": "模拟转人工"}
-        else:
-            return {"error": f"Unknown tool: {tool_name}"}
-
-    def _collect_tool_results(self, messages: list[dict[str, Any]]) -> ToolExecutionResult | None:
-        """从 messages 中收集工具结果，写到 state.tool_result。"""
-        # 找到最后一条 tool 消息
-        for msg in reversed(messages):
-            if msg.get("role") == "tool":
-                tool_name = msg.get("name", "")
-                content = json.loads(msg.get("content", "{}"))
-                return ToolExecutionResult(
-                    kind=_map_tool_kind(tool_name),
-                    raw_result=content,
-                    sanitized_result=content,
-                    user_facing_summary=str(content)[:200],
-                )
-        return None
-
-    def _fallback_response(self, state: ConversationState) -> str:
-        """当超过最大工具轮次时，生成 fallback 响应。"""
-        return "抱歉，我需要更多时间来回答你的问题。请稍后再试，或联系人工客服。"
-
     def _default_tools(self) -> list[dict[str, Any]]:
         """默认工具列表（rag_retrieve, query_order, query_logistics, create_handoff）。"""
         rag_tool = RagRetrieveTool()
         return [rag_tool.to_tool_schema()]
-
-
-# 工具名 → ToolExecutionResult.kind 枚举值
-_TOOL_KIND_MAP: dict[str, str] = {
-    "rag_retrieve": "knowledge",
-    "query_order": "order_query",
-    "query_logistics": "logistics",
-    "request_refund": "aftersale_refund",
-    "create_handoff": "handoff",
-}
-
-
-def _map_tool_kind(tool_name: str) -> str:
-    """把 LLM 调用的工具名映射到 ToolExecutionResult.kind 枚举值。
-
-    未识别的工具名降级为 'knowledge'（最宽松的兜底），避免 Pydantic 校验失败。
-    """
-    return _TOOL_KIND_MAP.get(tool_name, "knowledge")
