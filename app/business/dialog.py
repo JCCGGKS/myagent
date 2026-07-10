@@ -134,7 +134,7 @@ class ResponseService:
         return content.strip() or "抱歉，我暂时无法回答这个问题。"
 
 
-class MemoryService:
+class MessageService:
     def __init__(self, store: SessionStore) -> None:
         self.store = store
 

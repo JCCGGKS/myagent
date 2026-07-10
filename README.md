@@ -72,7 +72,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 当前后端执行链与 `template/06.1-06.4`、`template/07` 对齐为：
 
-`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor -> memory_writer`
+`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor -> message_writer`
 
 ## Project Structure
 

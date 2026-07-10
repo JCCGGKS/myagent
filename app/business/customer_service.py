@@ -17,7 +17,7 @@ from app.business import (
     IntentSchemaRegistry,
     LLMIntentFallbackService,
     LogisticsService,
-    MemoryService,
+    MessageService,
     OrderService,
     ResponseService,
     StateTrackerService,
@@ -63,7 +63,7 @@ class CustomerServiceAgent:
             llm_client=llm_client,
             llm_model=llm_model,
         )
-        self.memory_service = MemoryService(store)
+        self.message_service = MessageService(store)
         # agent_node 初始化（工具调用节点）
         self.agent_node_service = AgentNodeService(
             llm_client=llm_client,
@@ -86,7 +86,7 @@ class CustomerServiceAgent:
         builder.add_node("handoff_node", self.handoff_node)
         builder.add_node("response_generator", self.response_generator)
         builder.add_node("context_compressor", self.context_compressor)
-        builder.add_node("memory_writer", self.memory_writer)
+        builder.add_node("message_writer", self.message_writer)
 
         builder.add_edge(START, "input_normalizer")
         builder.add_edge("input_normalizer", "intent_router")
@@ -107,8 +107,8 @@ class CustomerServiceAgent:
         builder.add_edge("agent_node", "response_generator")
         builder.add_edge("handoff_node", "response_generator")
         builder.add_edge("response_generator", "context_compressor")
-        builder.add_edge("context_compressor", "memory_writer")
-        builder.add_edge("memory_writer", END)
+        builder.add_edge("context_compressor", "message_writer")
+        builder.add_edge("message_writer", END)
         return builder.compile()
 
     def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
@@ -170,8 +170,8 @@ class CustomerServiceAgent:
         payload = self.context_compressor(payload)
         events.extend(self._node_state_to_events("context_compressor", payload["state"]))
 
-        payload = self.memory_writer(payload)
-        events.extend(self._node_state_to_events("memory_writer", payload["state"]))
+        payload = self.message_writer(payload)
+        events.extend(self._node_state_to_events("message_writer", payload["state"]))
 
         return events
 
@@ -243,7 +243,7 @@ class CustomerServiceAgent:
         else:
             payload = self.response_generator(payload)
         payload = self.context_compressor(payload)
-        payload = self.memory_writer(payload)
+        payload = self.message_writer(payload)
         return payload
 
     def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -353,11 +353,11 @@ class CustomerServiceAgent:
         payload["state"] = self.context_service.compress(state)
         return payload
 
-    def memory_writer(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def message_writer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
-        logger.debug("node=memory_writer session=%s", state.session_id)
-        payload["state"] = self.memory_service.persist(state, request)
+        logger.debug("node=message_writer session=%s", state.session_id)
+        payload["state"] = self.message_service.persist(state, request)
         return payload
 
     def _build_chat_response(self, state: ConversationState) -> ChatResponse:

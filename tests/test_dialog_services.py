@@ -62,7 +62,7 @@ class DialogServicesTestCase:
 
     def test_clarification_service_should_generate_refund_order_id_prompt(self, clarification_service):
         """测试 ClarificationService 能够生成追问 prompt。"""
-        state = ConversationState(session_id="test-session", current_action="ask_slot_clarification")
+        state = ConversationState(session_id="test-session", user_id=1, channel="web", current_action="ask_slot_clarification")
         state.missing_slots = ["order_id"]
         result = clarification_service.generate(state)
         assert result.reply != ""
@@ -78,17 +78,17 @@ class DialogServicesTestCase:
 
     def test_response_service_should_use_llm(self, response_service):
         """测试 ResponseService 使用 LLM 生成响应（非模板）。"""
-        state = ConversationState(session_id="test-session", current_main_intent="chitchat")
+        state = ConversationState(session_id="test-session", user_id=1, channel="web", current_main_intent="unrecognize")
         result = response_service.generate(state)
         assert result.reply == "这是 LLM 生成的回复。"
 
-    def test_memory_service_should_record_messages_and_tool_calls(self):
-        """测试 MemoryService 能够记录消息和工具调用。"""
-        from app.business.dialog import MemoryService
+    def test_message_service_should_record_messages_and_tool_calls(self):
+        """测试 MessageService 能够记录消息和工具调用。"""
+        from app.business.dialog import MessageService
 
         store = MagicMock()
-        service = MemoryService(store=store)
-        state = ConversationState(session_id="test-session")
+        service = MessageService(store=store)
+        state = ConversationState(session_id="test-session", user_id=1, channel="web")
         request = MagicMock()
         request.message = "你好"
         result = service.persist(state, request)

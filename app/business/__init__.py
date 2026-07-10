@@ -2,7 +2,7 @@ from app.business.context import ContextService
 from app.business.dialog import (
     ClarificationPromptRegistry,
     ClarificationService,
-    MemoryService,
+    MessageService,
     ResponsePromptRegistry,
     ResponseService,
 )
@@ -34,7 +34,7 @@ __all__ = [
     "IntentSchemaRegistry",
     "LLMIntentFallbackService",
     "LogisticsService",
-    "MemoryService",
+    "MessageService",
     "ResponsePromptRegistry",
     "OrderService",
     "ResponseService",
