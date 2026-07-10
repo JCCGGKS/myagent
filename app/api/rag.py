@@ -107,6 +107,18 @@ async def knowledge_upload(
 
     ingestion = _build_ingestion_service()
 
+    # 向量化未启用（缺 embedding 配置）时直接判失败，避免显示“成功但 0 向量”的误导状态
+    if ingestion.embedding_client is None:
+        file_dao.update_status(
+            doc_id,
+            KNOWLEDGE_FILE_STATUS_ERROR,
+            error_message="向量化未启用：缺少 embedding.api_key 配置，未写入任何向量",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="向量化未启用：请在配置中填写 embedding.api_key（及可达的 qdrant 地址）",
+        )
+
     try:
         if suffix == ".json":
             try:
