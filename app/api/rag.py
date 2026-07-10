@@ -77,25 +77,9 @@ async def knowledge_upload(
     current_user = request.state.user
     """知识库文件上传接口（需登录，写入 user_id 到元数据）。
 
-    支持格式：.md / .markdown / .json。
+    文件名与后缀合法性由前端校验（仅支持 .md / .markdown / .json）。
     """
-    if not file.filename:
-        log_warning("rag", "knowledge_upload missing filename user=%s", current_user.id)
-        raise HTTPException(status_code=400, detail="缺少文件名")
-
     suffix = Path(file.filename).suffix.lower()
-    if suffix not in {".md", ".markdown", ".json"}:
-        log_warning(
-            "rag",
-            "knowledge_upload unsupported_type user=%s file=%s suffix=%s",
-            current_user.id,
-            file.filename,
-            suffix,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"不支持的文件类型：{suffix}，仅支持 .md / .markdown / .json",
-        )
 
     raw_bytes = await file.read()
     file_size = len(raw_bytes)

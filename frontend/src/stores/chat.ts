@@ -211,12 +211,36 @@ export const useChatStore = defineStore("chat", () => {
     if (!fileList?.length) {
       return;
     }
+    const SUPPORTED = [".md", ".markdown", ".json"];
+    const MARKDOWN_SUFFIXES = [".md", ".markdown"];
+    const JSON_SUFFIXES = [".json"];
+    const files = Array.from(fileList);
+    const isSupported = (file: File) => {
+      const suffix = file.name
+        ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
+        : "";
+      if (!file.name || !SUPPORTED.includes(suffix)) {
+        return false;
+      }
+      // 后缀需与所选文档类型一致
+      if (docType === "json" && !JSON_SUFFIXES.includes(suffix)) return false;
+      if (docType === "markdown" && !MARKDOWN_SUFFIXES.includes(suffix)) return false;
+      return true;
+    };
+    const valid = files.filter(isSupported);
+    const invalidCount = files.length - valid.length;
+
     const results = await Promise.allSettled(
-      Array.from(fileList).map((file) => uploadKnowledgeFile(file, docType)),
+      valid.map((file) => uploadKnowledgeFile(file, docType)),
     );
-    const failed = results.filter((r) => r.status === "rejected").length;
-    const ok = results.length - failed;
-    statusText.value = `已上传 ${ok} 个文件${failed ? `，${failed} 个失败` : ""}`;
+    const rejectedCount = results.filter((r) => r.status === "rejected").length;
+    const okCount = results.filter((r) => r.status === "fulfilled").length;
+    const failedCount = rejectedCount + invalidCount;
+    statusText.value =
+      `已上传 ${okCount} 个文件` +
+      (failedCount
+        ? `，${failedCount} 个失败（仅支持 .md / .markdown / .json，且后缀需与所选文档类型一致）`
+        : "");
     await fetchKnowledgeFiles();
   }
 
@@ -474,7 +498,7 @@ export const useChatStore = defineStore("chat", () => {
     } catch (error) {
       pending.value = false;
       backendReady.value = false;
-      liveTrace.value.push("WebSocket 连接失败，回退到 HTTP /chat");
+      liveTrace.value.push("SSE 连接失败，回退到 HTTP /chat");
       try {
         const response = await postChat({
           session_id: sessionId.value,
