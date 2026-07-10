@@ -108,17 +108,13 @@ class AgentNodeService:
         return messages
 
     def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        """调用 LLM，返回响应（包含 content 或 tool_calls）。
-
-        无 client 时降级返回 mock content，避免本地/CI 不接 LLM 时崩溃。
-        """
+        """调用 LLM，返回响应（包含 content 或 tool_calls）。"""
         logger.debug("agent_node: calling LLM with %d messages", len(messages))
-
         if self.llm_client is None or not self.llm_model:
-            return {
-                "content": "模拟 LLM 响应（请接入真实 LLM）",
-                "tool_calls": [],
-            }
+            raise RuntimeError(
+                "LLM client is not configured; a real LLM client is required "
+                "to run the agent node."
+            )
 
         try:
             response = self.llm_client.chat.completions.create(

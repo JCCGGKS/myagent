@@ -15,11 +15,17 @@ def agent():
     order_service = MagicMock()
     logistics_service = MagicMock()
     handoff_service = MagicMock()
+    llm_client = MagicMock()
+    llm_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="这是 LLM 生成的回复。"))]
+    )
     return CustomerServiceAgent(
         store=store,
         order_service=order_service,
         logistics_service=logistics_service,
         handoff_service=handoff_service,
+        llm_client=llm_client,
+        llm_model="fake-model",
     )
 
 

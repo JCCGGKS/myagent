@@ -86,7 +86,7 @@ class ResponseService:
         self.llm_model = llm_model
 
     def generate(self, state: ConversationState) -> ConversationState:
-        """生成响应（LLM 驱动，client 不可用时降级到 mock）。"""
+        """生成响应（由真实 LLM 驱动）。"""
         # 如果已经有 reply（如 agent_node 已生成），直接返回
         if state.reply:
             return state
@@ -113,11 +113,13 @@ class ResponseService:
         return list(state.message_history[-5:])
 
     def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
-        """调用 LLM 生成响应。无 client 时降级到 mock，便于本地/CI 不接 LLM。"""
+        """调用 LLM 生成响应（需配置真实 LLM client）。"""
         logger.debug("ResponseService: calling LLM with %d messages", len(messages))
         if self.llm_client is None or not self.llm_model:
-            intent = state.current_main_intent if state else "unknown"
-            return f"模拟 LLM 响应（请接入真实 LLM）。意图：{intent}"
+            raise RuntimeError(
+                "LLM client is not configured; a real LLM client is required "
+                "to generate responses."
+            )
 
         try:
             response = self.llm_client.chat.completions.create(
@@ -126,8 +128,7 @@ class ResponseService:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("ResponseService: LLM call failed err=%r", exc)
-            intent = state.current_main_intent if state else "unknown"
-            return f"模拟 LLM 响应（LLM 调用失败）。意图：{intent}"
+            return "抱歉，我暂时无法回答这个问题。"
 
         content = (response.choices[0].message.content or "") if response.choices else ""
         return content.strip() or "抱歉，我暂时无法回答这个问题。"

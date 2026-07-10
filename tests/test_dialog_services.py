@@ -37,7 +37,15 @@ def response_service():
         "unsupported_biz": "抱歉，这个问题我暂时无法回答。",
         "unknown_fallback": "抱歉，我没理解。",
     }
-    return ResponseService(prompt_registry=prompt_registry)
+    llm_client = MagicMock()
+    llm_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="这是 LLM 生成的回复。"))]
+    )
+    return ResponseService(
+        prompt_registry=prompt_registry,
+        llm_client=llm_client,
+        llm_model="fake-model",
+    )
 
 
 class DialogServicesTestCase:
@@ -72,9 +80,7 @@ class DialogServicesTestCase:
         """测试 ResponseService 使用 LLM 生成响应（非模板）。"""
         state = ConversationState(session_id="test-session", current_main_intent="chitchat")
         result = response_service.generate(state)
-        # 当前为模拟实现，后续接入真实 LLM 后断言会变化
-        assert result.reply != ""
-        assert "模拟" in result.reply or True  # 模拟实现包含“模拟”字样
+        assert result.reply == "这是 LLM 生成的回复。"
 
     def test_memory_service_should_record_messages_and_tool_calls(self):
         """测试 MemoryService 能够记录消息和工具调用。"""
