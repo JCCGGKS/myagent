@@ -7,6 +7,7 @@ from app.schema import ChatRequest, ChatResponse, ConversationState, ToolExecuti
 
 logger = logging.getLogger(__name__)
 from app.business.agent_node import AgentNodeService
+from app.business.tool_executor import ToolExecutor
 from app.business import (
     ClarificationService,
     ContextService,
@@ -52,7 +53,10 @@ class CustomerServiceAgent:
         self.intent_router_service = IntentRouterService(llm_fallback_service=llm_fallback_service)
         self.state_tracker_service = StateTrackerService(schema_registry=self.intent_schema_registry)
         self.policy_service = HandoffClarificationPolicy()
-        self.clarification_service = ClarificationService()
+        self.clarification_service = ClarificationService(
+            llm_client=llm_client,
+            llm_model=llm_model,
+        )
         self.execution_service = ExecutionService(
             order_service=order_service,
             logistics_service=logistics_service,
@@ -64,12 +68,20 @@ class CustomerServiceAgent:
             llm_model=llm_model,
         )
         self.message_service = MessageService(store)
-        # agent_node 初始化（工具调用节点）
+        # 统一工具执行服务（覆盖 LLM 函数调用工具与业务工具）
+        self.tool_executor = ToolExecutor(execution_service=self.execution_service)
+        # agent_node 初始化（工具编排节点）
         self.agent_node_service = AgentNodeService(
             llm_client=llm_client,
             llm_model=llm_model,
+            tool_executor=self.tool_executor,
             tools=None,  # 会从默认工具列表加载
         )
+        # langgraph 为硬依赖：不可用时显式报错
+        if StateGraph is None:
+            raise RuntimeError(
+                "LangGraph is required for agent orchestration; please install langgraph."
+            )
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -123,8 +135,6 @@ class CustomerServiceAgent:
 
     def chat_events(self, request: ChatRequest, user_id: int) -> list[dict[str, Any]]:
         """LangGraph 图驱动的事件生成（与 chat() 行为一致）。"""
-        if self.graph is None:
-            return self._chat_events_fallback(request, user_id)
         payload = self._build_payload(request, user_id)
         events: list[dict[str, Any]] = []
         for chunk in self.graph.stream(payload):
@@ -133,46 +143,6 @@ class CustomerServiceAgent:
                 state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
                 if state:
                     events.extend(self._node_state_to_events(node_name, state))
-        return events
-
-    def _chat_events_fallback(self, request: ChatRequest, user_id: int) -> list[dict[str, Any]]:
-        """LangGraph 不可用时的降级路径（手动串联，逻辑与图一致）。"""
-        payload = self._build_payload(request, user_id)
-        events: list[dict[str, Any]] = []
-
-        payload = self.input_normalizer(payload)
-        events.extend(self._node_state_to_events("input_normalizer", payload["state"]))
-
-        payload = self.intent_router(payload)
-        events.extend(self._node_state_to_events("intent_router", payload["state"]))
-
-        payload = self.state_tracker(payload)
-        events.extend(self._node_state_to_events("state_tracker", payload["state"]))
-
-        payload = self.policy_layer(payload)
-        events.extend(self._node_state_to_events("policy_layer", payload["state"]))
-
-        route = self.route_after_policy(payload)
-        if route == "clarification_node":
-            payload = self.clarification_node(payload)
-            events.extend(self._node_state_to_events("clarification_node", payload["state"]))
-        elif route == "business_tool_executor":
-            payload = self.business_tool_executor(payload)
-            events.extend(self._node_state_to_events("business_tool_executor", payload["state"]))
-        elif route == "handoff_node":
-            payload = self.handoff_node(payload)
-            events.extend(self._node_state_to_events("handoff_node", payload["state"]))
-
-        if route != "clarification_node":
-            payload = self.response_generator(payload)
-            events.extend(self._node_state_to_events("response_generator", payload["state"]))
-
-        payload = self.context_compressor(payload)
-        events.extend(self._node_state_to_events("context_compressor", payload["state"]))
-
-        payload = self.message_writer(payload)
-        events.extend(self._node_state_to_events("message_writer", payload["state"]))
-
         return events
 
     def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
@@ -202,7 +172,7 @@ class CustomerServiceAgent:
                     "needs_clarification": state.needs_clarification,
                 }
             )
-        elif node_name in {"business_tool_executor", "handoff_node"}:
+        elif node_name in {"handoff_node", "agent_node"}:
             if state.tool_result:
                 events.append({"type": "tool_result", "tool_result": self._serialize_tool_result(state)})
         elif node_name == "response_generator":
@@ -212,10 +182,7 @@ class CustomerServiceAgent:
 
     def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
         payload = self._build_payload(request, user_id)
-        if self.graph is None:
-            payload = self._run_without_langgraph(payload)
-        else:
-            payload = self.graph.invoke(payload)
+        payload = self.graph.invoke(payload)
         return payload["state"]
 
     def _build_payload(self, request: ChatRequest, user_id: int) -> dict[str, Any]:
@@ -225,26 +192,6 @@ class CustomerServiceAgent:
             channel=request.channel,
         )
         return {"state": state, "request": request}
-
-    def _run_without_langgraph(self, payload: dict[str, Any]) -> dict[str, Any]:
-        payload = self.input_normalizer(payload)
-        payload = self.intent_router(payload)
-        payload = self.state_tracker(payload)
-        payload = self.policy_layer(payload)
-        route = self.route_after_policy(payload)
-        if route == "clarification_node":
-            payload = self.clarification_node(payload)
-        elif route == "business_tool_executor":
-            payload = self.business_tool_executor(payload)
-            payload = self.response_generator(payload)
-        elif route == "handoff_node":
-            payload = self.handoff_node(payload)
-            payload = self.response_generator(payload)
-        else:
-            payload = self.response_generator(payload)
-        payload = self.context_compressor(payload)
-        payload = self.message_writer(payload)
-        return payload
 
     def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
@@ -325,13 +272,6 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         logger.debug("node=agent_node session=%s", state.session_id)
         payload["state"] = self.agent_node_service.run(state)
-        return payload
-
-    def business_tool_executor(self, payload: dict[str, Any]) -> dict[str, Any]:
-        state: ConversationState = payload["state"]
-        logger.debug("node=business_tool_executor session=%s", state.session_id)
-        payload["state"] = self.execution_service.execute_business_tool(state)
-        logger.info("tool_result session=%s result=%s", state.session_id, state.tool_result)
         return payload
 
     def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:

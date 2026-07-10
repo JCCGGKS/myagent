@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from app.schema import ChatRequest, ConversationState
+from app.schema import ConversationState
 
 logger = logging.getLogger(__name__)
 from app.dao import SessionStore
-from app.business.prompts import build_response_system_prompt
+from app.business.prompts import build_clarification_system_prompt, build_response_system_prompt
 from app.utils import build_action_record, load_yaml_file
 from app.utils.config_paths import get_config_dir
 
@@ -54,10 +54,28 @@ class ResponsePromptRegistry:
 
 
 class ClarificationService:
-    def __init__(self, prompt_registry: Optional[ClarificationPromptRegistry] = None) -> None:
+    def __init__(
+        self,
+        prompt_registry: Optional[ClarificationPromptRegistry] = None,
+        llm_client: Any | None = None,
+        llm_model: str | None = None,
+    ) -> None:
         self.prompt_registry = prompt_registry or ClarificationPromptRegistry()
+        self.llm_client = llm_client
+        self.llm_model = llm_model
 
     def generate(self, state: ConversationState) -> ConversationState:
+        # 优先用澄清提示词走 LLM 生成追问话术
+        if self.llm_client is not None and self.llm_model:
+            reply = self._call_llm(build_clarification_system_prompt(state))
+            if reply:
+                state.reply = reply
+                state.latest_action_name = "clarification_node"
+                state.latest_action_result = {"reply": reply}
+                state.action_history.append(build_action_record("clarification_node", reply))
+                return state
+
+        # 无 LLM client 时回退到模板
         prompts = self.prompt_registry.get()
         if state.current_action == "ask_intent_clarification":
             state.reply = prompts["intent_clarification"]
@@ -72,6 +90,25 @@ class ClarificationService:
         state.latest_action_result = {"reply": state.reply}
         state.action_history.append(build_action_record("clarification_node", state.reply))
         return state
+
+    def _call_llm(self, system_prompt: str) -> str:
+        """调用 LLM 生成澄清话术（需配置真实 LLM client）。"""
+        logger.debug("ClarificationService: calling LLM")
+        if self.llm_client is None or not self.llm_model:
+            raise RuntimeError(
+                "LLM client is not configured; a real LLM client is required "
+                "to generate clarifications."
+            )
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=[{"role": "system", "content": system_prompt}],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ClarificationService: LLM call failed err=%r", exc)
+            return ""
+        content = (response.choices[0].message.content or "") if response.choices else ""
+        return content.strip()
 
 
 class ResponseService:
@@ -134,7 +171,15 @@ class ResponseService:
         return content.strip() or "抱歉，我暂时无法回答这个问题。"
 
 
+def _tool_category(state: ConversationState) -> str:
+    if state.current_action == "handoff_human":
+        return "workflow"
+    return "query"
+
+
 class MessageService:
+    """对话消息持久化：把用户消息、助手回复、工具调用写入 SessionStore。"""
+
     def __init__(self, store: SessionStore) -> None:
         self.store = store
 
@@ -160,9 +205,3 @@ class MessageService:
 
         self.store.save(state)
         return state
-
-
-def _tool_category(state: ConversationState) -> str:
-    if state.current_action == "handoff_human":
-        return "workflow"
-    return "query"

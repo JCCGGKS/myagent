@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.business.customer_service import CustomerServiceAgent
+from app.business.graph import CustomerServiceAgent
 from app.schema import ChatRequest, ConversationState
 from app.dao import SessionStore
 
@@ -16,8 +16,9 @@ def agent():
     logistics_service = MagicMock()
     handoff_service = MagicMock()
     llm_client = MagicMock()
+    message = MagicMock(content="这是 LLM 生成的回复。", tool_calls=None)
     llm_client.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="这是 LLM 生成的回复。"))]
+        choices=[MagicMock(message=message)]
     )
     return CustomerServiceAgent(
         store=store,

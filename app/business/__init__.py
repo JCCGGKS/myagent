@@ -20,7 +20,7 @@ from app.business.routing import (
     IntentRouterService,
     StateTrackerService,
 )
-from app.business.customer_service import CustomerServiceAgent
+from app.business.graph import CustomerServiceAgent
 
 __all__ = [
     "ClarificationPromptRegistry",
