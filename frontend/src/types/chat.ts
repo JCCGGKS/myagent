@@ -4,7 +4,6 @@ export type MainIntentCode =
   | "logistics_service"
   | "refund_service"
   | "handoff_service"
-  | "chitchat"
   | "unsupported";
 
 export type SubIntentCode =
@@ -14,8 +13,6 @@ export type SubIntentCode =
   | "refund_service.consult_policy"
   | "refund_service.request_refund"
   | "handoff_service.request_human"
-  | "chitchat.greeting"
-  | "chitchat.thanks"
   | "unsupported.unknown";
 
 export interface EmotionState {

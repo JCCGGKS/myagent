@@ -11,7 +11,6 @@ MainIntentCode = Literal[
     "after_sale_refund",
     "complaint",
     "handoff_service",
-    "chitchat",
     "unrecognize",
     "unsupported_biz",
 ]
@@ -29,10 +28,9 @@ SubIntentCode = Literal[
         "after_sale_refund.wrong_goods",
         "complaint.compensate",
         "complaint.service_complaint",
-        "handoff_service.request_human",
-        "chitchat.greeting",
-        "unrecognize.unknown",
-        "unsupported_biz.out_of_scope",
+    "handoff_service.request_human",
+    "unrecognize.unknown",
+    "unsupported_biz.out_of_scope",
 ]
 
 

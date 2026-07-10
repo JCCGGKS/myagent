@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Valid values the router actually uses
 VALID_MAIN = {
     "order_query", "logistics", "after_sale_refund",
-    "complaint", "handoff_service", "chitchat",
+    "complaint", "handoff_service",
     "unrecognize", "unsupported_biz",
 }
 VALID_SUB = {
@@ -29,7 +29,7 @@ VALID_SUB = {
     "after_sale_refund.damage_refund", "after_sale_refund.no_reason_return",
     "after_sale_refund.wrong_goods",
     "complaint.compensate", "complaint.service_complaint",
-    "handoff_service.request_human", "chitchat.greeting",
+    "handoff_service.request_human",
     "unrecognize.unknown", "unsupported_biz.out_of_scope",
 }
 
@@ -39,7 +39,7 @@ class LLMIntentDecision(BaseModel):
 
     main_intent: Literal[
         "order_query", "logistics", "after_sale_refund",
-        "complaint", "handoff_service", "chitchat",
+        "complaint", "handoff_service",
         "unrecognize", "unsupported_biz",
     ] = "unrecognize"
 
@@ -49,7 +49,7 @@ class LLMIntentDecision(BaseModel):
         "after_sale_refund.damage_refund", "after_sale_refund.no_reason_return",
         "after_sale_refund.wrong_goods",
         "complaint.compensate", "complaint.service_complaint",
-        "handoff_service.request_human", "chitchat.greeting",
+        "handoff_service.request_human",
         "unrecognize.unknown", "unsupported_biz.out_of_scope",
     ] = "unrecognize.unknown"
 
@@ -111,7 +111,6 @@ class LLMIntentDecision(BaseModel):
                     "after_sale_refund": "after_sale_refund.no_reason_return",
                     "complaint": "complaint.service_complaint",
                     "handoff_service": "handoff_service.request_human",
-                    "chitchat": "chitchat.greeting",
                     "unrecognize": "unrecognize.unknown",
                     "unsupported_biz": "unsupported_biz.out_of_scope",
                 }
@@ -267,12 +266,11 @@ class LLMIntentFallbackService:
                 "logistics": "logistics.not_received",
                 "after_sale_refund": "after_sale_refund.no_reason_return",
                 "complaint": "complaint.service_complaint",
-                "handoff_service": "handoff_service.request_human",
-                "chitchat": "chitchat.greeting",
-                "unrecognize": "unrecognize.unknown",
-                "unsupported_biz": "unsupported_biz.out_of_scope",
-            }
-            normalized["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
+            "handoff_service": "handoff_service.request_human",
+            "unrecognize": "unrecognize.unknown",
+            "unsupported_biz": "unsupported_biz.out_of_scope",
+        }
+        normalized["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
 
         raw_conf = data.get("confidence", data.get("confidence", 0.8))
         try:

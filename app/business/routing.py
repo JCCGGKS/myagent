@@ -46,15 +46,14 @@ class IntentRouterService:
         has_order_query_keyword = self._contains_any(lowered, rules.get("order_query_keywords", []))
         has_aftersale_keyword = self._contains_any(lowered, rules.get("after_sale_refund_keywords", []))
         has_aftersale_action_keyword = self._contains_any(lowered, rules.get("after_sale_refund_action_keywords", []))
-        has_greeting_keyword = self._contains_any(lowered, rules.get("greeting_keywords", []))
 
         logger.debug(
             "Routing message session=%s previous_intent=%s order_id=%s "
-            "handoff_kw=%s complaint_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s greeting_kw=%s "
+            "handoff_kw=%s complaint_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s "
             "emotion=%s",
             state.session_id, previous_main_intent, order_id,
             has_handoff_keyword, has_complaint_keyword, has_logistics_keyword,
-            has_order_query_keyword, has_aftersale_keyword, has_greeting_keyword,
+            has_order_query_keyword, has_aftersale_keyword,
             emotion.primary,
         )
 
@@ -151,19 +150,7 @@ class IntentRouterService:
                 sub_intent, intent.confidence, order_id, state.session_id,
             )
 
-        # 6. 问候
-        elif has_greeting_keyword:
-            intent = IntentResult(
-                main_intent="chitchat",
-                sub_intent="chitchat.greeting",
-                confidence=0.95,
-                route_source="rule",
-                emotion=emotion,
-            )
-            candidate_intents = ["chitchat"]
-            logger.info("Routed intent=chitchat.greeting session=%s", state.session_id)
-
-        # 7. 上下文跟进（有 order_id 且上一轮是同类型意图）
+        # 6. 上下文跟进（有 order_id 且上一轮是同类型意图）
         elif order_id and previous_sub_intent in {
             "order_query.query_status",
             "logistics.not_received",
@@ -329,7 +316,7 @@ class StateTrackerService:
             state.stage = "executing"
         elif state.current_main_intent == "after_sale_refund":
             state.stage = "executing"
-        elif state.current_main_intent in {"complaint", "chitchat", "unrecognize", "unsupported_biz"}:
+        elif state.current_main_intent in {"complaint", "unrecognize", "unsupported_biz"}:
             state.stage = "responding"
         else:
             state.stage = "unsupported"

@@ -17,10 +17,9 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 可选主意图：
 - order_query
 - logistics
-- aftersale_refund
+- after_sale_refund
 - complaint
 - handoff_service
-- chitchat
 - unrecognize
 - unsupported_biz
 
@@ -31,22 +30,21 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 - logistics.lost_package
 - logistics.delayed
 - logistics.not_received
-- aftersale_refund.damage_refund
-- aftersale_refund.no_reason_return
-- aftersale_refund.wrong_goods
+- after_sale_refund.damage_refund
+- after_sale_refund.no_reason_return
+- after_sale_refund.wrong_goods
 - complaint.compensate
 - complaint.service_complaint
 - handoff_service.request_human
-- chitchat.greeting
 - unrecognize.unknown
 - unsupported_biz.out_of_scope
 
 判定原则：
-- 问候类：你好、在吗、hello -> chitchat.greeting
+- 简单问候（你好、在吗、hello）不属于业务咨询，返回 unrecognize.unknown
 - 转人工类：要人工客服、投诉 -> handoff_service.request_human
 - 订单类：查订单、发货了吗、订单状态 -> order_query.query_status
 - 物流类：快递到哪了、物流更新、配送进度、丢件 -> logistics.not_received
-- 退款售后类：退款、退货、售后、要退款 -> aftersale_refund（根据细节判断 consult_policy 或 request_refund）
+- 退款售后类：退款、退货、售后、要退款 -> after_sale_refund（根据细节判断 consult_policy 或 request_refund）
 - 投诉类：投诉、差评、赔付、太差了、情绪激动 -> complaint
 - 超出业务范围：招聘、加盟等 -> unsupported_biz
 - 其它未覆盖能力或无法稳定判断 -> unrecognize.unknown

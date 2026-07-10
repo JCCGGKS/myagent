@@ -160,8 +160,6 @@ Current backend intent structure uses "main intent + sub-intent", loaded from `c
 - `refund_service` -> `refund_service.consult_policy`
 - `refund_service` -> `refund_service.request_refund`
 - `handoff_service` -> `handoff_service.request_human`
-- `chitchat` -> `chitchat.greeting`
-- `chitchat` -> `chitchat.thanks`
 - `unsupported` -> `unsupported.unknown`
 
 Intent codes in design docs (`template/`) have been aligned to this list.

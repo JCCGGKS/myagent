@@ -22,7 +22,6 @@ def router():
         "order_query_keywords": ["订单", "下单"],
         "after_sale_refund_keywords": ["退款", "退货"],
         "after_sale_refund_action_keywords": ["申请退款", "办理退货"],
-        "greeting_keywords": ["你好", "嗨"],
     }
     return IntentRouterService(rule_registry=rule_registry)
 
@@ -71,11 +70,11 @@ class RoutingServicesTestCase:
         result = router.route(state, "转人工")
         assert result.main_intent == "handoff_service"
 
-    def test_intent_router_should_recognize_greeting(self, router):
-        """测试能够识别问候意图。"""
+    def test_intent_router_should_route_greeting_to_unrecognize(self, router):
+        """问候不再单独成意图，无业务关键词时落 unrecognize。"""
         state = ConversationState(session_id="test-session")
         result = router.route(state, "你好")
-        assert result.main_intent == "chitchat"
+        assert result.main_intent == "unrecognize"
 
     def test_policy_should_set_agent_process_for_order_query(self, policy):
         """测试订单查询意图的 policy 决策（需要工具调用）。"""
@@ -94,12 +93,6 @@ class RoutingServicesTestCase:
         state = ConversationState(session_id="test-session", current_main_intent="complaint")
         result = policy.decide(state)
         assert result.current_action == "agent_process"
-
-    def test_policy_should_set_answer_directly_for_chitchat(self, policy):
-        """测试问候意图的 policy 决策（不需要工具）。"""
-        state = ConversationState(session_id="test-session", current_main_intent="chitchat")
-        result = policy.decide(state)
-        assert result.current_action == "answer_directly"
 
     def test_policy_should_set_answer_directly_for_unrecognize(self, policy):
         """测试未识别意图的 policy 决策（不需要工具）。"""

@@ -3,58 +3,97 @@ intent_rules:
     - 转人工
     - 人工客服
     - 找人工
+    - 人工
+    - 真人
+    - 客服
   complaint_keywords:
     - 投诉
     - 差评
     - 赔付
     - 赔偿
     - 太差了
+    - 不处理
+    - 没用
+    - 气死
+    - 受不了
+    - 12315
+    - 消费者协会
   logistics_keywords:
     - 物流
     - 快递
     - 配送
     - 到哪了
+    - 到哪儿了
+    - 什么时候到
     - 丢件
     - 延迟
+    - 没收到
+    - 签收
+    - 派送
   order_query_keywords:
     - 查订单
     - 订单状态
     - 我的订单
+    - 我的单
+    - 查单
     - 发货了吗
     - 订单
+    - 改地址
+    - 修改地址
+    - 开发票
+    - 订单详情
   after_sale_refund_keywords:
     - 退货
     - 售后
     - 退换
     - 换货
     - 退款
+    - 退货退款
+    - 不想要了
+    - 不想要
+    - 不要了
+    - 质量
+    - 坏了
+    - 质量问题
   after_sale_refund_action_keywords:
     - 我要退款
     - 申请退款
     - 帮我退款
-  greeting_keywords:
-    - 你好
-    - 您好
-    - hi
-    - hello
-    - 在吗
+    - 直接退
+    - 帮退一下
+    - 退掉
   angry_keywords:
     - 生气
     - 差评
     - 太慢了
     - 没人处理
+    - 无语
+    - 受不了
+    - 受不了了
+    - 太过分了
   urgent_keywords:
     - 急
     - 尽快
     - 马上
     - 现在就
+    - 急死了
+    - 要死了
+    - 立刻
+    - 立刻就要
+    - 加急
   confused_keywords:
     - 不明白
     - 什么意思
     - 没懂
     - 看不懂
+    - 啥意思
+    - 怎么操作
+    - 咋办
   anxious_keywords:
     - 担心
     - 焦虑
     - 怎么办
     - 还没到
+    - 很担心
+    - 咋还没到
+    - 能不能到

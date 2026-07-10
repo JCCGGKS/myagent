@@ -66,8 +66,6 @@ curl -X POST http://127.0.0.1:8000/chat \
 - `refund_service` -> `refund_service.consult_policy`
 - `refund_service` -> `refund_service.request_refund`
 - `handoff_service` -> `handoff_service.request_human`
-- `chitchat` -> `chitchat.greeting`
-- `chitchat` -> `chitchat.thanks`
 - `unsupported` -> `unsupported.unknown`
 
 当前版本默认使用内存实现（`MemorySessionStore` / `MemoryUserDAO`），配置了 `mysql` 段即自动切换到 `SqlSessionStore` / `SqlUserDAO` 落 MySQL；向量库走 `app.pkgs.vector` 的 qdrant 客户端。测试通过依赖注入用 sqlite 内存库隔离。

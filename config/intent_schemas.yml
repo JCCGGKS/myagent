@@ -44,12 +44,6 @@ intent_schemas:
     inheritable: []
     overwritable: []
     clarification_order: []
-  chitchat:
-    required_slots: []
-    optional_slots: []
-    inheritable: []
-    overwritable: []
-    clarification_order: []
   unrecognize:
     required_slots: []
     optional_slots: []
