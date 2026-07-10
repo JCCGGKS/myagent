@@ -25,9 +25,8 @@ function isValidExtension(fileName: string): boolean {
   return ["md", "markdown", "json"].includes(ext);
 }
 
-const isUploading = computed(() =>
-  store.knowledgeFiles.some((file) => file.status === "uploading"),
-);
+const uploading = ref(false);
+const isUploading = computed(() => uploading.value);
 
 const strategyOptions = [
   { value: "bm25", label: "稀疏向量检索 (BM25)" },
@@ -93,16 +92,6 @@ const thresholdAttrs = computed<{ min: number; max: number; step: number; hint: 
 function isActive(key: string) {
   return activeFields.value.has(key);
 }
-
-const stats = computed(() => {
-  const files = store.knowledgeFiles;
-  return {
-    total: files.length,
-    success: files.filter((f) => f.status === "success").length,
-    indexing: files.filter((f) => f.status === "indexing").length,
-    error: files.filter((f) => f.status === "error").length,
-  };
-});
 
 // ---- 检索配置 ----
 const defaultConfig: RagConfig = {
@@ -175,7 +164,10 @@ async function saveRagConfig() {
   }
 }
 
-onMounted(loadRagConfig);
+onMounted(() => {
+  loadRagConfig();
+  store.fetchKnowledgeFiles();
+});
 
 function triggerUpload() {
   fileInput.value?.click();
@@ -197,8 +189,11 @@ function onFileChange(event: Event) {
     return;
   }
 
-  store.uploadKnowledgeFiles(files, docType.value);
-  input.value = "";
+  uploading.value = true;
+  store.uploadKnowledgeFiles(files, docType.value).finally(() => {
+    uploading.value = false;
+    input.value = "";
+  });
 }
 
 function onDrop(event: DragEvent) {
@@ -216,21 +211,41 @@ function onDrop(event: DragEvent) {
     return;
   }
 
-  store.uploadKnowledgeFiles(files, docType.value);
+  uploading.value = true;
+  store.uploadKnowledgeFiles(files, docType.value).finally(() => {
+    uploading.value = false;
+  });
 }
 
 function statusLabel(item: KnowledgeFileItem): string {
   switch (item.status) {
-    case "uploading":
-      return "上传中";
-    case "success":
-      return item.chunkCount ? `已入库 ${item.chunkCount} 块` : "已入库";
-    case "error":
+    case 0:
+      return "处理中";
+    case 1:
+      return item.chunk_count ? `已入库 ${item.chunk_count} 块` : "已入库";
+    case 2:
       return "失败";
-    case "indexing":
-      return "索引中";
     default:
-      return "待处理";
+      return "未知";
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+function formatTime(iso: string | null): string {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("zh-CN", { hour12: false });
+}
+
+async function onRemove(id: number) {
+  try {
+    await store.removeKnowledgeFile(id);
+  } catch (error) {
+    showError("删除失败", error instanceof Error ? error.message : String(error));
   }
 }
 </script>

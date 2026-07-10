@@ -166,14 +166,16 @@ export interface ChatSessionItem {
 }
 
 export interface KnowledgeFileItem {
-  id: string;
-  name: string;
-  sizeLabel: string;
-  uploadedAt: string;
-  status: "ready" | "indexing" | "uploading" | "success" | "error";
-  typeLabel: string;
-  chunkCount?: number;
-  error?: string;
+  id: number; // knowledge_files.id，同时作为文档标识 doc_id
+  user_id: number;
+  filename: string;
+  file_size: number; // 字节数
+  doc_type: string; // "markdown" | "json"
+  chunk_count: number;
+  status: 0 | 1 | 2; // 0=处理中 1=处理成功 2=处理失败
+  error_message?: string | null;
+  created_at: string | null; // ISO
+  updated_at?: string | null;
 }
 
 export interface ChatSocketStatusEvent {

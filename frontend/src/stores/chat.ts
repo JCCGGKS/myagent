@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { postChat, postChatInit, uploadKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
+import { postChat, postChatInit, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import type {
   ChatSessionItem,
@@ -197,41 +197,29 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  async function fetchKnowledgeFiles() {
+    try {
+      knowledgeFiles.value = await getKnowledgeFiles();
+    } catch (error) {
+      console.warn("加载知识库文件失败", error);
+    }
+  }
+
   async function uploadKnowledgeFiles(fileList: FileList | null, docType = "markdown") {
     if (!fileList?.length) {
       return;
     }
-    const uploadedAt = nowLabel();
-    const newItems = Array.from(fileList).map<KnowledgeFileItem>((file, index) => ({
-      id: `kb-${Date.now()}-${index}`,
-      name: file.name,
-      sizeLabel: fileSizeLabel(file.size),
-      uploadedAt,
-      status: "uploading",
-      typeLabel: fileTypeLabel(file.name),
-    }));
-    knowledgeFiles.value.unshift(...newItems);
-
-    await Promise.all(
-      newItems.map(async (item, index) => {
-        const file = fileList[index];
-        try {
-          const result = await uploadKnowledgeFile(file, docType);
-          item.status = "success";
-          item.chunkCount = result.chunk_count;
-        } catch (error) {
-          item.status = "error";
-          item.error = error instanceof Error ? error.message : String(error);
-        }
-      }),
+    const results = await Promise.allSettled(
+      Array.from(fileList).map((file) => uploadKnowledgeFile(file, docType)),
     );
-
-    const failed = newItems.filter((item) => item.status === "error").length;
-    const ok = newItems.length - failed;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const ok = results.length - failed;
     statusText.value = `已上传 ${ok} 个文件${failed ? `，${failed} 个失败` : ""}`;
+    await fetchKnowledgeFiles();
   }
 
-  function removeKnowledgeFile(id: string) {
+  async function removeKnowledgeFile(id: number) {
+    await deleteKnowledgeFile(id);
     knowledgeFiles.value = knowledgeFiles.value.filter((file) => file.id !== id);
     statusText.value = "已删除知识库文件";
   }
@@ -517,6 +505,7 @@ export const useChatStore = defineStore("chat", () => {
     refreshSession,
     knowledgeFiles,
     removeKnowledgeFile,
+    fetchKnowledgeFiles,
     removeSession,
     renameSessionDirect,
     renameDraft,
