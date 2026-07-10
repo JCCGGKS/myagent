@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   `user_id`           INT           NOT NULL                                        COMMENT '所属用户 id（对应 users.id，不建外键）',
   `channel`           VARCHAR(32)   NOT NULL DEFAULT 'web'                          COMMENT '接入渠道（web / app / im）',
   `title`             VARCHAR(128)  NOT NULL DEFAULT '新会话'                        COMMENT '会话名称（可重命名）',
-  `status`            VARCHAR(32)   NOT NULL DEFAULT 'active'                       COMMENT '会话状态（active / handoff / closed）',
+  `status`            TINYINT       NOT NULL DEFAULT 0                             COMMENT 'session status (0=active普通会话 1=handoff人工介入)',
   `summary`           TEXT          DEFAULT NULL                                    COMMENT '运行摘要（running_summary）',
   `created_at`        TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP             COMMENT '创建时间',
   `updated_at`        TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间（每次写入消息时刷新，用于会话列表排序）',

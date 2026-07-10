@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.model import Base
@@ -18,7 +18,7 @@ class Session(Base):
     user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     channel: Mapped[str] = mapped_column(String(32), default="web")
     title: Mapped[str] = mapped_column(String(128), default="新会话")
-    status: Mapped[str] = mapped_column(String(32), default="active")
+    status: Mapped[int] = mapped_column(SmallInteger, default=0)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

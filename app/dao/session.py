@@ -15,6 +15,10 @@ from app.utils import log_tool_call
 
 logger = logging.getLogger(__name__)
 
+# 会话状态枚举（sessions.status，TINYINT）
+SESSION_STATUS_ACTIVE = 0
+SESSION_STATUS_HANDOFF = 1
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -99,7 +103,7 @@ class MemorySessionStore(SessionStore):
                 "user_id": user_id,
                 "channel": channel,
                 "title": title,
-                "status": "active",
+                "status": SESSION_STATUS_ACTIVE,
                 "created_at": _now(),
                 "updated_at": _now(),
             },
@@ -120,7 +124,7 @@ class MemorySessionStore(SessionStore):
                     "session_id": state.session_id,
                     "user_id": state.user_id,
                     "channel": state.channel,
-                    "status": "active",
+                    "status": SESSION_STATUS_ACTIVE,
                     "created_at": _now(),
                     "updated_at": _now(),
                 },
@@ -133,7 +137,7 @@ class MemorySessionStore(SessionStore):
             {
                 "user_id": state.user_id,
                 "channel": state.channel,
-                "status": "handoff" if state.handoff else "active",
+                "status": SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE,
                 "summary": state.running_summary or state.summary,
                 "updated_at": _now(),
             }
@@ -153,7 +157,7 @@ class MemorySessionStore(SessionStore):
             {
                 "session": {
                     "session_id": session_id,
-                    "status": "active",
+                    "status": SESSION_STATUS_ACTIVE,
                     "created_at": _now(),
                     "updated_at": _now(),
                 },
@@ -271,7 +275,7 @@ class SqlSessionStore(SessionStore):
                     user_id=user_id,
                     channel=channel,
                     title=title,
-                    status="active",
+                    status=SESSION_STATUS_ACTIVE,
                 )
             )
             db.commit()
@@ -296,7 +300,7 @@ class SqlSessionStore(SessionStore):
                 db.add(row)
             row.user_id = state.user_id
             row.channel = state.channel
-            row.status = "handoff" if state.handoff else "active"
+            row.status = SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE
             row.summary = state.running_summary or state.summary
             db.commit()
         return state
