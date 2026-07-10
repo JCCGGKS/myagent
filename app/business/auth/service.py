@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.business.auth.models import (
+from app.schema.auth import (
     ChangePassword,
     ForgotPassword,
     LoginResponse,

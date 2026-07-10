@@ -1,3 +1,10 @@
+"""认证相关 Pydantic 请求/响应模型。
+
+按职责归属到 schema 层（Pydantic 结构属于 schema 职责，而非业务逻辑）。
+请求模型：`UserRegister` / `UserLogin` / `ForgotPassword` / `ResetPassword` /
+`ChangePassword`；响应/凭证模型：`Token` / `UserInfo` / `LoginResponse`。
+"""
+
 from __future__ import annotations
 
 import re

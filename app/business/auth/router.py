@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.business.auth.deps import get_current_user
-from app.business.auth.models import (
+from app.schema.auth import (
     ChangePassword,
     ForgotPassword,
     LoginResponse,

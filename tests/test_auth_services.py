@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.business.auth.models import ForgotPassword, ResetPassword, UserLogin, UserRegister
+from app.schema.auth import ForgotPassword, ResetPassword, UserLogin, UserRegister
 from app.business.auth.service import (
     AuthError,
     forgot_password,

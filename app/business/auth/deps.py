@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from app.business.auth.models import UserInfo
+from app.schema.auth import UserInfo
 from app.pkgs.auth import JWTError, decode_token
 
 

@@ -7,12 +7,15 @@
 ```
 app/business/auth/
 ├── __init__.py     # 导出 router
-├── models.py       # Pydantic 请求/响应模型
 ├── service.py      # 业务逻辑
 ├── deps.py         # FastAPI 依赖：get_current_user
 ├── router.py       # /auth 路由定义
 └── README.md       # 本文档
 ```
+
+Pydantic 请求/响应模型已按职责归入 **schema 层**：`app/schema/auth.py`
+（`UserRegister` / `UserLogin` / `ForgotPassword` / `ResetPassword` /
+`ChangePassword` / `Token` / `UserInfo` / `LoginResponse`）。
 
 工具实现位于 `app/pkgs/auth/`（`jwt.py` / `password.py` / `email.py`），数据访问走 `app/dao/user.py`（`UserDAO`）。
 
@@ -35,7 +38,7 @@ app/business/auth/
 | `/auth/reset-password` | **忘记密码**（未登录，通过邮箱找回） | 邮箱收到的 reset token | 公开 |
 | `/auth/change-password` | **登录后主动改密** | 原密码 | 需 Authorization 头 |
 
-### 请求/响应模型（`models.py`）
+### 请求/响应模型（`app/schema/auth.py`）
 
 - `UserRegister`: `username(3-64)` / `email(带格式校验)` / `password(6-128)`
 - `UserLogin`: `username` / `password`

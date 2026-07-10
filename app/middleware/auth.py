@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.business.auth.models import UserInfo
+from app.schema.auth import UserInfo
 from app.pkgs.auth import JWTError, decode_token
 
 

@@ -9,7 +9,7 @@ from fastapi import File, HTTPException, UploadFile
 from fastapi import APIRouter, Depends
 
 from app.business.auth.deps import get_current_user
-from app.business.auth.models import UserInfo
+from app.schema.auth import UserInfo
 from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
 from app.dao import KnowledgeStore, get_knowledge_file_dao
