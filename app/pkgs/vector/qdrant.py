@@ -84,6 +84,7 @@ class QdrantClient:
                 )
                 self._client.delete_collection(self.collection_name)
             else:
+                self._ensure_payload_indexes()
                 self._collection_ready = True
                 return
 
@@ -100,7 +101,28 @@ class QdrantClient:
             },
         )
         logger.info("created collection %s (dense+sparse/bm25)", self.collection_name)
+        self._ensure_payload_indexes()
         self._collection_ready = True
+
+    def _ensure_payload_indexes(self) -> None:
+        """为标量过滤字段建 keyword payload 索引（best-effort）。
+
+        - doc_id：按文档删向量时过滤加速
+        - user_id：按用户隔离检索时过滤加速
+
+        索引已存在时 qdrant-client 会报错，忽略即可。
+        """
+        from qdrant_client.models import PayloadSchemaType
+
+        for field in ("doc_id", "user_id"):
+            try:
+                self._client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("create_payload_index %s skipped: %r", field, exc)
 
     def _has_sparse_vector(self) -> bool:
         """检查集合是否已包含 BM25 稀疏向量配置。"""
@@ -141,14 +163,45 @@ class QdrantClient:
         self._client.upsert(collection_name=self.collection_name, points=structs)
         logger.info("upsert %d points into %s", len(structs), self.collection_name)
 
+    def delete_by_doc_id(self, doc_id: int) -> None:
+        """按 doc_id 过滤删除一整篇文档的所有 chunk 向量。"""
+        self._ensure_collection()
+        from qdrant_client.models import (
+            FieldCondition,
+            Filter,
+            FilterSelector,
+            MatchValue,
+        )
+
+        self._client.delete(
+            collection_name=self.collection_name,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(key="doc_id", match=MatchValue(value=doc_id))
+                    ]
+                )
+            ),
+        )
+        logger.info("deleted vectors for doc_id=%s from %s", doc_id, self.collection_name)
+
     # ------------------------------------------------------------------ #
     # 检索
     # ------------------------------------------------------------------ #
+    def _user_filter(self, user_id: int | None) -> Any | None:
+        """按 user_id 构造标量过滤（None 表示不过滤，全库召回）。"""
+        if user_id is None:
+            return None
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        return Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])
+
     def search_semantic(
         self,
         query_vector: list[float],
         limit: int = 10,
         score_threshold: float | None = None,
+        user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._ensure_collection()
         result = self._client.query_points(
@@ -157,6 +210,7 @@ class QdrantClient:
             using=DENSE_VECTOR_NAME,
             limit=limit,
             score_threshold=score_threshold,
+            query_filter=self._user_filter(user_id),
             with_payload=True,
         )
         return [_hit_to_dict(h) for h in result.points]
@@ -166,6 +220,7 @@ class QdrantClient:
         query: str,
         limit: int = 10,
         score_threshold: float | None = None,
+        user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._ensure_collection()
         from app.business.rag.sparse_bm25 import build_sparse_vector
@@ -177,6 +232,7 @@ class QdrantClient:
             using=SPARSE_VECTOR_NAME,
             limit=limit,
             score_threshold=score_threshold,
+            query_filter=self._user_filter(user_id),
             with_payload=True,
         )
         return [_hit_to_dict(h) for h in result.points]
@@ -187,6 +243,7 @@ class QdrantClient:
         query_vector: list[float],
         limit: int = 10,
         fusion_method: str = "rrf",
+        user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """混合检索：Qdrant 原生 prefetch + RRF 融合（稠密 + BM25 稀疏）。"""
         self._ensure_collection()
@@ -203,6 +260,7 @@ class QdrantClient:
             ],
             query=FusionQuery(fusion=fusion),
             limit=limit,
+            query_filter=self._user_filter(user_id),
             with_payload=True,
         )
         return [_hit_to_dict(h) for h in result.points]

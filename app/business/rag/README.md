@@ -253,6 +253,36 @@ qdrant:                             # 与 rag 同级
 
 ---
 
+## 索引概览（向量库索引）
+
+Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
+
+### 向量索引（vector indexes）
+| 名称 | 类型 | 底层索引 | 配置 |
+|---|---|---|---|
+| `dense` | 稠密命名向量 | **HNSW**（Qdrant 自动维护，未自定义 `hnsw_config`，用默认参数） | `VectorParams(size=qdrant.vector_size, distance=Cosine)` |
+| `bm25` | 稀疏命名向量 | **倒排索引**（Qdrant 自动维护） | `SparseVectorParams(modifier=IDF)`，IDF 由 Qdrant 全局统计 |
+
+两个向量索引在 `_ensure_collection()` 建集合时声明，索引由 Qdrant 自动构建，无需手动 `create_index`。
+
+### 标量索引（payload / scalar indexes）
+均为 **keyword** 类型，在 `_ensure_payload_indexes()` 中建立（新建集合与已有集合分支都会补建，已存在时忽略报错）：
+
+| 字段 | 是否建索引 | 用途 |
+|---|---|---|
+| `doc_id` | ✅ keyword | 按文档批量删向量（`delete_by_doc_id`）时过滤加速 |
+| `user_id` | ✅ keyword | 检索按用户隔离（`query_filter` 过滤）时加速 |
+| `doc_type` | ❌ 未建 | payload 中有存，目前无需按它做标量过滤 |
+| `content` | ❌ 未建 | 正文全文，通常不建索引 |
+
+### 多租户隔离（user_id 过滤）
+- 三个检索方法（`search_semantic` / `search_bm25` / `search_hybrid`）均接受 `user_id` 参数；非空时构造 `Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])` 透传给 `query_points`。
+- 调用链：`agent_node._execute_tool` → `RagRetrieveTool.run(query, user_id=state.user_id)` → `strategy.retrieve(query, user_id=...)` → Qdrant `query_filter`。
+- `user_id` 为 `None` 时不过滤（全库召回，用于未登录/内部场景），向后兼容。
+- 入库时 `user_id` 写入每块 payload（见 §3），与检索过滤类型一致（均为 `int`）。
+
+---
+
 ## 已落地 vs 未实现
 
 已落地：
@@ -264,9 +294,12 @@ qdrant:                             # 与 rag 同级
 - 全链路参数配置化（`top_k` / `min_score_threshold` / `chunk_*` / `rrf_k`）
 - `user_id` 元数据写入与回传
 - 检索策略泛型依赖注入（HybridStrategy 接收 `list[RetrievalStrategy]`）
+- 多租户隔离：`user_id` 写入 payload 且检索按 `user_id` 过滤（keyword 索引加速）
+- 文档管理接口：`GET /knowledge/files`（按用户列出）、`DELETE /knowledge/files/{id}`（软删除元信息 + 清向量）、`POST /knowledge/upload` 落 `knowledge_files` 元信息记录
+- 标量索引：`doc_id` / `user_id` keyword 索引
 
-按需求**未实现**（用户「5 暂时不实现」）：
-- 文档管理接口（知识文档的 list / get / delete / version）。此缺席为有意，非缺陷。
+按需求**未实现**：
+- 文档版本管理（version）与 get 单文档详情接口。
 
 ---
 

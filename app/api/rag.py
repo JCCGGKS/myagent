@@ -12,7 +12,12 @@ from app.business.auth.deps import get_current_user
 from app.business.auth.models import UserInfo
 from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
-from app.dao import KnowledgeStore
+from app.dao import KnowledgeStore, get_knowledge_file_dao
+from app.model.knowledge import (
+    KNOWLEDGE_FILE_STATUS_ERROR,
+    KNOWLEDGE_FILE_STATUS_PROCESSING,
+    KNOWLEDGE_FILE_STATUS_SUCCESS,
+)
 from app.pkgs.vector import QdrantClient, get_qdrant_client
 from app.business.rag import (
     Chunker,
@@ -20,6 +25,24 @@ from app.business.rag import (
     build_embedding_client,
 )
 from app.utils import log_error, log_info, log_warning
+
+
+def _serialize_knowledge_file(record: dict[str, Any]) -> dict[str, Any]:
+    """将 DAO 记录序列化为接口返回结构（时间统一转 ISO 字符串）。"""
+    created_at = record.get("created_at")
+    updated_at = record.get("updated_at")
+    return {
+        "id": record["id"],
+        "user_id": record["user_id"],
+        "filename": record["filename"],
+        "file_size": record["file_size"],
+        "doc_type": record["doc_type"],
+        "chunk_count": record["chunk_count"],
+        "status": record["status"],
+        "error_message": record.get("error_message"),
+        "created_at": created_at.isoformat() if created_at else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
 
 
 def _build_ingestion_service() -> KnowledgeIngestionService:
@@ -78,6 +101,7 @@ async def knowledge_upload(
         )
 
     raw_bytes = await file.read()
+    file_size = len(raw_bytes)
     try:
         content = raw_bytes.decode("utf-8")
     except UnicodeDecodeError:
@@ -88,6 +112,17 @@ async def knowledge_upload(
             file.filename,
         )
         raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
+
+    # 先落文件元信息记录（处理中），id 作为 doc_id 透传入库，便于按文档删向量
+    file_dao = get_knowledge_file_dao()
+    record = file_dao.create(
+        user_id=current_user.id,
+        filename=file.filename,
+        file_size=file_size,
+        doc_type=doc_type,
+        status=KNOWLEDGE_FILE_STATUS_PROCESSING,
+    )
+    doc_id = record["id"]
 
     ingestion = _build_ingestion_service()
 
@@ -105,10 +140,13 @@ async def knowledge_upload(
                 raise HTTPException(status_code=400, detail="JSON 解析失败")
             if not isinstance(records, list):
                 records = [records]
-            chunk_count = ingestion.ingest_json_records(records, doc_type=doc_type, user_id=current_user.id)
+            chunk_count = ingestion.ingest_json_records(
+                records, doc_type=doc_type, user_id=current_user.id, doc_id=doc_id
+            )
         else:
             chunk_count = ingestion.ingest_markdown_text(
-                content, doc_type=doc_type, source=file.filename, user_id=current_user.id
+                content, doc_type=doc_type, source=file.filename,
+                user_id=current_user.id, doc_id=doc_id,
             )
     except HTTPException:
         raise
@@ -120,8 +158,10 @@ async def knowledge_upload(
             file.filename,
             exc,
         )
+        file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_ERROR, error_message=str(exc))
         raise
 
+    file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_SUCCESS, chunk_count=chunk_count)
     log_info(
         "rag",
         "knowledge_upload success user=%s file=%s doc_type=%s chunk_count=%d",
@@ -130,11 +170,37 @@ async def knowledge_upload(
         doc_type,
         chunk_count,
     )
-    return {
-        "filename": file.filename,
-        "doc_type": doc_type,
-        "chunk_count": chunk_count,
-    }
+    return _serialize_knowledge_file(file_dao.get_by_id(doc_id))
+
+
+@router.get("/knowledge/files")
+def list_knowledge_files(
+    current_user: UserInfo = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """列出当前用户的知识库文件（按上传时间倒序，已软删除项除外）。"""
+    file_dao = get_knowledge_file_dao()
+    records = file_dao.list_by_user(current_user.id)
+    return [_serialize_knowledge_file(r) for r in records]
+
+
+@router.delete("/knowledge/files/{file_id}")
+def delete_knowledge_file(
+    file_id: int,
+    current_user: UserInfo = Depends(get_current_user),
+) -> dict[str, Any]:
+    """删除知识库文件（软删除元信息 + 清理 Qdrant 向量，需归属当前用户）。"""
+    file_dao = get_knowledge_file_dao()
+    record = file_dao.get_by_id(file_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if record["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="无权删除该文件")
+
+    # 清理该文档的全部向量（按 doc_id 过滤），避免脏召回
+    get_qdrant_client().delete_by_doc_id(file_id)
+    file_dao.delete(file_id)
+    log_info("rag", "delete_knowledge_file user=%s file_id=%s", current_user.id, file_id)
+    return {"id": file_id, "deleted": True}
 
 
 @router.get("/rag/config", response_model=RagConfig)

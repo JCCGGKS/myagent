@@ -49,17 +49,18 @@ class RagRetrieveTool:
             return self._rerank_enabled_override
         return get_rag_config_service().get_config().rerank.enabled
 
-    def run(self, query: str) -> list[dict[str, Any]]:
+    def run(self, query: str, user_id: int | None = None) -> list[dict[str, Any]]:
         """执行检索，返回结构化结果。
 
         Args:
             query: 用户问题或改写后的查询。
+            user_id: 限定检索归属用户（None 表示全库召回，用于未登录/内部场景）。
 
         Returns:
             包含 `content`、`metadata`、`score` 的文档列表。
         """
         # 1. 执行检索
-        docs = self.strategy.retrieve(query)
+        docs = self.strategy.retrieve(query, user_id=user_id)
 
         # 2. 去重（设计 §7.3）：按内容去重，保留分数更高者
         docs = self._dedup(docs)

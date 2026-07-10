@@ -166,7 +166,7 @@ class AgentNodeService:
 
         if tool_name == "rag_retrieve":
             rag_tool = RagRetrieveTool()
-            return {"retrieved_docs": rag_tool.run(tool_args.get("query", ""))}
+            return {"retrieved_docs": rag_tool.run(tool_args.get("query", ""), user_id=state.user_id)}
         elif tool_name == "query_order":
             # TODO: 接入真实订单查询服务
             return {"order_id": tool_args.get("order_id"), "status": "模拟状态"}

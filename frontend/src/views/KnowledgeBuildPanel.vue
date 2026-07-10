@@ -423,9 +423,7 @@ function statusLabel(item: KnowledgeFileItem): string {
     </div>
 
     <section class="kb-list">
-      <h2>已上传文件</h2>
-      <p v-if="!store.knowledgeFiles.length" class="kb-empty">暂无文件</p>
-      <ul v-else class="kb-file-list">
+      <ul v-if="store.knowledgeFiles.length" class="kb-file-list">
         <li
           v-for="item in store.knowledgeFiles"
           :key="item.id"

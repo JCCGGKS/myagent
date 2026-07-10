@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from app.dao.knowledge import KnowledgeStore
+from app.dao.knowledge_file import (
+    KnowledgeFileDAO,
+    MemoryKnowledgeFileDAO,
+    SqlKnowledgeFileDAO,
+)
 from app.dao.session import MemorySessionStore, SessionStore, SqlSessionStore
 from app.dao.user import MemoryUserDAO, SqlUserDAO, UserDAO
 from app.model import SessionLocal
@@ -20,6 +25,13 @@ def get_user_dao() -> UserDAO:
     return MemoryUserDAO()
 
 
+def get_knowledge_file_dao() -> KnowledgeFileDAO:
+    """根据是否配置 mysql 选择实现：有 engine 用 Sql，否则内存。"""
+    if SessionLocal is not None:
+        return SqlKnowledgeFileDAO(SessionLocal)
+    return MemoryKnowledgeFileDAO()
+
+
 __all__ = [
     "SessionStore",
     "MemorySessionStore",
@@ -30,4 +42,8 @@ __all__ = [
     "get_session_store",
     "get_user_dao",
     "KnowledgeStore",
+    "KnowledgeFileDAO",
+    "MemoryKnowledgeFileDAO",
+    "SqlKnowledgeFileDAO",
+    "get_knowledge_file_dao",
 ]

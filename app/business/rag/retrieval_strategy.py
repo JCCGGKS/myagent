@@ -31,8 +31,8 @@ class RetrievalStrategy(ABC):
     """检索策略抽象基类。"""
 
     @abstractmethod
-    def retrieve(self, query: str) -> list[Document]:
-        """执行检索，返回文档列表。"""
+    def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
+        """执行检索，返回文档列表。user_id 为 None 时不限定用户（全库召回）。"""
         pass
 
 
@@ -46,11 +46,12 @@ class BM25Strategy(RetrievalStrategy):
         self.min_score_threshold = min_score_threshold
         self.top_k = top_k
 
-    def retrieve(self, query: str) -> list[Document]:
+    def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
         """执行 BM25 检索。"""
         results = self.client.search_bm25(
             query=query,
             limit=max(self.top_k * 2, 20),  # 多召回一些，后续过滤
+            user_id=user_id,
         )
         # 过滤低分
         filtered = [
@@ -81,7 +82,7 @@ class SemanticStrategy(RetrievalStrategy):
         self.min_score_threshold = min_score_threshold
         self.top_k = top_k
 
-    def retrieve(self, query: str) -> list[Document]:
+    def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
         """执行语义向量检索。"""
         if self.embedding_client is None:
             raise RuntimeError("SemanticStrategy 未配置 embedding_client，无法生成查询向量")
@@ -91,6 +92,7 @@ class SemanticStrategy(RetrievalStrategy):
         results = self.client.search_semantic(
             query_vector=query_vector,
             limit=max(self.top_k * 2, 20),  # 多召回一些，后续过滤
+            user_id=user_id,
         )
 
         # 3. 过滤低分
@@ -122,12 +124,12 @@ class HybridStrategy(RetrievalStrategy):
         self.top_k = top_k
         self.rrf_k = rrf_k
 
-    def retrieve(self, query: str) -> list[Document]:
+    def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
         """各子策略分别召回，RRF 融合后返回。"""
         # 1. 各路召回
         results_by_strategy: list[list[Document]] = []
         for strategy in self._strategies:
-            results_by_strategy.append(strategy.retrieve(query))
+            results_by_strategy.append(strategy.retrieve(query, user_id=user_id))
 
         # 2. RRF 融合（量纲无关，支持任意路数）
         fused = self._rrf_fusion(results_by_strategy)
