@@ -115,7 +115,6 @@ def test_reset_with_bad_token_fails():
 
 import asyncio
 
-from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -136,12 +135,8 @@ async def _call_next(request: Request) -> Response:
 def test_middleware_requires_token_on_protected_path():
     mw = AuthMiddleware(app=None)
     req = _make_request(path="/chat")
-    try:
-        asyncio.run(mw.dispatch(req, _call_next))
-    except HTTPException as e:
-        assert e.status_code == 401
-    else:
-        raise AssertionError("受保护路径无 token 应返回 401")
+    resp = asyncio.run(mw.dispatch(req, _call_next))
+    assert resp.status_code == 401
 
 
 def test_middleware_allows_public_path_without_token():

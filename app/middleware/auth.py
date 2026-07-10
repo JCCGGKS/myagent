@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.schema.auth import UserInfo
 from app.pkgs.auth import JWTError, decode_token
@@ -23,7 +22,9 @@ PUBLIC_PATHS = {
 class AuthMiddleware(BaseHTTPMiddleware):
     """认证第一道关：解析 Authorization Bearer token 并写入 request.state.user。
 
-    - 非公开路径缺失或无效 token 直接返回 401；
+    - 非公开路径缺失或无效 token 直接返回 401（注意：BaseHTTPMiddleware 位于
+      FastAPI 的 ExceptionMiddleware 之外，必须自行返回 401 响应，不能 raise
+      HTTPException，否则会被 ServerErrorMiddleware 转成 500）；
     - 公开路径（登录/注册等）放行，由具体接口自行处理；
     - OPTIONS 预检放行，避免浏览器 CORS 预检被 401 拦截。
     """
@@ -49,6 +50,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user = user
 
         if user is None and request.url.path not in PUBLIC_PATHS:
-            raise HTTPException(status_code=401, detail="未提供或无效的认证 token")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "未提供或无效的认证 token"},
+            )
 
         return await call_next(request)
