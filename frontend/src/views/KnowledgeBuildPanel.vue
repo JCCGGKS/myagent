@@ -222,9 +222,9 @@ function statusLabel(item: KnowledgeFileItem): string {
     case 0:
       return "处理中";
     case 1:
-      return item.chunk_count ? `已入库 ${item.chunk_count} 块` : "已入库";
+      return item.chunk_count ? `处理成功 ${item.chunk_count} 块` : "处理成功";
     case 2:
-      return "失败";
+      return "处理失败";
     default:
       return "未知";
   }
@@ -438,31 +438,57 @@ async function onRemove(id: number) {
     </div>
 
     <section class="kb-list">
-      <ul v-if="store.knowledgeFiles.length" class="kb-file-list">
-        <li
-          v-for="item in store.knowledgeFiles"
-          :key="item.id"
-          class="kb-file-item"
-        >
-          <div class="kb-file-meta">
-            <span class="kb-file-name">{{ item.name }}</span>
-            <span class="kb-file-sub">{{ item.sizeLabel }} · {{ item.typeLabel }} · {{ item.uploadedAt }}</span>
-          </div>
-          <div class="kb-file-status">
-            <span class="kb-status" :class="`is-${item.status}`">
-              {{ statusLabel(item) }}
-            </span>
-            <button
-              class="kb-remove"
-              type="button"
-              @click="store.removeKnowledgeFile(item.id)"
-            >
-              删除
-            </button>
-          </div>
-          <p v-if="item.error" class="kb-file-error">{{ item.error }}</p>
-        </li>
-      </ul>
+      <table class="kb-table">
+        <thead>
+          <tr>
+            <th class="kb-col-name">文件名</th>
+            <th class="kb-col-size">大小</th>
+            <th class="kb-col-type">类型</th>
+            <th class="kb-col-chunk">分块数</th>
+            <th class="kb-col-status">状态</th>
+            <th class="kb-col-time">上传时间</th>
+            <th class="kb-col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="item in store.knowledgeFiles"
+            :key="item.id"
+            :class="{ 'has-error': item.status === 2 }"
+          >
+            <td class="kb-cell-name">
+              <span class="kb-file-name">{{ item.filename }}</span>
+            </td>
+            <td>{{ formatSize(item.file_size) }}</td>
+            <td>{{ item.doc_type === "json" ? "JSON" : "Markdown" }}</td>
+            <td>{{ item.chunk_count }}</td>
+            <td class="kb-status-cell">
+              <span class="kb-status" :class="`is-${item.status}`">
+                {{ statusLabel(item) }}
+              </span>
+              <span
+                v-if="item.status === 2"
+                class="kb-error-badge"
+                :title="item.error_message || '处理失败'"
+                >!</span
+              >
+            </td>
+            <td>{{ formatTime(item.created_at) }}</td>
+            <td>
+              <button
+                class="kb-remove"
+                type="button"
+                @click="onRemove(item.id)"
+              >
+                删除
+              </button>
+            </td>
+          </tr>
+          <tr v-if="!store.knowledgeFiles.length">
+            <td class="kb-empty-cell" colspan="7">暂无文件</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <p v-if="isUploading" class="kb-uploading-tip">正在上传，请稍候…</p>
@@ -624,53 +650,77 @@ async function onRemove(id: number) {
   font-size: 13px;
 }
 
-.kb-list h2 {
-  font-size: 16px;
-  margin: 24px 0 12px;
+.kb-list {
+  margin-top: 24px;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
 }
 
-.kb-empty {
-  color: #9ca3af;
+.kb-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 14px;
 }
 
-.kb-file-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.kb-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f9fafb;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
 }
 
-.kb-file-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
+.kb-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
 }
 
-.kb-file-meta {
-  display: flex;
-  flex-direction: column;
+.kb-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.kb-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.kb-table tbody tr.has-error {
+  background: #fef2f2;
+}
+
+.kb-col-size,
+.kb-col-chunk,
+.kb-col-type {
+  width: 96px;
+}
+
+.kb-col-status {
+  width: 120px;
+}
+
+.kb-col-time {
+  width: 168px;
+}
+
+.kb-col-actions {
+  width: 72px;
+  text-align: right;
+}
+
+.kb-cell-name {
+  max-width: 300px;
 }
 
 .kb-file-name {
   font-weight: 500;
-}
-
-.kb-file-sub {
-  font-size: 12px;
-  color: #9ca3af;
-}
-
-.kb-file-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  word-break: break-all;
 }
 
 .kb-status {
@@ -681,10 +731,41 @@ async function onRemove(id: number) {
   color: #4b5563;
 }
 
-.kb-status.is-success { background: #dcfce7; color: #166534; }
-.kb-status.is-error { background: #fee2e2; color: #991b1b; }
-.kb-status.is-uploading { background: #dbeafe; color: #1e40af; }
-.kb-status.is-indexing { background: #fef3c7; color: #92400e; }
+.kb-status.is-1 { background: #dcfce7; color: #166534; }
+.kb-status.is-2 { background: #fee2e2; color: #991b1b; }
+.kb-status.is-0 { background: #fef3c7; color: #92400e; }
+
+.kb-empty-cell {
+  text-align: center;
+  color: #9ca3af;
+  padding: 24px 0;
+}
+
+.kb-status-cell {
+  position: relative;
+}
+
+.kb-error-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  cursor: help;
+}
+
+.kb-file-error {
+  margin: 0;
+  font-size: 12px;
+  color: #dc2626;
+}
 
 .kb-remove {
   border: none;
@@ -692,12 +773,6 @@ async function onRemove(id: number) {
   color: #dc2626;
   cursor: pointer;
   font-size: 13px;
-}
-
-.kb-file-error {
-  margin: 0;
-  font-size: 12px;
-  color: #dc2626;
 }
 
 .kb-error-message {
