@@ -33,7 +33,16 @@ def build_agent_system_prompt(state: ConversationState) -> str:
     return prompt
 
 
-def build_clarification_system_prompt(state: ConversationState) -> str:
+def _append_examples(prompt: str, examples: str | None) -> str:
+    """将示例参考拼接为提示词的固定小节。"""
+    if examples:
+        prompt += "\n\n【回复示例参考】\n" + examples
+    return prompt
+
+
+def build_clarification_system_prompt(
+    state: ConversationState, examples: str | None = None
+) -> str:
     """澄清节点系统提示（生成追问话术，需补全信息时调用）。"""
     prompt = _build_base_system_prompt(state)
     prompt += (
@@ -43,13 +52,15 @@ def build_clarification_system_prompt(state: ConversationState) -> str:
         "\n请生成一句友好的追问话术，引导用户补充所需信息（例如缺订单号时请用户提供订单号）。"
         "只输出追问内容本身，不要包含多余解释或客套话。"
     )
-    return prompt
+    return _append_examples(prompt, examples)
 
 
-def build_response_system_prompt(state: ConversationState) -> str:
+def build_response_system_prompt(
+    state: ConversationState, examples: str | None = None
+) -> str:
     """回复生成节点的系统提示（含工具结果，要求生成友好响应）。"""
     prompt = _build_base_system_prompt(state)
     if state.tool_result:
         prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
-    prompt += "\n请根据以上信息，生成友好的客服响应。"
-    return prompt
+    prompt += "\n请根据以上信息，生成友好的客服响应，语气与下方示例保持一致。"
+    return _append_examples(prompt, examples)

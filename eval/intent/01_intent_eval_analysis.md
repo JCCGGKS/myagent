@@ -87,7 +87,7 @@ complaint_keywords:
 `app/services/routing.py:78`：
 
 ```python
-elif has_complaint_keyword or emotion.primary == "angry":
+elif has_complaint_keyword or emotion.primary == "negative":
     intent = IntentResult(main_intent="complaint", ...)
 ```
 

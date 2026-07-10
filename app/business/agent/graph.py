@@ -352,7 +352,7 @@ class CustomerServiceAgent:
             f"识别子意图: {state.current_sub_intent}",
             f"当前阶段: {state.stage}",
             f"策略动作: {state.current_action}",
-            f"情绪: {state.emotion.primary}/{state.emotion.trend}",
+            f"情绪: {state.emotion.primary}",
         ]
         if state.slots:
             trace.append(f"已填槽位: {state.slots}")

@@ -36,17 +36,21 @@ class IntentRuleRegistry:
         self.rule_path = rule_path or DEFAULT_RULE_PATH
         self._rules = self._load()
 
-    def get(self) -> dict[str, list[str]]:
+    def get(self) -> dict[str, Any]:
         return self._rules
 
-    def _load(self) -> dict[str, list[str]]:
+    def get_routing_rules(self) -> list[dict[str, Any]]:
+        return self._rules.get("routing_rules", [])
+
+    def get_emotion_keywords(self) -> dict[str, list[str]]:
+        return self._rules.get("emotion_keywords", {})
+
+    def _load(self) -> dict[str, Any]:
         data = load_yaml_file(self.rule_path)
-        rules = data.get("intent_rules", {})
-        if not isinstance(rules, dict):
-            raise ValueError(f"Invalid intent rule config: {self.rule_path}")
-        normalized: dict[str, list[str]] = {}
-        for key, value in rules.items():
-            if not isinstance(value, list):
-                raise ValueError(f"Intent rule {key} must be a list: {self.rule_path}")
-            normalized[key] = [str(item) for item in value]
-        return normalized
+        routing_rules = data.get("routing_rules")
+        if not isinstance(routing_rules, list):
+            raise ValueError(f"intent_rules.yml 必须有 routing_rules 列表: {self.rule_path}")
+        emotion_keywords = data.get("emotion_keywords", {})
+        if not isinstance(emotion_keywords, dict):
+            raise ValueError(f"intent_rules.yml 的 emotion_keywords 必须是 dict: {self.rule_path}")
+        return {"routing_rules": routing_rules, "emotion_keywords": emotion_keywords}

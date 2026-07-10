@@ -11,6 +11,14 @@ from app.business.context.state_summary import build_state_summary
 
 logger = logging.getLogger(__name__)
 
+# 上下文跟进可承接的上一轮子意图（有 order_id 时）
+_SLOT_FOLLOWUP_SUB_INTENTS = {
+    "order_query.query_status",
+    "logistics.not_received",
+    "after_sale_refund.request_refund",
+    "after_sale_refund.consult_policy",
+}
+
 
 class IntentRouterService:
     @classmethod
@@ -40,123 +48,28 @@ class IntentRouterService:
         candidate_intents: list[str] = []
         emotion = self._detect_emotion(lowered, state)
 
-        has_handoff_keyword = self._contains_any(lowered, rules.get("handoff_keywords", []))
-        has_complaint_keyword = self._contains_any(lowered, rules.get("complaint_keywords", []))
-        has_logistics_keyword = self._contains_any(lowered, rules.get("logistics_keywords", []))
-        has_order_query_keyword = self._contains_any(lowered, rules.get("order_query_keywords", []))
-        has_aftersale_keyword = self._contains_any(lowered, rules.get("after_sale_refund_keywords", []))
-        has_aftersale_action_keyword = self._contains_any(lowered, rules.get("after_sale_refund_action_keywords", []))
+        routing_rules = rules.get("routing_rules", [])
+        emotion_keywords = rules.get("emotion_keywords", {})
 
         logger.debug(
-            "Routing message session=%s previous_intent=%s order_id=%s "
-            "handoff_kw=%s complaint_kw=%s logistics_kw=%s order_kw=%s refund_kw=%s "
-            "emotion=%s",
-            state.session_id, previous_main_intent, order_id,
-            has_handoff_keyword, has_complaint_keyword, has_logistics_keyword,
-            has_order_query_keyword, has_aftersale_keyword,
-            emotion.primary,
+            "Routing message session=%s previous_intent=%s order_id=%s emotion=%s",
+            state.session_id, previous_main_intent, order_id, emotion.primary,
         )
 
-        # 1. 用户主动要求转人工（最高优先级）
-        if has_handoff_keyword:
-            intent = IntentResult(
-                main_intent="handoff_service",
-                sub_intent="handoff_service.request_human",
-                confidence=0.99,
-                route_source="rule",
-                risk_level="medium",
-                emotion=emotion,
-                handoff_reason="user_request",
+        # 规则层：按 routing_rules 列表顺序（即优先级）匹配，命中第一个即返回
+        intent = None
+        candidate_intents: list[str] = []
+        for rule in routing_rules:
+            matched, keyword_hit, action_hit = self._rule_matches(rule, lowered, order_id, emotion)
+            if not matched:
+                continue
+            intent, candidate_intents = self._build_intent_from_rule(
+                rule, keyword_hit, action_hit, order_id, emotion, previous_main_intent, state
             )
-            candidate_intents = ["handoff_service", previous_main_intent]
-            logger.info(
-                "Routed intent=handoff_service reason=user_request session=%s",
-                state.session_id,
-            )
+            break
 
-        # 2. 投诉/情绪激动 → complaint
-        elif has_complaint_keyword or emotion.primary == "angry":
-            intent = IntentResult(
-                main_intent="complaint",
-                sub_intent="complaint.service_complaint",
-                confidence=0.95,
-                route_source="rule",
-                risk_level="high",
-                emotion=emotion,
-                handoff_reason="complaint" if has_complaint_keyword else "emotion_escalation",
-            )
-            candidate_intents = ["complaint", previous_main_intent]
-            logger.info(
-                "Routed intent=complaint reason=%s session=%s",
-                intent.handoff_reason, state.session_id,
-            )
-
-        # 3. 物流问题
-        elif has_logistics_keyword:
-            slots = {"order_id": order_id} if order_id else {}
-            intent = IntentResult(
-                main_intent="logistics",
-                sub_intent="logistics.not_received",
-                confidence=0.9 if order_id else 0.78,
-                slots=slots,
-                route_source="rule",
-                needs_clarification=order_id is None,
-                emotion=emotion,
-            )
-            candidate_intents = ["logistics"]
-            logger.info(
-                "Routed intent=logistics confidence=%.2f order_id=%s session=%s",
-                intent.confidence, order_id, state.session_id,
-            )
-
-        # 4. 订单查询
-        elif has_order_query_keyword:
-            slots = {"order_id": order_id} if order_id else {}
-            intent = IntentResult(
-                main_intent="order_query",
-                sub_intent="order_query.query_status",
-                confidence=0.9 if order_id else 0.76,
-                slots=slots,
-                route_source="rule",
-                needs_clarification=order_id is None,
-                emotion=emotion,
-            )
-            candidate_intents = ["order_query"]
-            logger.info(
-                "Routed intent=order_query confidence=%.2f order_id=%s session=%s",
-                intent.confidence, order_id, state.session_id,
-            )
-
-        # 5. 售后退款
-        elif has_aftersale_keyword:
-            slots = {"order_id": order_id} if order_id else {}
-            sub_intent = (
-                "after_sale_refund.request_refund"
-                if has_aftersale_action_keyword
-                else "after_sale_refund.consult_policy"
-            )
-            intent = IntentResult(
-                main_intent="after_sale_refund",
-                sub_intent=sub_intent,
-                confidence=0.88 if order_id else 0.8,
-                slots=slots,
-                route_source="rule",
-                needs_clarification=has_aftersale_action_keyword and order_id is None,
-                emotion=emotion,
-            )
-            candidate_intents = ["after_sale_refund"]
-            logger.info(
-                "Routed intent=%s confidence=%.2f order_id=%s session=%s",
-                sub_intent, intent.confidence, order_id, state.session_id,
-            )
-
-        # 6. 上下文跟进（有 order_id 且上一轮是同类型意图）
-        elif order_id and previous_sub_intent in {
-            "order_query.query_status",
-            "logistics.not_received",
-            "after_sale_refund.request_refund",
-            "after_sale_refund.consult_policy",
-        }:
+        # 上下文跟进（有 order_id 且上一轮是同类型意图）
+        if intent is None and order_id and previous_sub_intent in _SLOT_FOLLOWUP_SUB_INTENTS:
             main_intent = previous_sub_intent.split(".")[0]
             intent = IntentResult(
                 main_intent=main_intent,  # type: ignore[arg-type]
@@ -167,13 +80,9 @@ class IntentRouterService:
                 emotion=emotion,
             )
             candidate_intents = [main_intent]
-            logger.info(
-                "Routed via slot_followup intent=%s order_id=%s session=%s",
-                previous_sub_intent, order_id, state.session_id,
-            )
 
-        # 8. LLM 兜底分类
-        else:
+        # LLM 兜底分类
+        if intent is None:
             llm_intent = self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
                 intent = llm_intent
@@ -221,34 +130,87 @@ class IntentRouterService:
             return None
         return self.llm_fallback_service.classify(message, previous_sub_intent)
 
+    def _rule_matches(
+        self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any
+    ) -> tuple[bool, bool, bool]:
+        """返回 (是否命中, 是否关键词命中, 是否 action 关键词命中)。"""
+        keyword_hit = self._contains_any(lowered, rule.get("keywords", []))
+        emotion_required = rule.get("emotion")
+        emotion_hit = bool(emotion_required) and emotion_required == emotion.primary
+        action_keywords = rule.get("action_keywords")
+        action_hit = bool(action_keywords) and self._contains_any(lowered, action_keywords)
+        matched = keyword_hit or emotion_hit
+        return matched, keyword_hit, action_hit
+
+    def _build_intent_from_rule(
+        self,
+        rule: dict[str, Any],
+        keyword_hit: bool,
+        action_hit: bool,
+        order_id: str | None,
+        emotion: Any,
+        previous_main_intent: str,
+        state: ConversationState,
+    ) -> tuple[IntentResult, list[str]]:
+        main = rule["intent"]
+        sub = rule["sub_intent"]
+        if action_hit and rule.get("action_sub_intent"):
+            sub = rule["action_sub_intent"]
+
+        if "confidence" in rule:
+            conf = rule["confidence"]
+        elif rule.get("needs_order"):
+            conf = rule["confidence_with_order"] if order_id else rule["confidence_without_order"]
+        else:
+            conf = rule.get("confidence", 0.8)
+
+        if rule.get("needs_order"):
+            needs = order_id is None
+        elif rule.get("needs_clarification_when_action_and_no_order"):
+            needs = action_hit and order_id is None
+        else:
+            needs = False
+
+        handoff_reason = rule.get("handoff_reason") if keyword_hit else rule.get("handoff_reason_emotion")
+
+        intent_fields: dict[str, Any] = {
+            "main_intent": main,
+            "sub_intent": sub,
+            "confidence": conf,
+            "route_source": "rule",
+            "needs_clarification": needs,
+            "emotion": emotion,
+        }
+        if rule.get("risk_level") is not None:
+            intent_fields["risk_level"] = rule["risk_level"]
+        if handoff_reason:
+            intent_fields["handoff_reason"] = handoff_reason
+
+        intent = IntentResult(**intent_fields)
+        logger.info("Routed intent=%s.%s source=rule session=%s", main, sub, state.session_id)
+        return intent, [main, previous_main_intent]
+
     def _detect_emotion(self, lowered_message: str, state: ConversationState):
         from app.schema import EmotionState
 
         rules = self.rule_registry.get()
+        emotion_keywords = rules.get("emotion_keywords", {})
         primary = "neutral"
         confidence = 0.6
-        trend = "stable"
 
-        if self._contains_any(lowered_message, rules.get("angry_keywords", [])):
-            primary = "angry"
+        if self._contains_any(lowered_message, emotion_keywords.get("negative", [])):
+            primary = "negative"
             confidence = 0.9
-            trend = "escalating"
-        elif self._contains_any(lowered_message, rules.get("urgent_keywords", [])):
-            primary = "urgent"
+        elif self._contains_any(lowered_message, emotion_keywords.get("positive", [])):
+            primary = "positive"
             confidence = 0.85
-            trend = "escalating"
-        elif self._contains_any(lowered_message, rules.get("confused_keywords", [])):
-            primary = "confused"
-            confidence = 0.82
-        elif self._contains_any(lowered_message, rules.get("anxious_keywords", [])):
-            primary = "anxious"
-            confidence = 0.8
 
-        if state.emotion.primary in {"anxious", "confused"} and primary == "neutral":
-            primary = state.emotion.primary
+        # 上一轮为负面且本轮未显式识别，保留负面记忆（轻微衰减）
+        if state.emotion.primary == "negative" and primary == "neutral":
+            primary = "negative"
             confidence = max(confidence, state.emotion.confidence - 0.05)
 
-        return EmotionState(primary=primary, confidence=confidence, trend=trend)
+        return EmotionState(primary=primary, confidence=confidence)
 
     def _contains_any(self, text: str, keywords: list[str]) -> bool:
         return any(keyword.casefold() in text for keyword in keywords)

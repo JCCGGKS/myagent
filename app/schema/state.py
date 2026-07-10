@@ -42,8 +42,8 @@ class ConversationState(BaseModel):
     session_id: str
     user_id: int
     channel: str
-    current_main_intent: MainIntentCode = "unsupported"
-    current_sub_intent: SubIntentCode = "unsupported.unknown"
+    current_main_intent: MainIntentCode = "unrecognize"
+    current_sub_intent: SubIntentCode = "unrecognize.unknown"
     stage: str = "new"
     slots: dict[str, str] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)

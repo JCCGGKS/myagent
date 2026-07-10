@@ -67,13 +67,30 @@ class ClarificationService:
     def generate(self, state: ConversationState) -> ConversationState:
         # 优先用澄清提示词走 LLM 生成追问话术
         if self.llm_client is not None and self.llm_model:
-            reply = self._call_llm(build_clarification_system_prompt(state))
+            examples = self._build_clarification_examples(state)
+            reply = self._call_llm(build_clarification_system_prompt(state, examples=examples))
             if reply:
                 state.reply = reply
                 state.latest_action_name = "clarification_node"
                 state.latest_action_result = {"reply": reply}
                 state.action_history.append(build_action_record("clarification_node", reply))
                 return state
+
+    def _build_clarification_examples(self, state: ConversationState) -> str | None:
+        """把 clarification_prompts.yml 的全部模板整理为示例注入提示词。
+
+        完全配置驱动：yml 中新增任何键（含 slot_clarification 下的子项）都会
+        自动作为示例传给 LLM，无需改代码。
+        """
+        prompts = self.prompt_registry.get()
+        flat: list[str] = []
+        for value in prompts.values():
+            if isinstance(value, str):
+                flat.append(value)
+            elif isinstance(value, dict):
+                flat.extend(v for v in value.values() if isinstance(v, str))
+        flat = [v for v in flat if v]
+        return "\n".join(f"- {v}" for v in flat) if flat else None
 
         # 无 LLM client 时回退到模板
         prompts = self.prompt_registry.get()
@@ -129,7 +146,8 @@ class ResponseService:
             return state
 
         # 构造 LLM 输入
-        system_prompt = build_response_system_prompt(state)
+        examples = self._build_response_examples(state)
+        system_prompt = build_response_system_prompt(state, examples=examples)
         messages = self._build_messages(state)
         # messages 第一个位置是 system，剩余是 user/assistant
         llm_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -148,6 +166,17 @@ class ResponseService:
         """构造 messages（包含历史消息）。"""
         # 加入最近 5 条消息
         return list(state.message_history[-5:])
+
+    def _build_response_examples(self, state: ConversationState) -> str | None:
+        """把 response_prompts.yml 中的全部示例注入提示词。
+
+        完全配置驱动：在 yml 中新增任意键，LLM 即可收到，无需改代码。
+        """
+        prompts = self.prompt_registry.get()
+        if not prompts:
+            return None
+        lines = [f"- {v}" for v in prompts.values() if isinstance(v, str) and v]
+        return "\n".join(lines) if lines else None
 
     def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
         """调用 LLM 生成响应（需配置真实 LLM client）。"""

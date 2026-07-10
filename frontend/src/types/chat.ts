@@ -16,9 +16,8 @@ export type SubIntentCode =
   | "unsupported.unknown";
 
 export interface EmotionState {
-  primary: "neutral" | "confused" | "anxious" | "angry" | "urgent" | "happy";
+  primary: "neutral" | "positive" | "negative";
   confidence: number;
-  trend: "stable" | "escalating" | "deescalating";
 }
 
 export interface ActionRecord {

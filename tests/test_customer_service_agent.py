@@ -56,7 +56,7 @@ class TestCustomerServiceAgent:
         # 后续接入真实 LLM 后，断言会调用 agent_node
 
     def test_chat_should_route_to_response_generator(self, agent):
-        """测试意图为 chitchat 时，直接路由到 response_generator。"""
+        """测试非业务消息（如问候）无法识别意图时，路由到 response_generator 进行澄清。"""
         request = ChatRequest(
             session_id="test-session",
             message="你好",
@@ -74,7 +74,7 @@ class TestCustomerServiceAgent:
         agent.store.get.return_value = state
 
         response = agent.chat(request, user_id=1)
-        assert response.main_intent == "chitchat"
+        assert response.main_intent == "unrecognize"
 
     def test_agent_node_should_call_tools(self, agent):
         """测试 agent_node 能够调用工具（如 rag_retrieve）。"""

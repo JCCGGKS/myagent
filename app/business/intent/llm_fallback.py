@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import LLMConfig
 from app.schema import IntentResult
+from app.schema.intent import (
+    MAIN_INTENT_CODES,
+    SUB_INTENT_CODES,
+    MainIntentCode,
+    SubIntentCode,
+)
 from app.business.prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
 
 try:
@@ -17,49 +23,25 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-# Valid values the router actually uses
-VALID_MAIN = {
-    "order_query", "logistics", "after_sale_refund",
-    "complaint", "handoff_service",
-    "unrecognize", "unsupported_biz",
-}
-VALID_SUB = {
-    "order_query.query_status", "order_query.modify_address", "order_query.apply_invoice",
-    "logistics.lost_package", "logistics.delayed", "logistics.not_received",
-    "after_sale_refund.damage_refund", "after_sale_refund.no_reason_return",
-    "after_sale_refund.wrong_goods",
-    "complaint.compensate", "complaint.service_complaint",
-    "handoff_service.request_human",
-    "unrecognize.unknown", "unsupported_biz.out_of_scope",
-}
+# Valid values the router actually uses (derived from the single source of truth)
+VALID_MAIN = set(MAIN_INTENT_CODES)
+VALID_SUB = set(SUB_INTENT_CODES)
 
 
 class LLMIntentDecision(BaseModel):
     model_config = {"populate_by_name": True}
 
-    main_intent: Literal[
-        "order_query", "logistics", "after_sale_refund",
-        "complaint", "handoff_service",
-        "unrecognize", "unsupported_biz",
-    ] = "unrecognize"
-
-    sub_intent: Literal[
-        "order_query.query_status", "order_query.modify_address", "order_query.apply_invoice",
-        "logistics.lost_package", "logistics.delayed", "logistics.not_received",
-        "after_sale_refund.damage_refund", "after_sale_refund.no_reason_return",
-        "after_sale_refund.wrong_goods",
-        "complaint.compensate", "complaint.service_complaint",
-        "handoff_service.request_human",
-        "unrecognize.unknown", "unsupported_biz.out_of_scope",
-    ] = "unrecognize.unknown"
+    main_intent: MainIntentCode = "unrecognize"
+    sub_intent: SubIntentCode = "unrecognize.unknown"
 
     confidence: float = 0.8
     needs_clarification: bool = False
     reason: str = ""
 
-    # Qwen sometimes uses alternate field names; capture them raw
-    intent: str | None = None
-    sub_intent: str | None = None
+    # Qwen sometimes uses alternate field names; captured transiently by the
+    # validator below and merged into main_intent/sub_intent, not stored.
+    raw_intent: str | None = None
+    raw_sub_intent: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -87,11 +69,6 @@ class LLMIntentDecision(BaseModel):
                 raw = values.pop("sub_intents")
                 if isinstance(raw, list) and raw:
                     values["sub_intent"] = raw[0]
-
-            # Qwen may return "main_intent" (one underscore) instead of "main_intent"
-            for key in ("main_intent", "main_intent", "main_intent"):
-                if key in values and "main_intent" not in values:
-                    values["main_intent"] = values.pop(key)
 
             # Sanity-check: if main_intent is still not in VALID_MAIN, default
             if values.get("main_intent") not in VALID_MAIN:
@@ -266,11 +243,11 @@ class LLMIntentFallbackService:
                 "logistics": "logistics.not_received",
                 "after_sale_refund": "after_sale_refund.no_reason_return",
                 "complaint": "complaint.service_complaint",
-            "handoff_service": "handoff_service.request_human",
-            "unrecognize": "unrecognize.unknown",
-            "unsupported_biz": "unsupported_biz.out_of_scope",
-        }
-        normalized["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
+                "handoff_service": "handoff_service.request_human",
+                "unrecognize": "unrecognize.unknown",
+                "unsupported_biz": "unsupported_biz.out_of_scope",
+            }
+            normalized["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
 
         raw_conf = data.get("confidence", data.get("confidence", 0.8))
         try:
