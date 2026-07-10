@@ -82,7 +82,6 @@ export interface ConversationState {
   action_history?: ActionRecord[];
   summary: string;
   running_summary?: string;
-  message_history: Array<Record<string, string>>;
   recent_messages?: Array<Record<string, string>>;
   last_user_message: string;
   handoff: boolean;

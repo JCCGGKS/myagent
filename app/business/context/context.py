@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from app.schema import ConversationState
 from app.business.context.state_summary import build_state_summary
 
@@ -9,29 +11,52 @@ class ContextService:
         self,
         state_tracker: object | None = None,
         max_recent_messages: int = 6,
-        soft_summary_turns: int = 8,
+        summarizer: Callable[[str, list[dict]], str] | None = None,
+        max_summary_chars: int = 2000,
     ) -> None:
         self.state_tracker = state_tracker
+        # 活动窗口上限：窗口内的消息原样保留，窗口外折叠进 running_summary
         self.max_recent_messages = max_recent_messages
-        self.soft_summary_turns = soft_summary_turns
+        # 可选 LLM 折叠器：签名为 (old_summary: str, overflow: list[dict]) -> str
+        # 不传则退化为文本拼接 + 长度截断
+        self.summarizer = summarizer
+        # 退化模式下 running_summary 的最大长度，避免无限增长
+        self.max_summary_chars = max_summary_chars
 
     def compress(self, state: ConversationState) -> ConversationState:
-        state.message_history.append({"role": "assistant", "content": state.reply})
+        # 本轮助手回复写入活动窗口
         state.recent_messages.append({"role": "assistant", "content": state.reply})
 
+        # 活动窗口溢出 -> 折叠进 running_summary（摘要缓冲）
         if len(state.recent_messages) > self.max_recent_messages:
-            overflow = state.recent_messages[:-self.max_recent_messages]
+            overflow = state.recent_messages[: -self.max_recent_messages]
             state.recent_messages = state.recent_messages[-self.max_recent_messages :]
-            overflow_summary = " ".join(
-                f"{item['role']}:{item['content']}" for item in overflow if item.get("content")
-            )
-            if overflow_summary:
-                state.running_summary = " ".join(
-                    item for item in [state.running_summary, overflow_summary] if item
-                ).strip()
+            state.running_summary = self._fold_summary(state.running_summary, overflow)
 
-        if len(state.message_history) >= self.soft_summary_turns * 2 and not state.running_summary:
-            state.running_summary = build_state_summary(state)
-
+        # summary 为每轮一句话状态快照（与叙述性 running_summary 职责区分）
         state.summary = build_state_summary(state)
         return state
+
+    def _fold_summary(self, old_summary: str, overflow: list[dict]) -> str:
+        """把溢出消息折叠进既有摘要。
+
+        - 有 summarizer：交给 LLM 折叠（保持有界、连贯）。
+        - 无 summarizer：退化为 "role:content" 拼接，并截断到 max_summary_chars。
+        """
+        if self.summarizer is not None:
+            try:
+                folded = self.summarizer(old_summary, overflow)
+                if folded:
+                    return folded
+            except Exception:
+                # 折叠失败不影响主流程，降级为拼接
+                pass
+        folded = " ".join(
+            f"{item['role']}:{item.get('content', '')}"
+            for item in overflow
+            if item.get("content")
+        )
+        merged = " ".join(p for p in [old_summary, folded] if p).strip()
+        if len(merged) > self.max_summary_chars:
+            merged = merged[-self.max_summary_chars :]
+        return merged

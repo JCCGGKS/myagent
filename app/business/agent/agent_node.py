@@ -64,16 +64,28 @@ class AgentNodeService:
         return state
 
     def _build_messages(self, state: ConversationState) -> list[dict[str, Any]]:
-        """从 state 构造 messages（包含历史消息和系统提示）。"""
+        """从 state 构造 messages（包含历史消息和系统提示）。
+
+        上下文来自摘要缓冲：running_summary（窗口外已压缩内容）+ recent_messages
+        （活动窗口内的近期消息）。
+        """
         messages = []
 
         # 系统提示
         system_prompt = build_agent_system_prompt(state)
         messages.append({"role": "system", "content": system_prompt})
 
-        # 历史消息（最近 10 条）
-        recent_messages = state.message_history[-10:]
-        messages.extend(recent_messages)
+        # 注入压缩摘要缓冲：让模型看到活动窗口之外的上下文
+        if state.running_summary:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"以下是此前的对话摘要（已压缩）：\n{state.running_summary}",
+                }
+            )
+
+        # 仅发送活动窗口内的近期消息
+        messages.extend(state.recent_messages)
 
         return messages
 

@@ -39,20 +39,26 @@ class QdrantClient:
         vector_size: int = 1024,
         distance: str = "COSINE",
         prefer_grpc: bool = False,
+        https: bool = False,
     ) -> None:
         from qdrant_client import QdrantClient as _RealClient
 
         self.host = host
         self.port = port
         self.collection_name = collection_name
-        self.api_key = api_key
+        # qdrant-client 在 api_key 为非 None（哪怕是空串 ""）时会默认走 HTTPS；
+        # 本地 Qdrant 为明文 HTTP，空串必须归一化为 None，否则会触发 TLS 握手失败
+        #（[SSL: WRONG_VERSION_NUMBER]）。
+        self.api_key = api_key or None
+        self.https = https if api_key else False
         self.vector_size = vector_size
         self.distance = _DISTANCE_MAP.get(distance, "COSINE")
         self._client = _RealClient(
             host=host,
             port=port,
-            api_key=api_key,
+            api_key=self.api_key,
             prefer_grpc=prefer_grpc,
+            https=self.https,
             timeout=10,
         )
         self._collection_ready = False
@@ -310,11 +316,13 @@ def get_qdrant_client() -> QdrantClient:
     缺失则用默认值。向量维度以 qdrant.vector_size 为准，须与嵌入模型输出维度一致。
     """
     q = _read_qdrant_config()
+    api_key = q.get("api_key") or None
     return QdrantClient(
         host=q.get("host", "localhost"),
         port=q.get("port", 6333),
         collection_name=q.get("collection_name", "customer_service_knowledge"),
-        api_key=q.get("api_key"),
+        api_key=api_key,
         vector_size=q.get("vector_size", 1024),
         distance=q.get("distance", "COSINE"),
+        https=api_key is not None,
     )

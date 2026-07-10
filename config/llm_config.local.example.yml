@@ -150,3 +150,10 @@ logging:
   # 日志输出目录（相对于项目根目录）
   # 文件命名：app-YYYY-MM-DD.log，按天切分，保留 14 天
   dir_path: logs
+
+# 上下文管理配置（对话摘要缓冲，不由前端控制）
+context:
+  # 活动窗口大小：仅保留最近 N 条消息原样，窗口外折叠进 running_summary
+  max_recent_messages: 6
+  # running_summary 退化模式（无 LLM 折叠器）下的最大长度，避免无限增长
+  max_summary_chars: 2000

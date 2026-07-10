@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from app.schema import ChatRequest, ChatResponse, ConversationState, ToolExecutionResult
 
@@ -23,6 +23,7 @@ from app.business import (
     StateTrackerService,
 )
 from app.dao import SessionStore
+from app.config.context_config import get_context_config_service
 from app.utils import normalize_whitespace
 
 try:
@@ -31,6 +32,50 @@ except ImportError:  # pragma: no cover
     END = "END"
     START = "START"
     StateGraph = None
+
+
+def _make_summary_fold_fn(
+    llm_client: Any | None,
+    llm_model: str | None,
+) -> Callable[[str, list[dict]], str] | None:
+    """构造摘要折叠器：把已有摘要与新增溢出消息合并为一段连贯摘要。
+
+    无 LLM 客户端时返回 None，由 ContextService 退化为拼接截断。
+    """
+
+    def fold(old_summary: str, overflow: list[dict]) -> str:
+        new_text = "\n".join(
+            f"{m.get('role', '')}: {m.get('content', '')}"
+            for m in overflow
+            if m.get("content")
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": "你负责压缩客服对话，输出简洁中文摘要，保留关键实体与未决问题。",
+            },
+            {
+                "role": "user",
+                "content": (
+                    "请把「已有摘要」与「新增对话片段」合并为一段连贯摘要，"
+                    "保留用户意图、订单号/物流单号等关键实体、已解决与未解决的问题；"
+                    "不要逐条罗列，不要编造新信息。\n\n"
+                    f"已有摘要：\n{old_summary or '(无)'}\n\n"
+                    f"新增对话片段：\n{new_text}"
+                ),
+            },
+        ]
+        try:
+            resp = llm_client.chat.completions.create(model=llm_model, messages=messages)
+            summary = resp.choices[0].message.content or ""
+            return summary.strip()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("summary fold LLM call failed err=%r", exc)
+            return ""
+
+    if llm_client is None or not llm_model:
+        return None
+    return fold
 
 
 class CustomerServiceAgent:
@@ -56,7 +101,13 @@ class CustomerServiceAgent:
             llm_client=llm_client,
             llm_model=llm_model,
         )
-        self.context_service = ContextService(state_tracker=self.state_tracker_service)
+        context_config = get_context_config_service().get_config()
+        self.context_service = ContextService(
+            state_tracker=self.state_tracker_service,
+            max_recent_messages=context_config.max_recent_messages,
+            max_summary_chars=context_config.max_summary_chars,
+            summarizer=_make_summary_fold_fn(llm_client, llm_model),
+        )
         self.response_service = ResponseService(
             llm_client=llm_client,
             llm_model=llm_model,
@@ -208,7 +259,6 @@ class CustomerServiceAgent:
         state.last_user_message = message
         state.channel = request.channel
         # state.user_id 已在 _build_payload 初始化时设置
-        state.message_history.append({"role": "user", "content": message})
         state.recent_messages.append({"role": "user", "content": message})
         payload["state"] = state
         return payload
@@ -341,7 +391,6 @@ class CustomerServiceAgent:
             "latest_action_result": state.latest_action_result,
             "action_history": [item.model_dump() for item in state.action_history],
             "recent_messages": state.recent_messages,
-            "message_history": state.message_history,
             "reply": state.reply,
             "archived_states": state.archived_states,
         }

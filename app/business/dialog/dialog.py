@@ -163,9 +163,21 @@ class ResponseService:
         return state
 
     def _build_messages(self, state: ConversationState) -> list[dict]:
-        """构造 messages（包含历史消息）。"""
-        # 加入最近 5 条消息
-        return list(state.message_history[-5:])
+        """构造 messages（包含历史消息）。
+
+        上下文来自摘要缓冲：running_summary（窗口外已压缩内容）+ recent_messages
+        （活动窗口内的近期消息），与 agent_node 保持一致。
+        """
+        messages: list[dict] = []
+        if state.running_summary:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"以下是此前的对话摘要（已压缩）：\n{state.running_summary}",
+                }
+            )
+        messages.extend(state.recent_messages)
+        return messages
 
     def _build_response_examples(self, state: ConversationState) -> str | None:
         """把 response_prompts.yml 中的全部示例注入提示词。

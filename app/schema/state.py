@@ -61,7 +61,6 @@ class ConversationState(BaseModel):
     current_form_slot_states: dict[str, str] = Field(default_factory=dict)
     summary: str = ""
     running_summary: str = ""
-    message_history: list[dict[str, str]] = Field(default_factory=list)
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
     last_user_message: str = ""
     intent_result: IntentResult | None = None
