@@ -148,7 +148,6 @@ class CustomerServiceAgent:
         builder.add_node("handoff_node", self.handoff_node)
         builder.add_node("response_generator", self.response_generator)
         builder.add_node("context_compressor", self.context_compressor)
-        builder.add_node("message_writer", self.message_writer)
 
         builder.add_edge(START, "input_normalizer")
         builder.add_edge("input_normalizer", "intent_router")
@@ -169,13 +168,14 @@ class CustomerServiceAgent:
         builder.add_edge("agent_node", "response_generator")
         builder.add_edge("handoff_node", "response_generator")
         builder.add_edge("response_generator", "context_compressor")
-        builder.add_edge("context_compressor", "message_writer")
-        builder.add_edge("message_writer", END)
+        builder.add_edge("context_compressor", END)
         return builder.compile()
 
     def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
         state = self._execute_request(request, user_id)
+        # 边界落库：图运行期间只收集数据，结束后批量写入会话存储
+        state = self.message_service.persist(state, request)
         logger.info(
             "chat done session=%s user=%s intent=%s.%s action=%s",
             request.session_id, user_id,
@@ -187,12 +187,17 @@ class CustomerServiceAgent:
         """LangGraph 图驱动的事件生成（与 chat() 行为一致）。"""
         payload = self._build_payload(request, user_id)
         events: list[dict[str, Any]] = []
+        final_state: ConversationState | None = None
         for chunk in self.graph.stream(payload):
             for node_name, node_payload in chunk.items():
                 # node_payload is the full payload dict: {"state": ..., "request": ...}
                 state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
                 if state:
+                    final_state = state
                     events.extend(self._node_state_to_events(node_name, state))
+        # 边界落库：图运行结束后批量写入（与 chat() 一致的落库时机）
+        if final_state is not None:
+            self.message_service.persist(final_state, request)
         return events
 
     def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
@@ -341,13 +346,6 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         logger.debug("node=context_compressor session=%s", state.session_id)
         payload["state"] = self.context_service.compress(state)
-        return payload
-
-    def message_writer(self, payload: dict[str, Any]) -> dict[str, Any]:
-        state: ConversationState = payload["state"]
-        request: ChatRequest = payload["request"]
-        logger.debug("node=message_writer session=%s", state.session_id)
-        payload["state"] = self.message_service.persist(state, request)
         return payload
 
     def _build_chat_response(self, state: ConversationState) -> ChatResponse:

@@ -37,8 +37,10 @@
 ```
 input_normalizer -> intent_router -> state_tracker -> policy_layer
     -> clarification / agent_node / handoff -> response_generator
-    -> context_compressor -> message_writer
+    -> context_compressor
 ```
+
+- 图到 `context_compressor` 即结束；消息落库不在图内。`CustomerServiceAgent.chat` / `chat_events` 在图运行结束后调用 `MessageService.persist` 批量写入（用户消息 + 助手回复 + 状态快照），保持图作为纯状态机、无副作用、可被 checkpointer 重放。
 
 - `intent_router` 由 `intent/` 驱动；`agent_node` 内含 ReAct 工具循环，经 `tools/ToolExecutor` 执行工具。
 - `ToolExecutor` 是**服务**而非图节点：ReAct 循环留在 `agent_node.run` 内，避免跨节点 `agent_thread` / `pending_tool_calls` 序列化。

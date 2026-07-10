@@ -1,8 +1,14 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { postChat, postChatInit, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
+import { postChat, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
+import {
+  clearSessionIdFromStorage,
+  generateSessionId,
+  loadSessionIdFromStorage,
+  saveSessionIdToStorage,
+} from "@/lib/session";
 import type {
   ChatSessionItem,
   ChatSocketEvent,
@@ -12,10 +18,6 @@ import type {
   ToolResult,
   TurnItem,
 } from "@/types/chat";
-
-function createSessionId() {
-  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
 
 function nowLabel() {
   return new Date().toLocaleTimeString("zh-CN", {
@@ -71,7 +73,7 @@ function createSession(
   const timestamp = nowLabel();
   const day = todayLabel();
   return {
-    id: sessionId || createSessionId(),
+    id: sessionId || generateSessionId(),
     title,
     createdDay: day,
     createdAt: timestamp,
@@ -132,8 +134,6 @@ export const useChatStore = defineStore("chat", () => {
     return groups;
   });
 
-  const SESSION_STORAGE_KEY = "chat_session_id";
-
   const client = new ChatSSEClient({
     onEvent: handleSocketEvent,
     onOpenChange: (connected) => {
@@ -181,22 +181,15 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   async function createNewSession() {
-    try {
-      statusText.value = "正在创建会话...";
-      const response = await postChatInit({
-        channel: channel.value.trim() || "web",
-        title: "新会话",
-      });
-      const newSession = createSession(response.title || "新会话", response.session_id);
-      sessions.value.unshift(newSession);
-      activeSessionId.value = newSession.id;
-      saveSessionIdToStorage(response.session_id);
-      draft.value = "";
-      statusText.value = "已新建会话";
-      resetLiveTurn();
-    } catch (error) {
-      statusText.value = "创建会话失败";
-    }
+    // 会话 id 由前端本地生成（见 @/lib/session），首条消息发到后端后由后端惰性建会话，
+    // 不再依赖 /chat/init 的前置往返。
+    const newSession = createSession("新会话", generateSessionId());
+    sessions.value.unshift(newSession);
+    activeSessionId.value = newSession.id;
+    saveSessionIdToStorage(newSession.id);
+    draft.value = "";
+    statusText.value = "已新建会话";
+    resetLiveTurn();
   }
 
   async function fetchKnowledgeFiles() {
@@ -335,10 +328,6 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  function saveSessionIdToStorage(sessionId: string) {
-    localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-  }
-
   async function loadSessions() {
     const list = await getSessionList();
     sessions.value = list.map((s) =>
@@ -347,7 +336,7 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   async function initFromLocalStorage() {
-    const savedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+    const savedSessionId = loadSessionIdFromStorage();
     try {
       await loadSessions();
       if (sessions.value.length) {
@@ -363,7 +352,7 @@ export const useChatStore = defineStore("chat", () => {
       }
     } catch (error) {
       // 后端不可用：退回新建会话，本地缓存的旧 session_id 直接清掉。
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      clearSessionIdFromStorage();
       statusText.value = "后端不可用，已新建会话";
       await createNewSession();
     }

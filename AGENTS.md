@@ -148,7 +148,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 The backend execution chain aligns with `template/06.1-06.4` and `template/07`:
 
-`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor -> message_writer`
+`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor`（图结束后在边界由 `MessageService.persist` 批量落库，图内不落库）
 
 ## Intent Structure
 

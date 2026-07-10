@@ -27,16 +27,6 @@ export interface ActionRecord {
   created_at: string;
 }
 
-export interface SessionInitRequest {
-  channel: string;
-  title?: string;
-}
-
-export interface SessionInitResponse {
-  session_id: string;
-  title?: string;
-}
-
 export interface ChatRequest {
   session_id: string;
   message: string;
