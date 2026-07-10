@@ -6,8 +6,8 @@ from typing import Any
 
 from app.schema import ConversationState
 from app.business.prompts import build_agent_system_prompt
-from app.business.tools.rag_tool import RagRetrieveTool
 from app.business.tools.tool_executor import ToolExecutor
+from app.business.tools.registry import build_tool_schemas
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class AgentNodeService:
         # 兼容旧字段 llm：仍允许直接传入已构造的 client。
         self.llm_client = llm if llm is not None else llm_client
         self.llm_model = llm_model
-        self.tools = tools or self._default_tools()
+        self.tools = tools or build_tool_schemas()
         self.tool_executor = tool_executor or ToolExecutor()
         self.max_tool_rounds = max_tool_rounds
 
@@ -126,8 +126,3 @@ class AgentNodeService:
                 }
             )
         return {"content": content, "tool_calls": tool_calls}
-
-    def _default_tools(self) -> list[dict[str, Any]]:
-        """默认工具列表（rag_retrieve, query_order, query_logistics, create_handoff）。"""
-        rag_tool = RagRetrieveTool()
-        return [rag_tool.to_tool_schema()]

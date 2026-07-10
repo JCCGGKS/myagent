@@ -8,6 +8,7 @@ from app.schema import ChatRequest, ChatResponse, ConversationState, ToolExecuti
 logger = logging.getLogger(__name__)
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
+from app.business.tools.registry import build_tool_schemas
 from app.business import (
     ClarificationService,
     ContextService,
@@ -124,7 +125,7 @@ class CustomerServiceAgent:
             llm_client=llm_client,
             llm_model=llm_model,
             tool_executor=self.tool_executor,
-            tools=None,  # 会从默认工具列表加载
+            tools=build_tool_schemas(),  # 注册全部工具 schema 到 LLM function calling
         )
         # langgraph 为硬依赖：不可用时显式报错
         if StateGraph is None:
