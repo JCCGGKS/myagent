@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import StreamingResponse
 
 from app.business import (
@@ -14,7 +14,6 @@ from app.business import (
     LogisticsService,
     OrderService,
 )
-from app.business.auth.deps import resolve_user_id
 from app.config import load_llm_config
 from app.dao import SessionStore, get_session_store
 from app.pkgs.llm import build_openai_client
@@ -48,12 +47,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 def chat(
     http_request: Request,
     request: ChatRequest,
-    authorization: str | None = Header(default=None),
 ) -> ChatResponse:
-    user_id = resolve_user_id(http_request, authorization)
-    if user_id is None:
-        log_warning("api", "chat unauthorized session=%s", request.session_id)
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     return agent.chat(request, user_id=user_id)
 
 
@@ -61,13 +56,9 @@ def chat(
 def chat_init(
     http_request: Request,
     request: SessionInitRequest,
-    authorization: str | None = Header(default=None),
 ) -> SessionInitResponse:
     """初始化会话，返回 session_id。user_id 必须来自 token。"""
-    user_id = resolve_user_id(http_request, authorization)
-    if user_id is None:
-        log_warning("api", "chat_init unauthorized")
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     session_id = session_store.create_session(user_id, request.channel, request.title)
     log_info("api", "chat_init success session=%s user=%s channel=%s", session_id, user_id, request.channel)
     return SessionInitResponse(session_id=session_id, title=request.title)
@@ -97,12 +88,8 @@ async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGen
 async def chat_stream(
     http_request: Request,
     request: ChatRequest,
-    authorization: str | None = Header(default=None),
 ) -> StreamingResponse:
-    user_id = resolve_user_id(http_request, authorization)
-    if user_id is None:
-        log_warning("api", "chat_stream unauthorized session=%s", request.session_id)
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     return StreamingResponse(
         _chat_stream_generator(request, user_id),
         media_type="text/event-stream",
@@ -117,13 +104,9 @@ async def chat_stream(
 @router.get("/sessions")
 def list_sessions(
     http_request: Request,
-    authorization: str | None = Header(default=None),
 ) -> list[dict[str, Any]]:
     """列出当前 token 用户的历史会话（含 title / updated_at）。"""
-    user_id = resolve_user_id(http_request, authorization=authorization)
-    if user_id is None:
-        log_warning("api", "list_sessions unauthorized")
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     return session_store.list_sessions(user_id)
 
 
@@ -131,13 +114,9 @@ def list_sessions(
 def get_session_messages(
     session_id: str,
     http_request: Request,
-    authorization: str | None = Header(default=None),
 ) -> list[dict[str, Any]]:
     """读取某会话的历史消息，必须属于当前 token 用户。"""
-    user_id = resolve_user_id(http_request, authorization=authorization)
-    if user_id is None:
-        log_warning("api", "get_session_messages unauthorized session=%s", session_id)
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
         log_warning("api", "get_session_messages not_found session=%s user=%s", session_id, user_id)
@@ -159,13 +138,9 @@ def rename_session(
     session_id: str,
     body: SessionRenameRequest,
     http_request: Request,
-    authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
     """重命名会话，必须属于当前 token 用户。"""
-    user_id = resolve_user_id(http_request, authorization=authorization)
-    if user_id is None:
-        log_warning("api", "rename_session unauthorized session=%s", session_id)
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
         log_warning("api", "rename_session not_found session=%s user=%s", session_id, user_id)
@@ -188,13 +163,9 @@ def rename_session(
 def delete_session(
     session_id: str,
     http_request: Request,
-    authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
     """软删除会话，必须属于当前 token 用户。"""
-    user_id = resolve_user_id(http_request, authorization=authorization)
-    if user_id is None:
-        log_warning("api", "delete_session unauthorized session=%s", session_id)
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    user_id = http_request.state.user.id
     owner_id = session_store.get_user_id(session_id)
     if owner_id is None:
         log_warning("api", "delete_session not_found session=%s user=%s", session_id, user_id)

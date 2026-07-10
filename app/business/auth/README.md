@@ -8,10 +8,13 @@
 app/business/auth/
 ├── __init__.py     # 导出 router
 ├── service.py      # 业务逻辑
-├── deps.py         # FastAPI 依赖：get_current_user
 ├── router.py       # /auth 路由定义
 └── README.md       # 本文档
 ```
+
+鉴权已统一收敛到 `app/middleware/auth.py`（`AuthMiddleware`）：解析
+`Authorization: Bearer` 并写入 `request.state.user`，非公开路径缺失/无效
+token 直接返回 401。`app/business/auth` 只保留业务与路由，不再有 deps。
 
 Pydantic 请求/响应模型已按职责归入 **schema 层**：`app/schema/auth.py`
 （`UserRegister` / `UserLogin` / `ForgotPassword` / `ResetPassword` /
@@ -76,11 +79,15 @@ Pydantic 请求/响应模型已按职责归入 **schema 层**：`app/schema/auth
 3. 更新 `password_hash`
 4. 前端收到成功后清除登录态，跳转登录页重新登录
 
-### 身份解析（`get_current_user`）
-- 从 `Authorization: Bearer <token>` 解析 access token
-- 校验 `purpose=access` 与签名/过期
-- 失败 → 401
-- 用于 `/auth/change-password` 及其它需登录的接口
+### 鉴权（`AuthMiddleware`）
+- `app/middleware/auth.py` 是认证第一道关：解析 `Authorization: Bearer <token>`
+  并写入 `request.state.user`
+- 校验 `purpose=access` 与签名/过期；非公开路径缺失/无效 token 直接返回 401
+- 公开路径（`/auth/register` / `/auth/login` / `/auth/forgot-password` /
+  `/auth/reset-password` 及 `/docs` 等）放行；`OPTIONS` 预检放行以避免
+  CORS 预检被拦截
+- 受保护接口（`/auth/change-password`、`/chat*`、`/knowledge*`、`/rag/config`）
+  直接读取 `request.state.user`，无需再声明依赖
 
 ## JWT 配置
 

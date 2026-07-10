@@ -113,41 +113,55 @@ def test_reset_with_bad_token_fails():
         raise AssertionError("无效 token 应被拒绝")
 
 
-from starlette.requests import Request
+import asyncio
 
-from app.business.auth.deps import resolve_user_id
+from fastapi import HTTPException
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.middleware.auth import AuthMiddleware
 from app.pkgs.auth import create_access_token
 
 
-def _make_request(user: object | None = None) -> Request:
-    scope = {"type": "http", "headers": []}
-    req = Request(scope, receive=None)
-    if user is not None:
-        req.state.user = user
-    return req
+def _make_request(path: str = "/chat", method: str = "POST", authorization: str | None = None) -> Request:
+    headers = [(b"authorization", authorization.encode())] if authorization else []
+    scope = {"type": "http", "method": method, "path": path, "headers": headers}
+    return Request(scope, receive=None)
 
 
-def test_resolve_user_id_prefers_middleware_state():
-    class FakeUser:
-        id = 123
-
-    req = _make_request(FakeUser())
-    assert resolve_user_id(req, authorization="Bearer invalid") == 123
+async def _call_next(request: Request) -> Response:
+    return Response("ok")
 
 
-def test_resolve_user_id_falls_back_to_token():
-    token = create_access_token(123, "tokenuser", "t@x.com")
-    req = _make_request()
-    assert resolve_user_id(req, authorization=f"Bearer {token}") == 123
-
-
-def test_resolve_user_id_missing_raises_401():
-    from fastapi import HTTPException
-
-    req = _make_request()
+def test_middleware_requires_token_on_protected_path():
+    mw = AuthMiddleware(app=None)
+    req = _make_request(path="/chat")
     try:
-        resolve_user_id(req)
+        asyncio.run(mw.dispatch(req, _call_next))
     except HTTPException as e:
         assert e.status_code == 401
     else:
-        raise AssertionError("缺失 user_id 应返回 401")
+        raise AssertionError("受保护路径无 token 应返回 401")
+
+
+def test_middleware_allows_public_path_without_token():
+    mw = AuthMiddleware(app=None)
+    req = _make_request(path="/auth/login")
+    resp = asyncio.run(mw.dispatch(req, _call_next))
+    assert resp.status_code == 200
+
+
+def test_middleware_sets_user_from_valid_token():
+    mw = AuthMiddleware(app=None)
+    token = create_access_token(123, "tokenuser", "t@x.com")
+    req = _make_request(path="/chat", authorization=f"Bearer {token}")
+    resp = asyncio.run(mw.dispatch(req, _call_next))
+    assert resp.status_code == 200
+    assert req.state.user.id == 123
+
+
+def test_middleware_options_passthrough():
+    mw = AuthMiddleware(app=None)
+    req = _make_request(path="/chat", method="OPTIONS")
+    resp = asyncio.run(mw.dispatch(req, _call_next))
+    assert resp.status_code == 200

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.business.auth.deps import get_current_user
 from app.schema.auth import (
     ChangePassword,
     ForgotPassword,
@@ -63,12 +62,12 @@ def api_reset_password(data: ResetPassword, user_dao: UserDAO = Depends(get_user
 @router.post("/change-password")
 def api_change_password(
     data: ChangePassword,
-    user: UserInfo = Depends(get_current_user),
+    request: Request,
     user_dao: UserDAO = Depends(get_user_dao),
 ) -> dict[str, str]:
-    """登录用户修改密码（需 Authorization 头）。"""
+    """登录用户修改密码（需 Authorization 头，由 AuthMiddleware 鉴权）。"""
     try:
-        change_password(user.id, data, user_dao)
+        change_password(request.state.user.id, data, user_dao)
     except AuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     return {"detail": "密码已修改"}

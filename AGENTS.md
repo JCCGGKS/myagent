@@ -46,7 +46,7 @@ Core backend modules:
   - `app/business/rag`: 知识检索（chunker / ingestion / sparse_bm25 / retrieval_strategy / rerank）
   - `app/business/tools`: 工具层，封装供 LLM 调用的业务工具（如 `rag_tool.py` 的 `RagRetrieveTool` 检索工具）；依赖 `rag` 子包
   - `app/business/prompts`: LLM prompt 定义（intent 等）
-  - `app/business/auth`: 认证业务（service / router / models / deps），依赖 `UserDAO` 依赖注入
+  - `app/business/auth`: 认证业务（service / router）；Pydantic 模型在 `app/schema/auth.py`，鉴权由 `app/middleware/auth.py`（`AuthMiddleware`）统一处理，依赖 `UserDAO` 依赖注入
 - `app/dao`: 数据访问层，对外提供 `SessionStore` / `UserDAO` 抽象接口与 `Memory*` / `Sql*` 双实现
   - `session.py`: `SessionStore`（ABC）、`MemorySessionStore`、`SqlSessionStore`
   - `user.py`: `UserDAO`（ABC）、`MemoryUserDAO`、`SqlUserDAO`

@@ -5,11 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import File, HTTPException, UploadFile
-from fastapi import APIRouter, Depends
-
-from app.business.auth.deps import get_current_user
-from app.schema.auth import UserInfo
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
 from app.dao import KnowledgeStore, get_knowledge_file_dao
@@ -74,10 +70,11 @@ router = APIRouter(tags=["knowledge"])
 
 @router.post("/knowledge/upload")
 async def knowledge_upload(
+    request: Request,
     file: UploadFile = File(...),
     doc_type: str = "faq",
-    current_user: UserInfo = Depends(get_current_user),
 ) -> dict[str, Any]:
+    current_user = request.state.user
     """知识库文件上传接口（需登录，写入 user_id 到元数据）。
 
     支持格式：.md / .markdown / .json。
@@ -175,8 +172,9 @@ async def knowledge_upload(
 
 @router.get("/knowledge/files")
 def list_knowledge_files(
-    current_user: UserInfo = Depends(get_current_user),
+    request: Request,
 ) -> list[dict[str, Any]]:
+    current_user = request.state.user
     """列出当前用户的知识库文件（按上传时间倒序，已软删除项除外）。"""
     file_dao = get_knowledge_file_dao()
     records = file_dao.list_by_user(current_user.id)
@@ -186,8 +184,9 @@ def list_knowledge_files(
 @router.delete("/knowledge/files/{file_id}")
 def delete_knowledge_file(
     file_id: int,
-    current_user: UserInfo = Depends(get_current_user),
+    request: Request,
 ) -> dict[str, Any]:
+    current_user = request.state.user
     """删除知识库文件（软删除元信息 + 清理 Qdrant 向量，需归属当前用户）。"""
     file_dao = get_knowledge_file_dao()
     record = file_dao.get_by_id(file_id)
@@ -205,8 +204,9 @@ def delete_knowledge_file(
 
 @router.get("/rag/config", response_model=RagConfig)
 def get_rag_config(
-    current_user: UserInfo = Depends(get_current_user),
+    request: Request,
 ) -> RagConfig:
+    current_user = request.state.user
     """获取当前 RAG 检索配置（需登录）。"""
     return get_rag_config_service().get_config()
 
@@ -214,8 +214,9 @@ def get_rag_config(
 @router.put("/rag/config", response_model=RagConfig)
 def update_rag_config(
     patch: dict[str, Any],
-    current_user: UserInfo = Depends(get_current_user),
+    request: Request,
 ) -> RagConfig:
+    current_user = request.state.user
     """更新 RAG 检索配置（需登录，局部更新，写回配置文件）。"""
     try:
         result = get_rag_config_service().update_config(patch)
