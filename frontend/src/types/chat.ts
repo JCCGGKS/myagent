@@ -35,6 +35,7 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   reply: string;
+  session_id: string;
   session_state: SessionSnapshot;
 }
 

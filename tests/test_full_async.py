@@ -89,6 +89,8 @@ def test_chat_returns_response_via_async():
     request = ChatRequest(session_id="s1", message="你好")
     response = asyncio.run(agent.chat(request, user_id=1))
     assert response.reply == "这是助手回复。"
+    # 回传 session_id，使前端能按会话 id 将回复渲染到对应聊天框
+    assert response.session_id == "s1"
     # 精简后的 session_state 仅含 StatsPanel 消费的字段
     assert set(response.session_state.keys()) == {
         "current_main_intent",

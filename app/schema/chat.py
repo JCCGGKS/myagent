@@ -22,4 +22,5 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    session_id: str = Field(default="")
     session_state: dict[str, Any] = Field(default_factory=dict)

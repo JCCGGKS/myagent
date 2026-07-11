@@ -365,9 +365,11 @@ class CustomerServiceAgent:
 
     def _build_chat_response(self, state: ConversationState) -> ChatResponse:
         # 简化后只下发前端真正渲染的字段：reply（消息气泡）+ session_state（StatsPanel）。
+        # session_id 回传前端，使前端能按会话 id 将消息渲染到对应的聊天框（而非仅依赖当前激活会话）。
         # 其余意图/槽位/阶段等均在 session_state 内部，无需在顶层重复。
         return ChatResponse(
             reply=state.reply,
+            session_id=state.session_id,
             session_state=self._build_session_snapshot(state),
         )
 

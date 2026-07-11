@@ -345,7 +345,9 @@ export const useChatStore = defineStore("chat", () => {
         if (savedSessionId && sessions.value.some((s) => s.id === savedSessionId)) {
           await switchSession(savedSessionId);
         } else {
-          activeSessionId.value = sessions.value[0].id;
+          // 即使没有已存 id，也要对首个会话走 switchSession 拉历史，
+          // 否则首个会话只有本地问候语、不回放后端消息。
+          await switchSession(sessions.value[0].id);
         }
         statusText.value = "已加载历史会话";
       } else {
@@ -412,13 +414,16 @@ export const useChatStore = defineStore("chat", () => {
     if (event.type === "final") {
       const response = event.response;
       const ss = response.session_state;
-      appendMessage({
+      // 按后端回传的 session_id 定位目标聊天框渲染消息，避免「请求在途时切换会话」
+      // 导致回复串到当前激活会话的问题；本地找不到该会话时回退到当前激活会话兜底。
+      const target = sessions.value.find((s) => s.id === response.session_id) ?? activeSession.value;
+      target.messages.push({
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: response.reply,
       });
-      activeSession.value.session = response.session_state;
-      activeSession.value.turns.unshift({
+      target.session = response.session_state;
+      target.turns.unshift({
         id: `turn-${Date.now()}`,
         mainIntent: ss.current_main_intent,
         subIntent: ss.current_sub_intent,
@@ -432,7 +437,7 @@ export const useChatStore = defineStore("chat", () => {
           second: "2-digit",
         }),
       });
-      touchSession();
+      touchTargetSession(target);
       const cost = requestStart.value ? Date.now() - requestStart.value : 0;
       responseStats.value = {
         count: responseStats.value.count + 1,
