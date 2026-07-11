@@ -309,6 +309,8 @@ export const useChatStore = defineStore("chat", () => {
 
   async function switchSession(id: string) {
     activeSessionId.value = id;
+    // 持久化当前停留的会话，刷新页面后能恢复「正在看的那一个」而非落到旧会话
+    saveSessionIdToStorage(id);
     draft.value = "";
     statusText.value = "已切换会话";
     resetLiveTurn();
