@@ -80,7 +80,14 @@ uvicorn app.api.app:app --reload
 
 # Or use main.py (redirects to app/api/app.py)
 python main.py
+
+# Production: 多 worker 水平扩展（避免单进程 CPU 密集拖垮整体，详见 plans/full-async-plan.md）
+uvicorn app.api.app:app --workers 4
+# 或 Gunicorn + Uvicorn worker
+gunicorn app.api.app:app -k uvicorn.workers.UvicornWorker -w 4
 ```
+
+后端执行链为**全异步**（M1 + M2）：HTTP 入口（`async` SSE 生成器）→ `AsyncOpenAI` LLM 调用（`call_llm_async`）→ LangGraph `graph.astream` / `ainvoke` 异步节点 → DAO 原生 `AsyncSession`（`SessionStore` / `UserDAO` / `KnowledgeFileDAO` 均为 `async def`，经 `app.model.AsyncSessionLocal` 注入）。`SessionService` 直接 `await` DAO，无 `asyncio.to_thread` 桥接；`await` 等待落库完成才返回响应，不会因异步丢数据。`AsyncSessionLocal` 为 None（未配 mysql 或 aiomysql 不可用）时回退内存实现。详见 `plans/full-async-plan.md` 与 `template/07_系统架构.md`。
 
 Default backend address: `http://127.0.0.1:8000`
 
@@ -148,7 +155,7 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 The backend execution chain aligns with `template/06.1-06.4` and `template/07`:
 
-`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor`（图结束后在边界由 `MessageService.persist` 批量落库，图内不落库）
+`input_normalizer -> intent_router -> state_tracker -> policy_layer -> clarification / tool / handoff -> response_generator -> context_compressor`（图结束后在边界由 `MessageService.persist` 批量落库，图内不落库；节点均为 `async def`，由 LangGraph `astream`/`ainvoke` 驱动，全链路 I/O 等待让出事件循环，详见 `plans/full-async-plan.md`）
 
 ## Intent Structure
 
