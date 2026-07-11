@@ -5,7 +5,6 @@ from app.schema.auth import (
     ForgotPassword,
     LoginResponse,
     ResetPassword,
-    Token,
     UserInfo,
     UserLogin,
     UserRegister,

@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
 
 from app.config import LLMConfig
 from app.schema import IntentResult

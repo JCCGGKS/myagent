@@ -20,7 +20,6 @@ from app.pkgs.llm import build_openai_client
 from app.schema import (
     ChatRequest,
     ChatResponse,
-    ConversationState,
     SessionRenameRequest,
 )
 from app.utils import log_error, log_info, log_warning

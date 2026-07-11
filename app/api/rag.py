@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from app.config import load_llm_config
 from app.config.rag_config import RagConfig, get_rag_config_service
-from app.dao import KnowledgeStore, get_knowledge_file_dao
+from app.dao import get_knowledge_file_dao
 from app.model.knowledge import (
     KNOWLEDGE_FILE_STATUS_ERROR,
     KNOWLEDGE_FILE_STATUS_PROCESSING,
     KNOWLEDGE_FILE_STATUS_SUCCESS,
 )
-from app.pkgs.vector import QdrantClient, get_qdrant_client
+from app.pkgs.vector import get_qdrant_client
 from app.business.rag import (
     Chunker,
     KnowledgeIngestionService,
