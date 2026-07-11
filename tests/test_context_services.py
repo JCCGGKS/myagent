@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from app.schema import ConversationState
@@ -16,7 +17,7 @@ class ContextServicesTestCase(unittest.TestCase):
             {"role": "assistant", "content": "m4"},
         ]
 
-        updated = service.compress(state)
+        updated = asyncio.run(service.compress(state))
 
         self.assertEqual(len(updated.recent_messages), 4)
         self.assertTrue(updated.running_summary)

@@ -1,5 +1,7 @@
 """测试路由服务（RAG 工具化改造后）。"""
 
+import asyncio
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -61,31 +63,31 @@ class RoutingServicesTestCase:
     def test_intent_router_should_recognize_order_query(self, router):
         """测试能够识别订单查询意图。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
-        result = router.route(state, "帮我查一下订单 A1001")
+        result = asyncio.run(router.route(state, "帮我查一下订单 A1001"))
         assert result.main_intent == "order_query"
 
     def test_intent_router_should_recognize_logistics(self, router):
         """测试能够识别物流查询意图。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
-        result = router.route(state, "我的快递到哪了")
+        result = asyncio.run(router.route(state, "我的快递到哪了"))
         assert result.main_intent == "logistics"
 
     def test_intent_router_should_recognize_complaint(self, router):
         """测试能够识别投诉意图。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
-        result = router.route(state, "你们什么破平台，投诉")
+        result = asyncio.run(router.route(state, "你们什么破平台，投诉"))
         assert result.main_intent == "complaint"
 
     def test_intent_router_should_recognize_handoff(self, router):
         """测试能够识别转人工意图。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
-        result = router.route(state, "转人工")
+        result = asyncio.run(router.route(state, "转人工"))
         assert result.main_intent == "handoff_service"
 
     def test_intent_router_should_route_greeting_to_unrecognize(self, router):
         """问候不再单独成意图，无业务关键词时落 unrecognize。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
-        result = router.route(state, "你好")
+        result = asyncio.run(router.route(state, "你好"))
         assert result.main_intent == "unrecognize"
 
     def test_policy_should_set_agent_process_for_order_query(self, policy):

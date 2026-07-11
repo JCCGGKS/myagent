@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+import asyncio
 
 from app.schema.auth import ForgotPassword, ResetPassword, UserLogin, UserRegister
 from app.business.auth.service import (
@@ -12,8 +11,7 @@ from app.business.auth.service import (
     reset_password,
 )
 from app.dao import SqlUserDAO
-from app.model import Base, user  # noqa: F401  (确保 User 表注册到 Base.metadata)
-from app.schema import ChatRequest
+from app.model import user  # noqa: F401  (确保 User 表注册到 Base.metadata)
 from app.pkgs.auth import (
     create_access_token,
     create_reset_token,
@@ -21,14 +19,12 @@ from app.pkgs.auth import (
     hash_password,
     verify_password,
 )
+from conftest import make_async_session_factory
 
 
 def make_user_dao():
-    """用内存 SQLite 提供测试 DAO，隔离 MySQL 依赖。"""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    return SqlUserDAO(Session)
+    """M2：SqlUserDAO 使用 AsyncSession，注入异步会话工厂（内存 SQLite）。"""
+    return SqlUserDAO(make_async_session_factory())
 
 
 def test_password_hash_and_verify():
@@ -40,10 +36,12 @@ def test_password_hash_and_verify():
 
 def test_register_and_login_and_token():
     user_dao = make_user_dao()
-    user = register(UserRegister(username="alice", email="a@x.com", password="pw123456"), user_dao)
+    user = asyncio.run(
+        register(UserRegister(username="alice", email="a@x.com", password="pw123456"), user_dao)
+    )
     assert user.username == "alice"
 
-    token = login(UserLogin(username="alice", password="pw123456"), user_dao)
+    token = asyncio.run(login(UserLogin(username="alice", password="pw123456"), user_dao))
     assert token.access_token
 
     payload = decode_token(token.access_token, expected_purpose="access")
@@ -54,9 +52,11 @@ def test_register_and_login_and_token():
 
 def test_duplicate_register_conflicts():
     user_dao = make_user_dao()
-    register(UserRegister(username="bob", email="b@x.com", password="pw123456"), user_dao)
+    asyncio.run(register(UserRegister(username="bob", email="b@x.com", password="pw123456"), user_dao))
     try:
-        register(UserRegister(username="bob", email="other@x.com", password="pw123456"), user_dao)
+        asyncio.run(
+            register(UserRegister(username="bob", email="other@x.com", password="pw123456"), user_dao)
+        )
     except AuthError as e:
         assert e.status_code == 409
     else:
@@ -65,9 +65,9 @@ def test_duplicate_register_conflicts():
 
 def test_login_wrong_password_401():
     user_dao = make_user_dao()
-    register(UserRegister(username="carol", email="c@x.com", password="pw123456"), user_dao)
+    asyncio.run(register(UserRegister(username="carol", email="c@x.com", password="pw123456"), user_dao))
     try:
-        login(UserLogin(username="carol", password="wrongpw"), user_dao)
+        asyncio.run(login(UserLogin(username="carol", password="wrongpw"), user_dao))
     except AuthError as e:
         assert e.status_code == 401
     else:
@@ -76,27 +76,29 @@ def test_login_wrong_password_401():
 
 def test_forgot_and_reset_password():
     user_dao = make_user_dao()
-    user = register(UserRegister(username="dave", email="d@x.com", password="oldpass1"), user_dao)
+    user = asyncio.run(
+        register(UserRegister(username="dave", email="d@x.com", password="oldpass1"), user_dao)
+    )
 
-    forgot_password(ForgotPassword(email="d@x.com"), user_dao)
+    asyncio.run(forgot_password(ForgotPassword(email="d@x.com"), user_dao))
 
     reset_token = create_reset_token(user.id, user.email)
-    reset_password(ResetPassword(token=reset_token, new_password="newpass1"), user_dao)
+    asyncio.run(reset_password(ResetPassword(token=reset_token, new_password="newpass1"), user_dao))
 
     try:
-        login(UserLogin(username="dave", password="oldpass1"), user_dao)
+        asyncio.run(login(UserLogin(username="dave", password="oldpass1"), user_dao))
     except AuthError as e:
         assert e.status_code == 401
     else:
         raise AssertionError("旧密码应已失效")
 
-    login(UserLogin(username="dave", password="newpass1"), user_dao)
+    asyncio.run(login(UserLogin(username="dave", password="newpass1"), user_dao))
 
 
 def test_forgot_password_unknown_email_raises():
     user_dao = make_user_dao()
     try:
-        forgot_password(ForgotPassword(email="nobody@x.com"), user_dao)
+        asyncio.run(forgot_password(ForgotPassword(email="nobody@x.com"), user_dao))
     except AuthError as e:
         assert e.status_code == 404
     else:
@@ -106,7 +108,9 @@ def test_forgot_password_unknown_email_raises():
 def test_reset_with_bad_token_fails():
     user_dao = make_user_dao()
     try:
-        reset_password(ResetPassword(token="not-a-valid-token", new_password="valid12"), user_dao)
+        asyncio.run(
+            reset_password(ResetPassword(token="not-a-valid-token", new_password="valid12"), user_dao)
+        )
     except AuthError:
         pass
     else:

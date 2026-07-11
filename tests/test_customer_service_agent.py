@@ -1,7 +1,9 @@
 """测试 CustomerServiceAgent（RAG 工具化改造后）。"""
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from app.business.agent import CustomerServiceAgent
 from app.schema import ChatRequest, ConversationState
@@ -11,11 +13,11 @@ from app.dao import SessionStore
 @pytest.fixture
 def agent():
     """创建一个测试用的 CustomerServiceAgent 实例。"""
-    store = MagicMock(spec=SessionStore)
+    store = AsyncMock()  # 会话服务为异步，使用 AsyncMock（子方法默认即异步）
     order_service = MagicMock()
     logistics_service = MagicMock()
     handoff_service = MagicMock()
-    llm_client = MagicMock()
+    llm_client = AsyncMock()  # 异步 LLM 客户端
     message = MagicMock(content="这是 LLM 生成的回复。", tool_calls=None)
     llm_client.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=message)]
@@ -51,7 +53,7 @@ class TestCustomerServiceAgent:
         state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
-        response = agent.chat(request, user_id=1)
+        response = asyncio.run(agent.chat(request, user_id=1))
         assert response.main_intent == "order_query"
         # 后续接入真实 LLM 后，断言会调用 agent_node
 
@@ -73,7 +75,7 @@ class TestCustomerServiceAgent:
         state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
-        response = agent.chat(request, user_id=1)
+        response = asyncio.run(agent.chat(request, user_id=1))
         assert response.main_intent == "unrecognize"
 
     def test_agent_node_should_call_tools(self, agent):
