@@ -61,6 +61,133 @@
 
 > 折中：可在 Function Calling 的 system prompt 里要求模型先输出一句简短推理（Thought），兼顾稳定与可解释，本仓库当前未加。
 
+### 1.5 两种方式的标准提示词模板
+
+下面给出可直接落地的模板。Function Calling 模板**取自本仓库实际实现**，ReAct 模板为等价的文本驱动版本，方便对比。
+
+#### 1.5.1 Function Calling 模板（本仓库采用）
+
+**① System Prompt**（`build_agent_system_prompt` 主体，含意图/槽位上下文）
+
+```text
+你是一个客服助手，负责回答用户问题。
+当前意图：order_query.query_status
+当前阶段：slot_filling
+已填槽位：{}
+缺失槽位：['order_id']
+
+你是客服助手的【调度节点】，只负责决定下一步动作：
+1. 若需要更多信息来回答用户（如订单状态、物流、知识库内容），请调用合适的工具；
+2. 若当前上下文已足够回答用户，请不要调用任何工具，直接结束本节点。
+注意：你只做决策与工具调用，不要在此输出给用户的最终回复，最终回复由专门的回复节点生成。
+```
+
+**② Tools 定义**（节选自 `tool_executor.py` 的 `TOOLS` 注册表，JSON Schema 驱动 function calling）
+
+```json
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "query_order",
+      "description": "查询指定订单的状态、商品、金额等信息。当用户提供订单号并询问订单状态时调用。",
+      "parameters": {
+        "type": "object",
+        "properties": { "order_id": { "type": "string", "description": "订单号" } },
+        "required": ["order_id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_logistics",
+      "description": "查询指定订单的物流配送进度与最新节点。当用户询问快递到哪了、是否签收时调用。",
+      "parameters": {
+        "type": "object",
+        "properties": { "order_id": { "type": "string", "description": "订单号" } },
+        "required": ["order_id"]
+      }
+    }
+  }
+]
+```
+
+**③ LLM 返回（结构化 `tool_calls`，非文本）**
+
+```json
+{
+  "tool_calls": [
+    {
+      "id": "call_abc",
+      "type": "function",
+      "function": { "name": "query_order", "arguments": "{\"order_id\": \"A1001\"}" }
+    }
+  ]
+}
+```
+
+**④ 框架回灌观察**（工具执行后以 `role: "tool"` 追加，供下一轮推理）
+
+```json
+{ "role": "tool", "tool_call_id": "call_abc", "name": "query_order",
+  "content": "{\"kind\":\"order_query\",\"user_facing_summary\":\"订单 A1001 当前状态为 已发货\"}" }
+```
+
+> 关键点：动作走结构化字段，框架按 `tool_call_id` 配对，无需解析文本。
+
+#### 1.5.2 ReAct 提示词模板（文本驱动，等价能力）
+
+**① System Prompt**（内嵌 Thought/Action/Observation 协议 + 少量示例）
+
+```text
+你是一个客服助手，可通过调用工具获取信息来回答用户。
+请严格按照以下格式推理与行动，每轮只输出一个动作：
+
+Thought: 你当前的推理，分析还缺什么信息、该调哪个工具
+Action: 工具名（可选：query_order / query_logistics / create_handoff / rag_retrieve）
+Action Input: 工具的 JSON 参数，如 {"order_id": "A1001"}
+Observation: （由系统填充工具返回结果，你看到后继续下一轮）
+
+当信息已足够回答用户时，输出：
+Thought: 信息已足够
+Action: Final Answer
+Action Input: （留空）
+
+示例：
+用户：帮我查下订单 A1001 到哪了
+Thought: 用户问物流，需调用 query_logistics，订单号 A1001 已知
+Action: query_logistics
+Action Input: {"order_id": "A1001"}
+Observation: {"kind":"logistics","user_facing_summary":"订单 A1001 已签收"}
+Thought: 物流信息已获取，可回答
+Action: Final Answer
+Action Input:
+```
+
+**② 模型续写产物（需正则解析）**
+
+```text
+Thought: 用户问订单状态，需调用 query_order，订单号 A1001
+Action: query_order
+Action Input: {"order_id": "A1001"}
+```
+
+**③ 框架拼接观察后再喂回**
+
+```text
+...（上文）
+Observation: {"kind":"order_query","user_facing_summary":"订单 A1001 已发货"}
+```
+
+> 关键点：Observation 由框架拼接进 prompt，下一轮让模型续写；用正则匹配 `Action:` 后内容来路由工具，格式漂移会导致解析失败。
+
+#### 1.5.3 两者对照速记
+
+- 相同的「推理→行动→观察」循环，在 Function Calling 里是**结构化字段**，在 ReAct 里是**文本段落**。
+- Function Calling 的「工具名 + 参数」来自 `tools` 的 JSON Schema；ReAct 的「Action + Action Input」来自 prompt 里的自由文本约定。
+- ReAct 把推理链（`Thought`）天然留在可读文本里；Function Calling 需额外要求模型输出 Thought 才能看到。
+
 ---
 
 ## 2. 拓展：用 Function Calling 实现多工具并行调度
