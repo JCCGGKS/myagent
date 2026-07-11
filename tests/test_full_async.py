@@ -122,15 +122,24 @@ def test_chat_events_is_async_generator_and_emits_events():
 
 
 def test_chat_events_persists_before_final():
-    """先落库再下发 final：进程在落库与下发之间崩溃也不会让客户端收到未持久化的回复。"""
+    """先落库（用户消息尽早、助手回复在 final 前）再下发 final。
+
+    用户消息在请求一开始就落库，助手回复在 final 之前落库；
+    即使处理中刷新页面，用户刚发送的内容也不会丢失。
+    """
     agent = _make_agent()
     order: list[str] = []
 
-    async def _persist(state, request):
-        order.append("persist")
-        return state
+    async def _persist_user(state, request):
+        order.append("persist_user")
+        return None
 
-    agent.message_service.persist = _persist
+    async def _persist_assistant(state, request):
+        order.append("persist_assistant")
+        return None
+
+    agent.message_service.persist_user_message = _persist_user
+    agent.message_service.persist_assistant_reply = _persist_assistant
 
     request = ChatRequest(session_id="s1", message="帮我查一下订单 A1001")
 
@@ -140,8 +149,36 @@ def test_chat_events_persists_before_final():
                 order.append("final")
 
     asyncio.run(_collect())
-    assert "persist" in order and "final" in order
-    assert order.index("persist") < order.index("final")
+    assert {"persist_user", "persist_assistant", "final"} <= set(order)
+    assert order.index("persist_user") < order.index("final")
+    assert order.index("persist_assistant") < order.index("final")
+
+
+def test_user_message_persisted_before_processing():
+    """回归：用户消息在图运行前就落库，处理中被打断（如刷新页面）也不丢消息。"""
+    from app.dao import MemorySessionStore
+
+    store = MemorySessionStore()
+    agent = _make_agent()
+    agent.store = store
+    # 让 message_service 使用真实 store
+    agent.message_service.store = store
+
+    request = ChatRequest(session_id="s1", message="帮我查一下订单 A1001")
+
+    async def _run():
+        # 模拟「请求刚开始就中断」：在图产出首个事件后立即停止消费，
+        # 但此时用户消息应已早早落库。
+        gen = agent.chat_events(request, user_id=1)
+        await gen.__anext__()  # 消费一个事件（intent）后中断
+        # 不 close 也会触发生成器回收；这里显式确认 store 中已有用户消息
+
+    asyncio.run(_run())
+
+    messages = asyncio.run(store.get_messages("s1"))
+    roles = [m["role"] for m in messages]
+    assert "user" in roles, f"用户消息未落库，实际消息: {messages}"
+    assert any(m["role"] == "user" and m["content"] == request.message for m in messages)
 
 
 def test_message_service_persist_is_async():
