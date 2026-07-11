@@ -2,21 +2,22 @@
 
 ## 总体结果
 - 样本总数：1000
-- 命中：550
-- 准确率：55.00%
+- 命中：440
+- 准确率：44.00%
 - 路由分布：
-  - 规则命中：519 条
-  - 未识别（走兜底）：481 条
+  - 规则命中：506 条
+  - 未识别（走兜底）：494 条
   - LLM 兜底：0 条
 
 ## 按主意图
 - `after_sale_refund`: 66/136 = 48.53%
-- `chitchat`: 55/128 = 42.97%
+- `chitchat`: 0/128 = 0.00%
 - `complaint`: 78/126 = 61.90%
 - `handoff_service`: 67/126 = 53.17%
-- `logistics`: 74/159 = 46.54%
-- `order_query`: 97/193 = 50.26%
-- `unrecognize`: 113/132 = 85.61%
+- `logistics`: 77/159 = 48.43%
+- `order_query`: 108/193 = 55.96%
+- `unrecognize`: 44/44 = 100.00%
+- `unsupported_biz`: 0/88 = 0.00%
 
 ## 未命中样本（前 50 条）
 - `case_0002`: `快递咋这么慢`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
@@ -24,48 +25,48 @@
 - `case_0005`: `我要跟人讲`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0006`: `有人吗`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0007`: `服务态度太差`  expected `complaint/complaint.service_complaint`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0009`: `你好`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0010`: `A1346`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0011`: `发货了没有啊`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0012`: `您好`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0014`: `发错货了`  expected `after_sale_refund/after_sale_refund.wrong_goods`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0015`: `地址填错了能改吗`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0017`: `帮我改地址`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0017`: `帮我改地址`  expected `order_query/order_query.modify_address`  actual `order_query/order_query.query_status`（路由：规则命中）
 - `case_0018`: `东西有问题我要退`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0021`: `什么时候好`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0022`: `帮我看下买的东西到哪了`  expected `order_query/order_query.query_status`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0024`: `帮我查一下优惠券`  expected `unsupported_biz/unsupported_biz.out_of_scope`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0025`: `我的包裹是不是丢了`  expected `logistics/logistics.lost_package`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0026`: `能不能快点`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0027`: `在不在`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0029`: `送货咋这么慢`  expected `logistics/logistics.delayed`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0033`: `嗨`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0037`: `我的单子咋样了`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0039`: `谢谢`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0042`: `在吗`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0044`: `我的货发了吗`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0045`: `不想要了能退吗`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0045`: `不想要了能退吗`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
 - `case_0046`: `我想改下收货地址`  expected `order_query/order_query.modify_address`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0048`: `你会做什么`  expected `unsupported_biz/unsupported_biz.out_of_scope`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0049`: `我不想买了能退吗`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0051`: `单子还没好`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0053`: `机器人听不懂`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0054`: `货啥时候能到`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0055`: `我这单啥情况`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0059`: `不想跟机器人说话`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0060`: `运费怎么算`  expected `unsupported_biz/unsupported_biz.out_of_scope`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0061`: `早上好`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0062`: `我的快递咋还没到`  expected `logistics/logistics.not_received`  actual `complaint/complaint.service_complaint`（路由：规则命中）
 - `case_0063`: `还没发吗`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0065`: `收到的货不对`  expected `after_sale_refund/after_sale_refund.wrong_goods`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0067`: `东西还没收到`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0069`: `好了没`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0070`: `给我赔偿`  expected `complaint/complaint.compensate`  actual `complaint/complaint.service_complaint`（路由：规则命中）
+- `case_0071`: `支持哪些支付方式`  expected `unsupported_biz/unsupported_biz.out_of_scope`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0072`: `有消息没`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0074`: `快递丢了怎么办`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`（路由：规则命中）
-- `case_0075`: `退货政策是什么`  expected `unrecognize/unrecognize.unknown`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0074`: `快递丢了怎么办`  expected `logistics/logistics.lost_package`  actual `complaint/complaint.service_complaint`（路由：规则命中）
+- `case_0075`: `退货政策是什么`  expected `unsupported_biz/unsupported_biz.out_of_scope`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
 - `case_0077`: `叫你们负责人来`  expected `handoff_service/handoff_service.request_human`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0079`: `东西坏了能退吗`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
+- `case_0079`: `东西坏了能退吗`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
 - `case_0084`: `多谢了`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0085`: `A1466`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
 - `case_0087`: `A1136`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0090`: `你们这什么破服务`  expected `complaint/complaint.service_complaint`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0093`: `A1290`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0100`: `再查一下`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0102`: `A1461`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0104`: `A1405`  expected `logistics/logistics.not_received`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0105`: `A1318`  expected `order_query/order_query.query_status`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））
-- `case_0106`: `质量太差了要退款`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `complaint/complaint.service_complaint`（路由：规则命中）
+- `case_0089`: `hello`  expected `chitchat/chitchat.greeting`  actual `unrecognize/unrecognize.unknown`（路由：未识别（走兜底））

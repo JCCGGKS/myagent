@@ -10,15 +10,16 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-EVAL_DIR = ROOT / "eval"
+EVAL_DIR = ROOT / "eval" / "intent"
 CASES_PATH = EVAL_DIR / "intent_single_step_cases.json"
 
 # 输出文件
@@ -43,8 +44,8 @@ def save_json(path: Path, data: dict) -> None:
 # ===== 核心：直接调用 IntentRouterService =====
 def run_single_step(use_llm: bool) -> dict:
     """调用 IntentRouterService 跑单点评估，返回 metrics dict。"""
-    from app.models import ConversationState
-    from app.services.routing import IntentRouterService
+    from app.schema import ConversationState
+    from app.business.intent.routing import IntentRouterService
 
     cases = load_json(CASES_PATH)
     router = IntentRouterService.from_env(use_llm=use_llm)
@@ -55,8 +56,8 @@ def run_single_step(use_llm: bool) -> dict:
     llm_hits = 0
 
     for case in cases:
-        state = ConversationState(session_id="eval", user_id="eval", channel="eval")
-        actual = router.route(state, case["message"])
+        state = ConversationState(session_id="eval", user_id=0, channel="eval")
+        actual = asyncio.run(router.route(state, case["message"]))
 
         matched = (
             actual.main_intent == case["expected_main_intent"]
