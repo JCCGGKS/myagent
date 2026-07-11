@@ -115,7 +115,7 @@ function formatSlots(slots: Record<string, any>) {
       </div>
 
       <!-- 空状态 -->
-      <div class="stats-empty" v-if="stats.turnCount === 0 && !stats.pending">
+      <div class="stats-empty" v-if="stats.turnCount === 0 && !store.pending">
         <p>发送消息后显示统计信息</p>
       </div>
     </div>
