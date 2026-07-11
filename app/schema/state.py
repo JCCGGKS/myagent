@@ -38,6 +38,20 @@ class ArchivedTaskState(BaseModel):
     archived_reason: str = ""
 
 
+class PendingIntent(BaseModel):
+    """多意图场景中，排队等待处理的次要意图（见计划 Phase 3）。
+
+    由 ``IntentResult.extra_intents`` 经多轮裁决层（DialoguePolicy / route）入队，
+    用户确认后续办时被激活为 active 意图。
+    """
+
+    main_intent: MainIntentCode
+    sub_intent: SubIntentCode
+    slots: dict[str, str] = Field(default_factory=dict)
+    confidence: float = 0.0
+    reason: str = ""
+
+
 class ConversationState(BaseModel):
     session_id: str
     user_id: int
@@ -67,6 +81,7 @@ class ConversationState(BaseModel):
     handoff: bool = False
     handoff_reason: str = ""
     archived_states: list[ArchivedTaskState] = Field(default_factory=list)
+    pending_intents: list[PendingIntent] = Field(default_factory=list)
     clarification_count: int = 0
     slot_clarification_count: int = 0
     intent_clarification_count: int = 0

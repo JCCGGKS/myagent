@@ -4,13 +4,14 @@ import json
 import logging
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.config import LLMConfig
 from app.schema import IntentResult
 from app.schema.intent import (
     MAIN_INTENT_CODES,
     SUB_INTENT_CODES,
+    ExtraIntent,
     MainIntentCode,
     SubIntentCode,
 )
@@ -28,6 +29,19 @@ VALID_MAIN = set(MAIN_INTENT_CODES)
 VALID_SUB = set(SUB_INTENT_CODES)
 
 
+class LLMIntentItem(BaseModel):
+    """单条意图的结构化输出（用于多意图场景的 intents 列表项）。"""
+
+    model_config = {"populate_by_name": True}
+
+    main_intent: MainIntentCode = "unrecognize"
+    sub_intent: SubIntentCode = "unrecognize.unknown"
+    slots: dict[str, str] = Field(default_factory=dict)
+    confidence: float = 0.8
+    needs_clarification: bool = False
+    reason: str = ""
+
+
 class LLMIntentDecision(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -37,67 +51,84 @@ class LLMIntentDecision(BaseModel):
     confidence: float = 0.8
     needs_clarification: bool = False
     reason: str = ""
+    slots: dict[str, str] = Field(default_factory=dict)
 
-    # Qwen sometimes uses alternate field names; captured transiently by the
-    # validator below and merged into main_intent/sub_intent, not stored.
-    raw_intent: str | None = None
-    raw_sub_intent: str | None = None
+    # 多意图场景：除主意图（intents[0]）外的其余意图（Phase 3 排队到 pending_intents）。
+    intents: list[LLMIntentItem] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
     def _normalize(cls, values: object) -> object:
-        if isinstance(values, dict):
-            # Qwen may return "intent" (dotted "main.sub") instead of main_intent/sub_intent
-            if "intent" in values and "main_intent" not in values:
-                intent_val = values.pop("intent")
-                if isinstance(intent_val, str) and "." in intent_val:
-                    values["main_intent"] = intent_val.split(".")[0]
-                    values["sub_intent"] = intent_val
-                elif isinstance(intent_val, str):
-                    values["main_intent"] = intent_val
+        if not isinstance(values, dict):
+            return values
 
-            # Qwen may return "intents" / "sub_intents" (plural)
-            if "intents" in values:
-                raw = values.pop("intents")
-                if isinstance(raw, list) and raw:
-                    values["main_intent"] = raw[0].split(".")[0] if "." in raw[0] else raw[0]
-                    values["sub_intent"] = raw[0]
-                elif isinstance(raw, str):
-                    values["main_intent"] = raw.split(".")[0] if "." in raw else raw
+        # 主意图已显式提供（如由 _classify_with_chat_completions 预归一化）：
+        # 仅做单条 sanitize，保留已传入的 intents 列表原样。
+        if values.get("main_intent") in VALID_MAIN:
+            single = _normalize_one(values)
+            for key in ("main_intent", "sub_intent", "confidence", "needs_clarification", "reason", "slots"):
+                if key in single:
+                    values[key] = single[key]
+            return values
 
-            if "sub_intents" in values:
-                raw = values.pop("sub_intents")
-                if isinstance(raw, list) and raw:
-                    values["sub_intent"] = raw[0]
+        # 否则尝试从 "intents" 列表推导主意图
+        if isinstance(values.get("intents"), list) and values["intents"]:
+            items = [_normalize_one(it) for it in values["intents"] if isinstance(it, dict)]
+            if items:
+                values["intents"] = items
+                primary = items[0]
+                values["main_intent"] = primary["main_intent"]
+                values["sub_intent"] = primary["sub_intent"]
+                values["confidence"] = primary.get("confidence", 0.8)
+                values["slots"] = primary.get("slots", {})
+                values.setdefault("needs_clarification", False)
+                values.setdefault("reason", "")
+                return values
 
-            # Sanity-check: if main_intent is still not in VALID_MAIN, default
-            if values.get("main_intent") not in VALID_MAIN:
-                # try to salvage from sub_intent
-                si = values.get("sub_intent", "")
-                if isinstance(si, str) and "." in si:
-                    values["main_intent"] = si.split(".")[0]
-                else:
-                    values["main_intent"] = "unrecognize"
+        return _normalize_one(values)
 
-            if values.get("sub_intent") not in VALID_SUB:
-                mi = values.get("main_intent", "unrecognize")
-                # guess a reasonable sub_intent
-                guesses = {
-                    "order_query": "order_query.query_status",
-                    "logistics": "logistics.not_received",
-                    "after_sale_refund": "after_sale_refund.no_reason_return",
-                    "complaint": "complaint.service_complaint",
-                    "handoff_service": "handoff_service.request_human",
-                    "unrecognize": "unrecognize.unknown",
-                    "unsupported_biz": "unsupported_biz.out_of_scope",
-                }
-                values["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
 
-            values.setdefault("confidence", 0.8)
-            values.setdefault("needs_clarification", False)
-            values.setdefault("reason", "")
+def _normalize_one(values: object) -> dict[str, Any]:
+    """把单条意图原始 dict 归一化为 {main_intent, sub_intent, slots, confidence, ...}。"""
+    if not isinstance(values, dict):
+        return {"main_intent": "unrecognize", "sub_intent": "unrecognize.unknown"}
+    values = dict(values)
 
-        return values
+    # Qwen 可能用 "intent"（点分 "main.sub"）代替 main_intent/sub_intent
+    if "intent" in values and "main_intent" not in values:
+        intent_val = values.pop("intent")
+        if isinstance(intent_val, str) and "." in intent_val:
+            values["main_intent"] = intent_val.split(".")[0]
+            values["sub_intent"] = intent_val
+        elif isinstance(intent_val, str):
+            values["main_intent"] = intent_val
+
+    if values.get("main_intent") not in VALID_MAIN:
+        si = values.get("sub_intent", "")
+        if isinstance(si, str) and "." in si:
+            values["main_intent"] = si.split(".")[0]
+        else:
+            values["main_intent"] = "unrecognize"
+
+    if values.get("sub_intent") not in VALID_SUB:
+        mi = values.get("main_intent", "unrecognize")
+        guesses = {
+            "order_query": "order_query.query_status",
+            "logistics": "logistics.not_received",
+            "after_sale_refund": "after_sale_refund.no_reason_return",
+            "complaint": "complaint.service_complaint",
+            "handoff_service": "handoff_service.request_human",
+            "unrecognize": "unrecognize.unknown",
+            "unsupported_biz": "unsupported_biz.out_of_scope",
+        }
+        values["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
+
+    values.setdefault("confidence", 0.8)
+    values.setdefault("needs_clarification", False)
+    values.setdefault("reason", "")
+    raw_slots = values.get("slots")
+    values["slots"] = raw_slots if isinstance(raw_slots, dict) else {}
+    return values
 
 
 class LLMIntentFallbackService:
@@ -162,15 +193,27 @@ class LLMIntentFallbackService:
             return None
 
         logger.info(
-            "LLM fallback success: intent=%s.%s confidence=%.2f",
-            parsed.main_intent, parsed.sub_intent, parsed.confidence,
+            "LLM fallback success: intent=%s.%s confidence=%.2f extras=%d",
+            parsed.main_intent, parsed.sub_intent, parsed.confidence, len(parsed.intents),
         )
+        extra_intents = [
+            ExtraIntent(
+                main_intent=e.main_intent,
+                sub_intent=e.sub_intent,
+                confidence=e.confidence,
+                slots=e.slots,
+                reason=e.reason,
+            )
+            for e in parsed.intents
+        ]
         return IntentResult(
             main_intent=parsed.main_intent,
             sub_intent=parsed.sub_intent,
             confidence=parsed.confidence,
+            slots=parsed.slots,
             needs_clarification=parsed.needs_clarification,
             route_source="llm_fallback",
+            extra_intents=extra_intents,
         )
 
     async def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
@@ -209,68 +252,32 @@ class LLMIntentFallbackService:
             logger.warning("chat.completions JSON decode error: %s raw=%s", repr(exc), content[:200])
             return None
 
-        # Normalize common Qwen field name variants
-        normalized: dict[str, Any] = {}
+        # 多意图：intents 列表优先；否则按单意图字段归一化
+        raw_intents = data.get("intents")
+        if isinstance(raw_intents, list) and raw_intents:
+            intents_norm = [_normalize_one(it) for it in raw_intents if isinstance(it, dict)]
+            if not intents_norm:
+                logger.warning("chat.completions intents list empty/invalid")
+                return None
+            primary = intents_norm[0]
+            extra_llm = [LLMIntentItem(**it) for it in intents_norm[1:]]
+        else:
+            primary = _normalize_one(data)
+            extra_llm = []
 
-        raw_main = (
-            data.get("main_intent")
-            or data.get("main_intent")
-            or data.get("intent")
-            or (data.get("intents")[0] if isinstance(data.get("intents"), list) and data["intents"] else None)
-        )
-        if isinstance(raw_main, str) and "." in raw_main:
-            normalized["main_intent"] = raw_main.split(".")[0]
-            normalized["sub_intent"] = raw_main
-        elif isinstance(raw_main, str):
-            normalized["main_intent"] = raw_main
-
-        if "sub_intent" not in normalized:
-            raw_sub = (
-                data.get("sub_intent")
-                or data.get("sub_intent")
-                or data.get("intent")
-                or (data.get("sub_intents")[0] if isinstance(data.get("sub_intents"), list) else None)
-            )
-            if isinstance(raw_sub, str):
-                normalized["sub_intent"] = raw_sub
-
-        if "main_intent" not in normalized:
-            normalized["main_intent"] = "unrecognize"
-        if "sub_intent" not in normalized:
-            mi = normalized["main_intent"]
-            guesses = {
-                "order_query": "order_query.query_status",
-                "logistics": "logistics.not_received",
-                "after_sale_refund": "after_sale_refund.no_reason_return",
-                "complaint": "complaint.service_complaint",
-                "handoff_service": "handoff_service.request_human",
-                "unrecognize": "unrecognize.unknown",
-                "unsupported_biz": "unsupported_biz.out_of_scope",
-            }
-            normalized["sub_intent"] = guesses.get(mi, "unrecognize.unknown")
-
-        raw_conf = data.get("confidence", data.get("confidence", 0.8))
-        try:
-            normalized["confidence"] = float(raw_conf)
-        except (ValueError, TypeError):
-            normalized["confidence"] = 0.8
-
-        normalized["needs_clarification"] = bool(data.get("needs_clarification", False))
-        normalized["reason"] = str(data.get("reason", ""))
-
-        if normalized["main_intent"] not in VALID_MAIN:
-            logger.warning("LLM returned invalid main_intent=%s, discarding", normalized["main_intent"])
+        if primary["main_intent"] not in VALID_MAIN:
+            logger.warning("LLM returned invalid main_intent=%s, discarding", primary["main_intent"])
             return None
-        if normalized["sub_intent"] not in VALID_SUB:
-            logger.warning("LLM returned invalid sub_intent=%s, discarding", normalized["sub_intent"])
+        if primary["sub_intent"] not in VALID_SUB:
+            logger.warning("LLM returned invalid sub_intent=%s, discarding", primary["sub_intent"])
             return None
 
         try:
-            parsed = LLMIntentDecision(**normalized)
-            logger.debug("chat.completions success: %s", content[:100])
+            parsed = LLMIntentDecision(**primary, intents=extra_llm)
+            logger.debug("chat.completions success: %s intents=%d", content[:100], len(extra_llm) + 1)
             return parsed
         except Exception as exc:
-            logger.warning("LLMIntentDecision construction error: %s normalized=%s", repr(exc), normalized)
+            logger.warning("LLMIntentDecision construction error: %s primary=%s", repr(exc), primary)
             return None
 
     def _safe_dump(self, response: object) -> str:

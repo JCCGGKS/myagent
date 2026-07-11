@@ -19,6 +19,7 @@ from app.schema.chat import ChatRequest, ChatResponse
 from app.schema.intent import (
     ActionCode,
     EmotionState,
+    ExtraIntent,
     IntentResult,
     MainIntentCode,
     SubIntentCode,
@@ -30,6 +31,7 @@ from app.schema.state import (
     ActionRecord,
     ArchivedTaskState,
     ConversationState,
+    PendingIntent,
     ToolExecutionResult,
 )
 
@@ -41,12 +43,14 @@ __all__ = [
     "ChatResponse",
     "ConversationState",
     "EmotionState",
+    "ExtraIntent",
     "HandoffResult",
     "IntentResult",
     "LogisticsEvent",
     "LogisticsInfo",
     "MainIntentCode",
     "OrderInfo",
+    "PendingIntent",
     "SessionRenameRequest",
     "SubIntentCode",
     "ToolExecutionResult",

@@ -123,9 +123,10 @@ class RagRetrieveTool:
     @property
     def description(self) -> str:
         return (
-            "从知识库中检索与用户问题相关的文档片段。"
-            "当用户问题可能涉及产品信息、政策条款、FAQ 时，调用此工具。"
-            "参数 query 应为用户问题的简洁表述或关键词。"
+            "从企业知识库（FAQ / 政策 / 商品 / 帮助文档）检索事实性答案，"
+            "用于与具体订单无关的通用政策或常识问题。"
+            "不适用：查询特定订单状态或物流进度（请用 order / logistics 业务工具，需 order_id）、"
+            "发起退款等写操作、以及打招呼 / 致谢 / 闲聊（直接回复即可）。"
         )
 
     def to_tool_schema(self) -> dict[str, Any]:

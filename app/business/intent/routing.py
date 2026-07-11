@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.schema import ConversationState, IntentResult
+from app.schema import ConversationState, IntentResult, PendingIntent
 from app.business.tools.domain import extract_order_id
 from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
+from app.business.intent.policy import DialoguePolicy
 from app.business.intent.llm_fallback import LLMIntentFallbackService
 from app.business.context.state_summary import build_state_summary
 
@@ -85,6 +86,9 @@ class IntentRouterService:
         if intent is None:
             llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
+                # 合并规则层已抽出的实体，避免 LLM 漏抽订单号
+                if order_id:
+                    llm_intent.slots.setdefault("order_id", order_id)
                 intent = llm_intent
                 candidate_intents = [intent.main_intent, previous_main_intent]
             else:
@@ -115,6 +119,9 @@ class IntentRouterService:
                 )
                 intent = llm_intent
 
+        # 多意图排队与续办（Phase 3）：入队次要意图 / 激活队首（继续信号）/ 去重
+        self._handle_pending_intents(state, message, intent)
+
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unrecognize", "unsupported_biz", intent.main_intent}
         logger.debug(
@@ -129,6 +136,62 @@ class IntentRouterService:
         if self.llm_fallback_service is None or not self.llm_fallback_service.enabled:
             return None
         return await self.llm_fallback_service.classify(message, previous_sub_intent)
+
+    # 续办信号关键词（Phase 3）：用户未给出明确新意图、但希望处理下一个待办
+    _CONTINUE_SIGNALS = ("继续", "下一个", "接着", "还有呢", "处理下一个", "再处理", "然后呢", "下一个吧")
+
+    def _is_continue_signal(self, lowered_message: str) -> bool:
+        return any(sig in lowered_message for sig in self._CONTINUE_SIGNALS)
+
+    def _handle_pending_intents(
+        self, state: ConversationState, message: str, intent: IntentResult
+    ) -> None:
+        """多意图排队与续办（Phase 3）。原地修改 ``state.pending_intents`` 与 ``intent``。
+
+        - 用户显式说出某待处理意图 → 该意图出队（已被激活为当前意图）。
+        - 本轮为新的多意图 → 次要意图入队（去重）。
+        - 有待处理意图且无明确新意图、命中「继续」信号 → 激活队首为当前意图。
+        """
+        lowered = message.casefold()
+
+        # 1) 去重：当前意图恰好是某个待处理意图 → 出队
+        for idx, p in enumerate(list(state.pending_intents)):
+            if p.main_intent == intent.main_intent and p.sub_intent == intent.sub_intent:
+                state.pending_intents.pop(idx)
+                break
+
+        # 2) 新多意图：将次要意图入队（同一 main+sub 不重复入队）
+        #    守卫：上一轮仍在澄清中（needs_clarification）时，本轮回复优先视作填槽，不新开意图。
+        if intent.extra_intents and not state.needs_clarification:
+            for extra in intent.extra_intents:
+                if any(
+                    p.main_intent == extra.main_intent and p.sub_intent == extra.sub_intent
+                    for p in state.pending_intents
+                ):
+                    continue
+                state.pending_intents.append(
+                    PendingIntent(
+                        main_intent=extra.main_intent,
+                        sub_intent=extra.sub_intent,
+                        slots=extra.slots,
+                        confidence=extra.confidence,
+                        reason=extra.reason,
+                    )
+                )
+        # 3) 续办触发：有待处理 + 未识别新意图 + 继续信号 → 激活队首
+        elif (
+            state.pending_intents
+            and not state.needs_clarification
+            and intent.main_intent == "unrecognize"
+            and self._is_continue_signal(lowered)
+        ):
+            nxt = state.pending_intents.pop(0)
+            intent.main_intent = nxt.main_intent
+            intent.sub_intent = nxt.sub_intent
+            intent.slots = dict(nxt.slots)
+            intent.confidence = nxt.confidence
+            intent.needs_clarification = False
+            intent.route_source = "pending_advance"
 
     def _rule_matches(
         self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any
@@ -219,6 +282,8 @@ class IntentRouterService:
 class StateTrackerService:
     def __init__(self, schema_registry: IntentSchemaRegistry | None = None) -> None:
         self.schema_registry = schema_registry or IntentSchemaRegistry()
+        # 多轮覆盖决策抽离到独立 DialoguePolicy（Phase 2），apply 负责把决策写入 state。
+        self.policy = DialoguePolicy(schema_registry=self.schema_registry)
 
     def apply(self, state: ConversationState, intent: IntentResult) -> ConversationState:
         previous_main_intent = state.current_main_intent
@@ -230,7 +295,7 @@ class StateTrackerService:
             state.session_id, intent.main_intent, intent.sub_intent, intent.is_intent_shift,
         )
 
-        if intent.is_intent_shift and previous_main_intent != "unrecognize":
+        if self.policy.should_archive(intent, previous_main_intent):
             state.archived_states.append(
                 {
                     "main_intent": previous_main_intent,
@@ -242,7 +307,7 @@ class StateTrackerService:
                     "archived_reason": f"intent_shift_to_{intent.main_intent}",
                 }
             )
-            inherited_slots = self._inherit_slots(previous_main_intent, intent.main_intent, previous_slots)
+            inherited_slots = self.policy.inherit_slots(previous_main_intent, intent.main_intent, previous_slots)
             state.slots = inherited_slots
             state.confirmed_slots = list(inherited_slots.keys())
         elif intent.main_intent == "unrecognize":
@@ -293,15 +358,6 @@ class StateTrackerService:
     def build_state_summary(self, state: ConversationState) -> str:
         """委托给共享的自由函数（避免 business 内部循环依赖）。"""
         return build_state_summary(state)
-
-    def _inherit_slots(
-        self, previous_intent: str, next_intent: str, previous_slots: dict[str, str]
-    ) -> dict[str, str]:
-        next_schema = self.schema_registry.get(next_intent)
-        inheritable = set(next_schema.get("inheritable", []))
-        if previous_intent == next_intent:
-            inheritable |= set(previous_slots.keys())
-        return {key: value for key, value in previous_slots.items() if key in inheritable}
 
 
 class HandoffClarificationPolicy:

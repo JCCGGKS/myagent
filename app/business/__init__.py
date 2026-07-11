@@ -16,6 +16,7 @@ from app.business.tools.domain import (
 )
 from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.business.intent.llm_fallback import LLMIntentFallbackService
+from app.business.intent.policy import DialoguePolicy
 from app.business.intent.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
@@ -27,6 +28,7 @@ __all__ = [
     "ClarificationPromptRegistry",
     "ClarificationService",
     "ContextService",
+    "DialoguePolicy",
     "HandoffService",
     "HandoffClarificationPolicy",
     "IntentRouterService",
