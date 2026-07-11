@@ -19,7 +19,6 @@ class Session(Base):
     channel: Mapped[str] = mapped_column(String(32), default="web")
     title: Mapped[str] = mapped_column(String(128), default="新会话")
     status: Mapped[int] = mapped_column(SmallInteger, default=0)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)

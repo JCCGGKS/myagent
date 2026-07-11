@@ -123,7 +123,6 @@ class MemorySessionStore(SessionStore):
                 "user_id": state.user_id,
                 "channel": state.channel,
                 "status": SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE,
-                "summary": state.running_summary or state.summary,
                 "updated_at": _now(),
             }
         )
@@ -264,7 +263,6 @@ class SqlSessionStore(SessionStore):
             row.user_id = state.user_id
             row.channel = state.channel
             row.status = SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE
-            row.summary = state.running_summary or state.summary
             db.commit()
         return state
 
