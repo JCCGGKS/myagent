@@ -173,6 +173,29 @@ function triggerUpload() {
   fileInput.value?.click();
 }
 
+// 统一的上传入口：上传完成后若失败，弹出具体的错误提示
+async function runUpload(fileList: FileList, selectedDocType: "markdown" | "json") {
+  uploading.value = true;
+  try {
+    const result = await store.uploadKnowledgeFiles(fileList, selectedDocType);
+    if (result.failedCount > 0) {
+      const parts: string[] = [];
+      if (result.invalidNames.length) {
+        const typeLabel = selectedDocType === "json" ? "JSON" : "Markdown";
+        parts.push(
+          `以下文件后缀与所选「${typeLabel}」类型不一致，已跳过：\n${result.invalidNames.join(", ")}`,
+        );
+      }
+      if (result.serverErrors.length) {
+        parts.push(`服务端处理失败：\n${result.serverErrors.join("\n")}`);
+      }
+      showError("部分文件上传失败", parts.join("\n\n"));
+    }
+  } finally {
+    uploading.value = false;
+  }
+}
+
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = input.files;
@@ -189,9 +212,7 @@ function onFileChange(event: Event) {
     return;
   }
 
-  uploading.value = true;
-  store.uploadKnowledgeFiles(files, docType.value).finally(() => {
-    uploading.value = false;
+  runUpload(files, docType.value).finally(() => {
     input.value = "";
   });
 }
@@ -211,10 +232,7 @@ function onDrop(event: DragEvent) {
     return;
   }
 
-  uploading.value = true;
-  store.uploadKnowledgeFiles(files, docType.value).finally(() => {
-    uploading.value = false;
-  });
+  runUpload(files, docType.value);
 }
 
 function statusLabel(item: KnowledgeFileItem): string {

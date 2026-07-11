@@ -200,9 +200,27 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
-  async function uploadKnowledgeFiles(fileList: FileList | null, docType = "markdown") {
+  interface UploadSummary {
+    okCount: number;
+    failedCount: number;
+    // 后缀不支持或与所选文档类型不一致而被本地跳过的文件名
+    invalidNames: string[];
+    // 服务端拒绝 / 网络错误的可读信息
+    serverErrors: string[];
+  }
+
+  async function uploadKnowledgeFiles(
+    fileList: FileList | null,
+    docType = "markdown",
+  ): Promise<UploadSummary> {
+    const summary: UploadSummary = {
+      okCount: 0,
+      failedCount: 0,
+      invalidNames: [],
+      serverErrors: [],
+    };
     if (!fileList?.length) {
-      return;
+      return summary;
     }
     const SUPPORTED = [".md", ".markdown", ".json"];
     const MARKDOWN_SUFFIXES = [".md", ".markdown"];
@@ -221,20 +239,26 @@ export const useChatStore = defineStore("chat", () => {
       return true;
     };
     const valid = files.filter(isSupported);
-    const invalidCount = files.length - valid.length;
+    summary.invalidNames = files.filter((f) => !isSupported(f)).map((f) => f.name);
 
     const results = await Promise.allSettled(
       valid.map((file) => uploadKnowledgeFile(file, docType)),
     );
-    const rejectedCount = results.filter((r) => r.status === "rejected").length;
-    const okCount = results.filter((r) => r.status === "fulfilled").length;
-    const failedCount = rejectedCount + invalidCount;
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        summary.okCount += 1;
+      } else {
+        summary.serverErrors.push(
+          r.reason instanceof Error ? r.reason.message : String(r.reason),
+        );
+      }
+    }
+    summary.failedCount = summary.invalidNames.length + summary.serverErrors.length;
     statusText.value =
-      `已上传 ${okCount} 个文件` +
-      (failedCount
-        ? `，${failedCount} 个失败（仅支持 .md / .markdown / .json，且后缀需与所选文档类型一致）`
-        : "");
+      `已上传 ${summary.okCount} 个文件` +
+      (summary.failedCount ? `，${summary.failedCount} 个失败` : "");
     await fetchKnowledgeFiles();
+    return summary;
   }
 
   async function removeKnowledgeFile(id: number) {
