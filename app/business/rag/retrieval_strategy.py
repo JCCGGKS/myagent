@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import yaml
-
-from app.pkgs.vector import get_qdrant_client
+from app.pkgs.vector import QdrantClient, get_qdrant_client
 
 
 class Document:
