@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator, Awaitable
 from typing import Any, Callable
 
 from app.schema import ChatRequest, ChatResponse, ConversationState
@@ -38,13 +39,13 @@ except ImportError:  # pragma: no cover
 def _make_summary_fold_fn(
     llm_client: Any | None,
     llm_model: str | None,
-) -> Callable[[str, list[dict]], str] | None:
-    """构造摘要折叠器：把已有摘要与新增溢出消息合并为一段连贯摘要。
+) -> Callable[[str, list[dict]], Awaitable[str]] | None:
+    """构造摘要折叠器（异步）：把已有摘要与新增溢出消息合并为一段连贯摘要。
 
     无 LLM 客户端时返回 None，由 ContextService 退化为拼接截断。
     """
 
-    def fold(old_summary: str, overflow: list[dict]) -> str:
+    async def fold(old_summary: str, overflow: list[dict]) -> str:
         new_text = "\n".join(
             f"{m.get('role', '')}: {m.get('content', '')}"
             for m in overflow
@@ -67,7 +68,7 @@ def _make_summary_fold_fn(
             },
         ]
         try:
-            resp = llm_client.chat.completions.create(model=llm_model, messages=messages)
+            resp = await llm_client.chat.completions.create(model=llm_model, messages=messages)
             summary = resp.choices[0].message.content or ""
             return summary.strip()
         except Exception as exc:  # noqa: BLE001
@@ -171,11 +172,11 @@ class CustomerServiceAgent:
         builder.add_edge("context_compressor", END)
         return builder.compile()
 
-    def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
+    async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
-        state = self._execute_request(request, user_id)
+        state = await self._execute_request(request, user_id)
         # 边界落库：图运行期间只收集数据，结束后批量写入会话存储
-        state = self.message_service.persist(state, request)
+        state = await self.message_service.persist(state, request)
         logger.info(
             "chat done session=%s user=%s intent=%s.%s action=%s",
             request.session_id, user_id,
@@ -183,22 +184,35 @@ class CustomerServiceAgent:
         )
         return self._build_chat_response(state)
 
-    def chat_events(self, request: ChatRequest, user_id: int) -> list[dict[str, Any]]:
-        """LangGraph 图驱动的事件生成（与 chat() 行为一致）。"""
-        payload = self._build_payload(request, user_id)
-        events: list[dict[str, Any]] = []
+    async def chat_events(self, request: ChatRequest, user_id: int) -> "AsyncGenerator[dict[str, Any], None]":
+        """LangGraph 图驱动的事件生成（与 chat() 行为一致，异步生成器）。
+
+        使用 ``graph.astream`` 按节点分块产出事件，I/O 等待时让出事件循环，
+        避免单请求阻塞整个事件循环（详见 plans/full-async-plan.md）。
+
+        落库顺序：图运行期间实时下发 intent/state/tool_result 等事件；
+        **final 事件在落库之后才下发**——先 ``persist``（用户消息 + 助手回复 +
+        状态快照）再 yield ``final``，避免「客户端已收到回复但 DB 尚未落库」的
+        窗口（进程在二者间崩溃会导致上下文丢失）。若图未走到 response_generator
+        （如澄清分支）则不产生 final 事件，落库仍照常进行。
+        """
+        payload = await self._build_payload(request, user_id)
         final_state: ConversationState | None = None
-        for chunk in self.graph.stream(payload):
+        async for chunk in self.graph.astream(payload):
             for node_name, node_payload in chunk.items():
                 # node_payload is the full payload dict: {"state": ..., "request": ...}
                 state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
                 if state:
                     final_state = state
-                    events.extend(self._node_state_to_events(node_name, state))
-        # 边界落库：图运行结束后批量写入（与 chat() 一致的落库时机）
+                    for ev in self._node_state_to_events(node_name, state):
+                        # final 需先落库再下发，故此处暂不下发，留待落库后统一 yield
+                        if ev.get("type") == "final":
+                            continue
+                        yield ev
+        # 边界落库：先持久化（用户消息 + 助手回复 + 状态快照），再下发 final 事件。
         if final_state is not None:
-            self.message_service.persist(final_state, request)
-        return events
+            await self.message_service.persist(final_state, request)
+            yield {"type": "final", "response": self._build_chat_response(final_state).model_dump()}
 
     def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
         """将节点执行后的状态转为事件列表（供 chat_events 和 graph.stream 共用）。"""
@@ -235,20 +249,21 @@ class CustomerServiceAgent:
         # 其他节点不推事件（或推通用 trace）
         return events
 
-    def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
-        payload = self._build_payload(request, user_id)
-        payload = self.graph.invoke(payload)
+    async def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
+        payload = await self._build_payload(request, user_id)
+        payload = await self.graph.ainvoke(payload)
         return payload["state"]
 
-    def _build_payload(self, request: ChatRequest, user_id: int) -> dict[str, Any]:
-        state = self.store.get(request.session_id) or ConversationState(
+    async def _build_payload(self, request: ChatRequest, user_id: int) -> dict[str, Any]:
+        # 注意括号：先 await，再做 or 默认构造，避免 await 作用于整个 or 表达式
+        state = (await self.store.get(request.session_id)) or ConversationState(
             session_id=request.session_id,
             user_id=user_id,
             channel=request.channel,
         )
         return {"state": state, "request": request}
 
-    def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
         message = normalize_whitespace(request.message)
@@ -268,10 +283,10 @@ class CustomerServiceAgent:
         payload["state"] = state
         return payload
 
-    def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=intent_router session=%s", state.session_id)
-        state.intent_result = self.intent_router_service.route(
+        state.intent_result = await self.intent_router_service.route(
             state, state.recent_messages[-1]["content"]
         )
         logger.debug(
@@ -283,7 +298,7 @@ class CustomerServiceAgent:
         payload["state"] = state
         return payload
 
-    def state_tracker(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def state_tracker(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         intent = state.intent_result
         if intent is None:
@@ -293,7 +308,7 @@ class CustomerServiceAgent:
         payload["state"] = self.state_tracker_service.apply(state, intent)
         return payload
 
-    def policy_layer(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def policy_layer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=policy_layer session=%s", state.session_id)
         payload["state"] = self.policy_service.decide(state)
@@ -317,35 +332,35 @@ class CustomerServiceAgent:
         logger.debug("route_after_policy -> response_generator session=%s", state.session_id)
         return "response_generator"
 
-    def clarification_node(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def clarification_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=clarification_node session=%s", state.session_id)
-        payload["state"] = self.clarification_service.generate(state)
+        payload["state"] = await self.clarification_service.generate(state)
         return payload
 
-    def agent_node(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def agent_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=agent_node session=%s", state.session_id)
-        payload["state"] = self.agent_node_service.run(state)
+        payload["state"] = await self.agent_node_service.run(state)
         return payload
 
-    def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.info("node=handoff_node session=%s reason=%s", state.session_id, state.handoff_reason)
         payload["state"] = self.tool_executor.create_handoff(state)
         return payload
 
-    def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=response_generator session=%s", state.session_id)
-        payload["state"] = self.response_service.generate(state)
+        payload["state"] = await self.response_service.generate(state)
         logger.debug("response=%r session=%s", state.reply[:80] if state.reply else "", state.session_id)
         return payload
 
-    def context_compressor(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def context_compressor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
         logger.debug("node=context_compressor session=%s", state.session_id)
-        payload["state"] = self.context_service.compress(state)
+        payload["state"] = await self.context_service.compress(state)
         return payload
 
     def _build_chat_response(self, state: ConversationState) -> ChatResponse:

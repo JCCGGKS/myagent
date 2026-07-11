@@ -8,7 +8,7 @@ from app.schema import ConversationState
 from app.business.prompts import build_clarification_system_prompt
 from app.utils import build_action_record, load_yaml_file
 from app.utils.config_paths import get_config_dir
-from app.utils.llm import call_llm
+from app.utils.llm import call_llm_async
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,11 @@ class ClarificationService:
         self.llm_client = llm_client
         self.llm_model = llm_model
 
-    def generate(self, state: ConversationState) -> ConversationState:
+    async def generate(self, state: ConversationState) -> ConversationState:
         # 优先用澄清提示词走 LLM 生成追问话术
         if self.llm_client is not None and self.llm_model:
             examples = self._build_clarification_examples(state)
-            reply = self._call_llm(build_clarification_system_prompt(state, examples=examples))
+            reply = await self._call_llm(build_clarification_system_prompt(state, examples=examples))
             if reply:
                 state.reply = reply
                 state.latest_action_name = "clarification_node"
@@ -86,10 +86,10 @@ class ClarificationService:
         state.action_history.append(build_action_record("clarification_node", state.reply))
         return state
 
-    def _call_llm(self, system_prompt: str) -> str:
-        """调用 LLM 生成澄清话术（需配置真实 LLM client）。失败时返回空串，由上层模板兜底。"""
+    async def _call_llm(self, system_prompt: str) -> str:
+        """调用 LLM 生成澄清话术（需配置真实 LLM client，异步）。失败时返回空串，由上层模板兜底。"""
         logger.debug("ClarificationService: calling LLM")
-        result = call_llm(
+        result = await call_llm_async(
             self.llm_client,
             self.llm_model,
             [{"role": "system", "content": system_prompt}],

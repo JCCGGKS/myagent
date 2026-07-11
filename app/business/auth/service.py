@@ -30,16 +30,16 @@ class AuthError(Exception):
         self.status_code = status_code
 
 
-def register(data: UserRegister, user_dao: UserDAO) -> UserInfo:
+async def register(data: UserRegister, user_dao: UserDAO) -> UserInfo:
     """开放注册：校验用户名/邮箱唯一后写入。"""
-    if user_dao.get_by_username(data.username) is not None:
+    if await user_dao.get_by_username(data.username) is not None:
         log_warning("auth", "register username_exists username=%s", data.username)
         raise AuthError("用户名已存在", status_code=409)
-    if user_dao.get_by_email(data.email) is not None:
+    if await user_dao.get_by_email(data.email) is not None:
         log_warning("auth", "register email_exists email=%s", data.email)
         raise AuthError("邮箱已注册", status_code=409)
 
-    user = user_dao.create(
+    user = await user_dao.create(
         username=data.username,
         email=data.email,
         password_hash=hash_password(data.password),
@@ -48,9 +48,9 @@ def register(data: UserRegister, user_dao: UserDAO) -> UserInfo:
     return UserInfo(id=user["id"], username=user["username"], email=user["email"])
 
 
-def login(data: UserLogin, user_dao: UserDAO) -> LoginResponse:
+async def login(data: UserLogin, user_dao: UserDAO) -> LoginResponse:
     """校验用户名与密码，成功返回 access token 及用户信息。"""
-    user = user_dao.get_by_username(data.username)
+    user = await user_dao.get_by_username(data.username)
     if user is None or not verify_password(data.password, user["password_hash"]):
         log_warning("auth", "login failed username=%s reason=%s", data.username, "not_found_or_bad_password")
         raise AuthError("用户名或密码错误", status_code=401)
@@ -62,9 +62,9 @@ def login(data: UserLogin, user_dao: UserDAO) -> LoginResponse:
     )
 
 
-def forgot_password(data: ForgotPassword, user_dao: UserDAO) -> None:
+async def forgot_password(data: ForgotPassword, user_dao: UserDAO) -> None:
     """找回密码：邮箱未注册直接报错，已注册则签发 reset token 并发送邮件。"""
-    user = user_dao.get_by_email(data.email)
+    user = await user_dao.get_by_email(data.email)
     if user is None:
         log_warning("auth", "forgot_password email_not_registered email=%s", data.email)
         raise AuthError("邮箱地址未注册", status_code=404)
@@ -83,7 +83,7 @@ def forgot_password(data: ForgotPassword, user_dao: UserDAO) -> None:
     log_info("auth", "forgot_password sent user_id=%s email=%s", user["id"], user["email"])
 
 
-def reset_password(data: ResetPassword, user_dao: UserDAO) -> None:
+async def reset_password(data: ResetPassword, user_dao: UserDAO) -> None:
     """凭 reset token 重置密码。"""
     try:
         payload = decode_token(data.token, expected_purpose="reset")
@@ -92,23 +92,23 @@ def reset_password(data: ResetPassword, user_dao: UserDAO) -> None:
         raise AuthError(f"重置凭证无效: {exc}", status_code=400) from exc
 
     user_id = payload.get("user_id")
-    user = user_dao.get_by_id(user_id)
+    user = await user_dao.get_by_id(user_id)
     if user is None:
         log_warning("auth", "reset_password user_not_found user_id=%s", user_id)
         raise AuthError("用户不存在", status_code=404)
 
-    user_dao.update_password(user_id, hash_password(data.new_password))
+    await user_dao.update_password(user_id, hash_password(data.new_password))
     log_info("auth", "reset_password success user_id=%s", user_id)
 
 
-def change_password(user_id: int, data: ChangePassword, user_dao: UserDAO) -> None:
+async def change_password(user_id: int, data: ChangePassword, user_dao: UserDAO) -> None:
     """登录用户修改密码：验证旧密码后设新密码。"""
-    user = user_dao.get_by_id(user_id)
+    user = await user_dao.get_by_id(user_id)
     if user is None:
         log_warning("auth", "change_password user_not_found user_id=%s", user_id)
         raise AuthError("用户不存在", status_code=404)
     if not verify_password(data.old_password, user["password_hash"]):
         log_warning("auth", "change_password wrong_old_password user_id=%s", user_id)
         raise AuthError("原密码错误", status_code=400)
-    user_dao.update_password(user_id, hash_password(data.new_password))
+    await user_dao.update_password(user_id, hash_password(data.new_password))
     log_info("auth", "change_password success user_id=%s", user_id)

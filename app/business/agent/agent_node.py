@@ -7,7 +7,7 @@ from app.schema import ConversationState
 from app.business.prompts import build_agent_system_prompt
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas
-from app.utils.llm import call_llm
+from app.utils.llm import call_llm_async
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +34,14 @@ class AgentNodeService:
         self.tool_executor = tool_executor or ToolExecutor()
         self.max_tool_rounds = max_tool_rounds
 
-    def run(self, state: ConversationState) -> ConversationState:
-        """执行 ReAct 循环：调 LLM → 无 tool_calls 则交给 generator；有 tool_calls 则执行后继续。"""
+    async def run(self, state: ConversationState) -> ConversationState:
+        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则交给 generator；有 tool_calls 则执行后继续。"""
         messages = self._build_messages(state)
 
         for _round in range(self.max_tool_rounds):
             logger.debug("agent_node: round %d, session=%s", _round, state.session_id)
 
-            response = self._call_llm(messages)
+            response = await self._call_llm(messages)
 
             if response.get("tool_calls"):
                 for tool_call in response["tool_calls"]:
@@ -89,7 +89,7 @@ class AgentNodeService:
 
         return messages
 
-    def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        """调用 LLM，返回响应（包含 content 或 tool_calls）。"""
+    async def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """调用 LLM（异步），返回响应（包含 content 或 tool_calls）。"""
         logger.debug("agent_node: calling LLM with %d messages", len(messages))
-        return call_llm(self.llm_client, self.llm_model, messages, tools=self.tools)
+        return await call_llm_async(self.llm_client, self.llm_model, messages, tools=self.tools)

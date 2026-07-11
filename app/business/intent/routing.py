@@ -38,7 +38,7 @@ class IntentRouterService:
         self.llm_fallback_service = llm_fallback_service
         self.rule_registry = rule_registry or IntentRuleRegistry()
 
-    def route(self, state: ConversationState, message: str) -> IntentResult:
+    async def route(self, state: ConversationState, message: str) -> IntentResult:
         lowered = message.casefold()
         order_id = extract_order_id(message)
         previous_main_intent = state.current_main_intent
@@ -83,7 +83,7 @@ class IntentRouterService:
 
         # LLM 兜底分类
         if intent is None:
-            llm_intent = self._route_with_llm_fallback(message, previous_sub_intent)
+            llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
                 intent = llm_intent
                 candidate_intents = [intent.main_intent, previous_main_intent]
@@ -105,7 +105,7 @@ class IntentRouterService:
 
         # 规则置信度低时，尝试用 LLM 结果覆盖
         if intent.route_source == "rule" and intent.confidence < 0.8:
-            llm_intent = self._route_with_llm_fallback(message, previous_sub_intent)
+            llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
                 logger.info(
                     "Rule result overridden by LLM: %s.%s -> %s.%s session=%s",
@@ -123,12 +123,12 @@ class IntentRouterService:
         )
         return intent
 
-    def _route_with_llm_fallback(
+    async def _route_with_llm_fallback(
         self, message: str, previous_sub_intent: str
     ) -> IntentResult | None:
         if self.llm_fallback_service is None or not self.llm_fallback_service.enabled:
             return None
-        return self.llm_fallback_service.classify(message, previous_sub_intent)
+        return await self.llm_fallback_service.classify(message, previous_sub_intent)
 
     def _rule_matches(
         self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any

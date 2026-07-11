@@ -17,9 +17,9 @@ from app.schema.intent import (
 from app.business.prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
 
 try:
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 except ImportError:  # pragma: no cover
-    OpenAI = None
+    AsyncOpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class LLMIntentFallbackService:
         if not use_llm:
             logger.info("LLM fallback disabled: use_llm=False")
             return
-        if OpenAI is None:
+        if AsyncOpenAI is None:
             logger.warning("LLM fallback disabled: openai SDK not installed")
             return
         if not config.is_usable:
@@ -127,14 +127,14 @@ class LLMIntentFallbackService:
         }
         if config.base_url:
             client_kwargs["base_url"] = config.base_url
-        self.client = OpenAI(**client_kwargs)
-        logger.info("LLMIntentFallbackService initialized model=%s", config.model)
+        self.client = AsyncOpenAI(**client_kwargs)
+        logger.info("LLMIntentFallbackService initialized model=%s (async)", config.model)
 
     @property
     def enabled(self) -> bool:
         return self.client is not None
 
-    def classify(self, message: str, previous_sub_intent: str) -> IntentResult | None:
+    async def classify(self, message: str, previous_sub_intent: str) -> IntentResult | None:
         if self.client is None:
             logger.debug("LLM fallback skipped: client not available")
             return None
@@ -145,7 +145,7 @@ class LLMIntentFallbackService:
         )
         try:
             prompt = build_llm_intent_user_prompt(message, previous_sub_intent)
-            parsed = self._classify_with_chat_completions(prompt)
+            parsed = await self._classify_with_chat_completions(prompt)
         except Exception as exc:
             logger.warning("LLM fallback classify crashed: %s", repr(exc))
             return None
@@ -173,10 +173,10 @@ class LLMIntentFallbackService:
             route_source="llm_fallback",
         )
 
-    def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
-        """Call chat.completions and parse the JSON response."""
+    async def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
+        """Call chat.completions (async) and parse the JSON response."""
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.config.model,
                 messages=[
                     {"role": "system", "content": LLM_INTENT_SYSTEM_PROMPT},
