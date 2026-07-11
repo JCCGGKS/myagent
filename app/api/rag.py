@@ -94,7 +94,7 @@ async def knowledge_upload(
 
     # 先落文件元信息记录（处理中），id 作为 doc_id 透传入库，便于按文档删向量
     file_dao = get_knowledge_file_dao()
-    record = file_dao.create(
+    record = await file_dao.create(
         user_id=current_user.id,
         filename=file.filename,
         file_size=file_size,
@@ -107,7 +107,7 @@ async def knowledge_upload(
 
     # 向量化未启用（缺 embedding 配置）时直接判失败，避免显示“成功但 0 向量”的误导状态
     if ingestion.embedding_client is None:
-        file_dao.update_status(
+        await file_dao.update_status(
             doc_id,
             KNOWLEDGE_FILE_STATUS_ERROR,
             error_message="向量化未启用：缺少 embedding.api_key 配置，未写入任何向量",
@@ -149,10 +149,10 @@ async def knowledge_upload(
             file.filename,
             exc,
         )
-        file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_ERROR, error_message=str(exc))
+        await file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_ERROR, error_message=str(exc))
         raise
 
-    file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_SUCCESS, chunk_count=chunk_count)
+    await file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_SUCCESS, chunk_count=chunk_count)
     log_info(
         "rag",
         "knowledge_upload success user=%s file=%s doc_type=%s chunk_count=%d",
@@ -161,29 +161,29 @@ async def knowledge_upload(
         doc_type,
         chunk_count,
     )
-    return _serialize_knowledge_file(file_dao.get_by_id(doc_id))
+    return _serialize_knowledge_file(await file_dao.get_by_id(doc_id))
 
 
 @router.get("/knowledge/files")
-def list_knowledge_files(
+async def list_knowledge_files(
     request: Request,
 ) -> list[dict[str, Any]]:
     current_user = request.state.user
     """列出当前用户的知识库文件（按上传时间倒序，已软删除项除外）。"""
     file_dao = get_knowledge_file_dao()
-    records = file_dao.list_by_user(current_user.id)
+    records = await file_dao.list_by_user(current_user.id)
     return [_serialize_knowledge_file(r) for r in records]
 
 
 @router.delete("/knowledge/files/{file_id}")
-def delete_knowledge_file(
+async def delete_knowledge_file(
     file_id: int,
     request: Request,
 ) -> dict[str, Any]:
     current_user = request.state.user
     """删除知识库文件（软删除元信息 + 清理 Qdrant 向量，需归属当前用户）。"""
     file_dao = get_knowledge_file_dao()
-    record = file_dao.get_by_id(file_id)
+    record = await file_dao.get_by_id(file_id)
     if record is None:
         raise HTTPException(status_code=404, detail="文件不存在")
     if record["user_id"] != current_user.id:
@@ -191,7 +191,7 @@ def delete_knowledge_file(
 
     # 清理该文档的全部向量（按 doc_id 过滤），避免脏召回
     get_qdrant_client().delete_by_doc_id(file_id)
-    file_dao.delete(file_id)
+    await file_dao.delete(file_id)
     log_info("rag", "delete_knowledge_file user=%s file_id=%s", current_user.id, file_id)
     return {"id": file_id, "deleted": True}
 

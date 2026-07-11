@@ -16,7 +16,7 @@ from app.business import (
 )
 from app.config import load_llm_config
 from app.business.dialog import SessionService, get_session_service
-from app.pkgs.llm import build_openai_client
+from app.pkgs.llm import build_async_openai_client
 from app.schema import (
     ChatRequest,
     ChatResponse,
@@ -26,7 +26,7 @@ from app.utils import log_error, log_info, log_warning
 
 session_service: SessionService = get_session_service()
 llm_config = load_llm_config()
-llm_client = build_openai_client(llm_config)
+llm_client = build_async_openai_client(llm_config)
 agent = CustomerServiceAgent(
     store=session_service,
     order_service=OrderService(),
@@ -41,12 +41,15 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatResponse)
-def chat(
+async def chat(
     http_request: Request,
     request: ChatRequest,
 ) -> ChatResponse:
     user_id = http_request.state.user.id
-    return agent.chat(request, user_id=user_id)
+    # 先登记会话归属：即使本次 agent 执行失败未落库，会话也已存在，
+    # 后续 rename / get_messages / delete 不会因找不到会话而 404。
+    await session_service.ensure_session(request.session_id, user_id, request.channel)
+    return await agent.chat(request, user_id=user_id)
 
 
 def _event_to_sse(event: dict[str, Any]) -> str:
@@ -54,8 +57,11 @@ def _event_to_sse(event: dict[str, Any]) -> str:
 
 
 async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGenerator[str, None]:
+    # 先登记会话归属：即使后续 agent 执行失败未落库，会话也已存在，
+    # 前端仍可正常 rename / get_messages / delete。
+    await session_service.ensure_session(request.session_id, user_id, request.channel)
     try:
-        for event in agent.chat_events(request, user_id=user_id):
+        async for event in agent.chat_events(request, user_id=user_id):
             yield _event_to_sse(event)
     except Exception as exc:
         log_error(
@@ -87,22 +93,24 @@ async def chat_stream(
 
 
 @router.get("/sessions")
-def list_sessions(
+async def list_sessions(
     http_request: Request,
 ) -> list[dict[str, Any]]:
     """列出当前 token 用户的历史会话（含 title / updated_at）。"""
     user_id = http_request.state.user.id
-    return session_service.list_sessions(user_id)
+    return await session_service.list_sessions(user_id)
 
 
 @router.get("/session/{session_id}/messages")
-def get_session_messages(
+async def get_session_messages(
     session_id: str,
     http_request: Request,
 ) -> list[dict[str, Any]]:
     """读取某会话的历史消息，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_service.get_owner(session_id)
+    # upsert：会话不存在则先以当前用户归属建立（如未聊天的会话），存在则不覆盖。
+    await session_service.ensure_session(session_id, user_id)
+    owner_id = await session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "get_session_messages not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -115,18 +123,20 @@ def get_session_messages(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    return session_service.get_messages(session_id)
+    return await session_service.get_messages(session_id)
 
 
 @router.put("/session/{session_id}")
-def rename_session(
+async def rename_session(
     session_id: str,
     body: SessionRenameRequest,
     http_request: Request,
 ) -> dict[str, str]:
     """重命名会话，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_service.get_owner(session_id)
+    # upsert：未聊天的会话（前端已建但后端尚无记录）亦可改名，先以当前用户归属建立。
+    await session_service.ensure_session(session_id, user_id)
+    owner_id = await session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "rename_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -139,19 +149,21 @@ def rename_session(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    session_service.rename(session_id, body.title)
+    await session_service.rename(session_id, body.title)
     log_info("api", "rename_session success session=%s user=%s title=%r", session_id, user_id, body.title)
     return {"session_id": session_id, "title": body.title}
 
 
 @router.delete("/session/{session_id}")
-def delete_session(
+async def delete_session(
     session_id: str,
     http_request: Request,
 ) -> dict[str, str]:
     """软删除会话，必须属于当前 token 用户。"""
     user_id = http_request.state.user.id
-    owner_id = session_service.get_owner(session_id)
+    # upsert：会话不存在则先以当前用户归属建立，存在则不覆盖。
+    await session_service.ensure_session(session_id, user_id)
+    owner_id = await session_service.get_owner(session_id)
     if owner_id is None:
         log_warning("api", "delete_session not_found session=%s user=%s", session_id, user_id)
         raise HTTPException(status_code=404, detail="Session not found")
@@ -164,6 +176,6 @@ def delete_session(
             user_id,
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    session_service.delete(session_id)
+    await session_service.delete(session_id)
     log_info("api", "delete_session success session=%s user=%s", session_id, user_id)
     return {"session_id": session_id, "status": "deleted"}
