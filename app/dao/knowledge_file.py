@@ -4,12 +4,18 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select, update
+
 
 class KnowledgeFileDAO(ABC):
-    """知识库文件元信息数据访问接口（dao 层）。"""
+    """知识库文件元信息数据访问接口（dao 层）。
+
+    M2 起所有方法均为 ``async def``，底层使用 ``AsyncSession``，I/O 等待时
+    让出事件循环（详见 plans/full-async-plan.md）。内存实现同样为 async，仅逻辑同步。
+    """
 
     @abstractmethod
-    def create(
+    async def create(
         self,
         user_id: int,
         filename: str,
@@ -22,15 +28,15 @@ class KnowledgeFileDAO(ABC):
         ...
 
     @abstractmethod
-    def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
+    async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
         """列出某用户的文件（排除软删除项），按 id 倒序。"""
 
     @abstractmethod
-    def get_by_id(self, file_id: int) -> dict[str, Any] | None:
+    async def get_by_id(self, file_id: int) -> dict[str, Any] | None:
         ...
 
     @abstractmethod
-    def update_status(
+    async def update_status(
         self,
         file_id: int,
         status: int,
@@ -40,7 +46,7 @@ class KnowledgeFileDAO(ABC):
         ...
 
     @abstractmethod
-    def delete(self, file_id: int) -> None:
+    async def delete(self, file_id: int) -> None:
         """软删除：标记 deleted_at，不物理删除。"""
 
 
@@ -51,7 +57,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         self._by_id: dict[int, dict[str, Any]] = {}
         self._seq: int = 0
 
-    def create(
+    async def create(
         self,
         user_id: int,
         filename: str,
@@ -78,7 +84,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         self._by_id[self._seq] = record
         return dict(record)
 
-    def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
+    async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
         result = [
             dict(r)
             for r in self._by_id.values()
@@ -87,13 +93,13 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         result.sort(key=lambda r: r.get("id", 0), reverse=True)
         return result
 
-    def get_by_id(self, file_id: int) -> dict[str, Any] | None:
+    async def get_by_id(self, file_id: int) -> dict[str, Any] | None:
         rec = self._by_id.get(file_id)
         if rec is None or rec.get("deleted_at") is not None:
             return None
         return dict(rec)
 
-    def update_status(
+    async def update_status(
         self,
         file_id: int,
         status: int,
@@ -110,14 +116,14 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         if error_message is not None:
             rec["error_message"] = error_message
 
-    def delete(self, file_id: int) -> None:
+    async def delete(self, file_id: int) -> None:
         rec = self._by_id.get(file_id)
         if rec is not None:
             rec["deleted_at"] = datetime.now(UTC)
 
 
 class SqlKnowledgeFileDAO(KnowledgeFileDAO):
-    """MySQL 实现（配置了 mysql 段时注入）。"""
+    """MySQL 实现（配置了 mysql 段且 aiomysql 可用时注入）。M2 起使用 AsyncSession。"""
 
     def __init__(self, session_factory: Any) -> None:
         self._session_factory = session_factory
@@ -141,7 +147,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
             "deleted_at": row.deleted_at,
         }
 
-    def create(
+    async def create(
         self,
         user_id: int,
         filename: str,
@@ -151,7 +157,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         chunk_count: int = 0,
         error_message: str | None = None,
     ) -> dict[str, Any]:
-        with self._db() as db:
+        async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
             row = KnowledgeFile(
@@ -164,43 +170,44 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                 error_message=error_message,
             )
             db.add(row)
-            db.commit()
-            db.refresh(row)
+            await db.commit()
+            await db.refresh(row)
             return self._to_dict(row)
 
-    def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
-        with self._db() as db:
+    async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
+        async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
             rows = (
-                db.query(KnowledgeFile)
-                .filter(KnowledgeFile.user_id == user_id)
-                .filter(KnowledgeFile.deleted_at.is_(None))
-                .order_by(KnowledgeFile.id.desc())
-                .all()
-            )
+                await db.execute(
+                    select(KnowledgeFile)
+                    .where(KnowledgeFile.user_id == user_id)
+                    .where(KnowledgeFile.deleted_at.is_(None))
+                    .order_by(KnowledgeFile.id.desc())
+                )
+            ).scalars().all()
             return [self._to_dict(r) for r in rows]
 
-    def get_by_id(self, file_id: int) -> dict[str, Any] | None:
-        with self._db() as db:
+    async def get_by_id(self, file_id: int) -> dict[str, Any] | None:
+        async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
-            row = db.get(KnowledgeFile, file_id)
+            row = await db.get(KnowledgeFile, file_id)
             if row is None or row.deleted_at is not None:
                 return None
             return self._to_dict(row)
 
-    def update_status(
+    async def update_status(
         self,
         file_id: int,
         status: int,
         chunk_count: int | None = None,
         error_message: str | None = None,
     ) -> None:
-        with self._db() as db:
+        async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
-            row = db.get(KnowledgeFile, file_id)
+            row = await db.get(KnowledgeFile, file_id)
             if row is None:
                 return
             row.status = status
@@ -208,16 +215,15 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                 row.chunk_count = chunk_count
             if error_message is not None:
                 row.error_message = error_message
-            db.commit()
+            await db.commit()
 
-    def delete(self, file_id: int) -> None:
-        with self._db() as db:
+    async def delete(self, file_id: int) -> None:
+        async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
-            from sqlalchemy import update
 
-            db.execute(
+            await db.execute(
                 update(KnowledgeFile)
                 .where(KnowledgeFile.id == file_id)
                 .values(deleted_at=datetime.now(UTC))
             )
-            db.commit()
+            await db.commit()

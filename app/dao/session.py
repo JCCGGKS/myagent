@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 
 from app.schema import ConversationState
 
@@ -24,22 +24,34 @@ def _now() -> str:
 
 
 class SessionStore(ABC):
-    """会话存储接口（dao 层）。业务层只依赖此接口，实现可注入。"""
+    """会话存储接口（dao 层）。业务层只依赖此接口，实现可注入。
+
+    M2 起所有方法均为 ``async def``，底层使用 ``AsyncSession``，I/O 等待时
+    让出事件循环（详见 plans/full-async-plan.md）。内存实现同样为 async，仅逻辑同步。
+    """
 
     @abstractmethod
-    def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
+    async def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
         ...
 
     @abstractmethod
-    def get(self, session_id: str) -> ConversationState | None:
+    async def get(self, session_id: str) -> ConversationState | None:
         ...
 
     @abstractmethod
-    def save(self, state: ConversationState) -> ConversationState:
+    async def ensure_session(self, session_id: str, user_id: int, channel: str = "web") -> None:
+        """确保会话记录存在（登记归属 user_id）；不存在才创建，已存在不覆盖。
+
+        用于聊天入口与会话管理接口：即使后续未落库，会话也已登记，
+        后续 rename / get_messages / delete 不会因找不到会话而 404。
+        """
+
+    @abstractmethod
+    async def save(self, state: ConversationState) -> ConversationState:
         ...
 
     @abstractmethod
-    def append_message(
+    async def append_message(
         self,
         session_id: str,
         role: str,
@@ -50,27 +62,27 @@ class SessionStore(ABC):
         ...
 
     @abstractmethod
-    def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
+    async def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         ...
 
     @abstractmethod
-    def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
+    async def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
         """列出某用户的会话（含 title / updated_at），按 updated_at 倒序。"""
 
     @abstractmethod
-    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
+    async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         """读取某会话的历史消息（role / content），按 sequence_no 正序。"""
 
     @abstractmethod
-    def get_user_id(self, session_id: str) -> int | None:
+    async def get_user_id(self, session_id: str) -> int | None:
         """获取某会话的归属 user_id，不存在返回 None。"""
 
     @abstractmethod
-    def update_title(self, session_id: str, title: str) -> None:
+    async def update_title(self, session_id: str, title: str) -> None:
         """更新会话名称。"""
 
     @abstractmethod
-    def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str) -> None:
         """软删除会话（标记 deleted_at，保留数据与消息）。"""
 
 
@@ -80,7 +92,7 @@ class MemorySessionStore(SessionStore):
     def __init__(self) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
 
-    def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
+    async def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self._sessions[session_id] = {
             "session": {
@@ -97,11 +109,27 @@ class MemorySessionStore(SessionStore):
         }
         return session_id
 
-    def get(self, session_id: str) -> ConversationState | None:
+    async def get(self, session_id: str) -> ConversationState | None:
         record = self._sessions.get(session_id)
         return deepcopy(record["state"]) if record else None
 
-    def save(self, state: ConversationState) -> ConversationState:
+    async def ensure_session(self, session_id: str, user_id: int, channel: str = "web") -> None:
+        if session_id in self._sessions:
+            return
+        self._sessions[session_id] = {
+            "session": {
+                "session_id": session_id,
+                "user_id": user_id,
+                "channel": channel,
+                "status": SESSION_STATUS_ACTIVE,
+                "created_at": _now(),
+                "updated_at": _now(),
+            },
+            "messages": [],
+            "state": None,
+        }
+
+    async def save(self, state: ConversationState) -> ConversationState:
         record = self._sessions.setdefault(
             state.session_id,
             {
@@ -128,7 +156,7 @@ class MemorySessionStore(SessionStore):
         )
         return state
 
-    def append_message(
+    async def append_message(
         self,
         session_id: str,
         role: str,
@@ -161,11 +189,11 @@ class MemorySessionStore(SessionStore):
         )
         record["session"]["updated_at"] = _now()
 
-    def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
+    async def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         record = self._sessions.get(session_id)
         return deepcopy(record) if record else None
 
-    def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
+    async def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for record in self._sessions.values():
             session = record.get("session", {})
@@ -183,39 +211,44 @@ class MemorySessionStore(SessionStore):
         result.sort(key=lambda s: str(s.get("updated_at") or ""), reverse=True)
         return result
 
-    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
+    async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         record = self._sessions.get(session_id)
         if record is None:
             return []
         messages = record.get("messages", [])
         return [
-            {"role": m["role"], "content": m["content"], "sequence_no": m["sequence_no"]}
+            {
+                "id": f"msg-{m['sequence_no']}",
+                "role": m["role"],
+                "content": m["content"],
+                "sequence_no": m["sequence_no"],
+            }
             for m in sorted(messages, key=lambda m: m.get("sequence_no", 0))
         ]
 
-    def get_user_id(self, session_id: str) -> int | None:
+    async def get_user_id(self, session_id: str) -> int | None:
         record = self._sessions.get(session_id)
         if record is None:
             return None
         return record.get("session", {}).get("user_id")
 
-    def update_title(self, session_id: str, title: str) -> None:
+    async def update_title(self, session_id: str, title: str) -> None:
         record = self._sessions.get(session_id)
         if record is not None:
             record.setdefault("session", {})["title"] = title
             record["session"]["updated_at"] = _now()
 
-    def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str) -> None:
         record = self._sessions.get(session_id)
         if record is not None:
             record.setdefault("session", {})["deleted_at"] = _now()
 
 
 class SqlSessionStore(SessionStore):
-    """MySQL 实现（配置了 mysql 段时注入）。
+    """MySQL 实现（配置了 mysql 段且 aiomysql 可用时注入）。
 
     保留内存镜像以满足 get() 返回完整 ConversationState 的语义，
-    同时把 sessions / messages 落库做会话持久化。
+    同时把 sessions / messages 落库做会话持久化。M2 起底层为 AsyncSession。
     """
 
     def __init__(self, session_factory: Any) -> None:
@@ -225,10 +258,10 @@ class SqlSessionStore(SessionStore):
     def _db(self):
         return self._session_factory()
 
-    def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
+    async def create_session(self, user_id: int, channel: str = "web", title: str = "新会话") -> str:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         self._states[session_id] = None
-        with self._db() as db:
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
             db.add(
@@ -240,33 +273,56 @@ class SqlSessionStore(SessionStore):
                     status=SESSION_STATUS_ACTIVE,
                 )
             )
-            db.commit()
+            await db.commit()
         return session_id
 
-    def get(self, session_id: str) -> ConversationState | None:
+    async def get(self, session_id: str) -> ConversationState | None:
         state = self._states.get(session_id)
         return deepcopy(state) if state else None
 
-    def save(self, state: ConversationState) -> ConversationState:
-        self._states[state.session_id] = deepcopy(state)
-        with self._db() as db:
+    async def ensure_session(self, session_id: str, user_id: int, channel: str = "web") -> None:
+        if session_id in self._states:
+            return
+        self._states[session_id] = None
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
             row = (
-                db.query(SessionRow)
-                .filter(SessionRow.session_id == state.session_id)
-                .one_or_none()
-            )
+                await db.execute(
+                    select(SessionRow).where(SessionRow.session_id == session_id)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                db.add(
+                    SessionRow(
+                        session_id=session_id,
+                        user_id=user_id,
+                        channel=channel,
+                        status=SESSION_STATUS_ACTIVE,
+                    )
+                )
+                await db.commit()
+
+    async def save(self, state: ConversationState) -> ConversationState:
+        self._states[state.session_id] = deepcopy(state)
+        async with self._db() as db:
+            from app.model.session import Session as SessionRow
+
+            row = (
+                await db.execute(
+                    select(SessionRow).where(SessionRow.session_id == state.session_id)
+                )
+            ).scalar_one_or_none()
             if row is None:
                 row = SessionRow(session_id=state.session_id)
                 db.add(row)
             row.user_id = state.user_id
             row.channel = state.channel
             row.status = SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE
-            db.commit()
+            await db.commit()
         return state
 
-    def append_message(
+    async def append_message(
         self,
         session_id: str,
         role: str,
@@ -274,11 +330,15 @@ class SqlSessionStore(SessionStore):
         message_type: str = "text",
         sanitized_content: str | None = None,
     ) -> None:
-        with self._db() as db:
+        async with self._db() as db:
             from app.model.session import Message, Session as SessionRow
 
-            max_seq = db.query(func.coalesce(func.max(Message.sequence_no), 0)).filter(
-                Message.session_id == session_id
+            max_seq = (
+                await db.execute(
+                    select(func.coalesce(func.max(Message.sequence_no), 0)).where(
+                        Message.session_id == session_id
+                    )
+                )
             ).scalar() or 0
             db.add(
                 Message(
@@ -290,34 +350,35 @@ class SqlSessionStore(SessionStore):
                     sequence_no=max_seq + 1,
                 )
             )
-            db.execute(
+            await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
                 .values(updated_at=datetime.now(UTC))
             )
-            db.commit()
+            await db.commit()
 
-    def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
+    async def dump_session_record(self, session_id: str) -> dict[str, Any] | None:
         state = self._states.get(session_id)
         if state is None:
             return None
         return {"session_id": session_id, "state": deepcopy(state)}
 
-    def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
-        with self._db() as db:
+    async def list_sessions(self, user_id: int) -> list[dict[str, Any]]:
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
             rows = (
-                db.query(
-                    SessionRow.session_id,
-                    SessionRow.title,
-                    SessionRow.updated_at,
+                await db.execute(
+                    select(
+                        SessionRow.session_id,
+                        SessionRow.title,
+                        SessionRow.updated_at,
+                    )
+                    .where(SessionRow.user_id == user_id)
+                    .where(SessionRow.deleted_at.is_(None))
+                    .order_by(SessionRow.updated_at.desc())
                 )
-                .filter(SessionRow.user_id == user_id)
-                .filter(SessionRow.deleted_at.is_(None))
-                .order_by(SessionRow.updated_at.desc())
-                .all()
-            )
+            ).all()
             return [
                 {
                     "session_id": r.session_id,
@@ -327,52 +388,59 @@ class SqlSessionStore(SessionStore):
                 for r in rows
             ]
 
-    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
-        with self._db() as db:
+    async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
+        async with self._db() as db:
             from app.model.session import Message
 
             rows = (
-                db.query(Message.role, Message.content, Message.sequence_no)
-                .filter(Message.session_id == session_id)
-                .order_by(Message.created_at.asc())
-                .all()
-            )
+                await db.execute(
+                    select(Message.role, Message.content, Message.sequence_no)
+                    .where(Message.session_id == session_id)
+                    .order_by(Message.created_at.asc())
+                )
+            ).all()
             return [
-                {"role": r.role, "content": r.content, "sequence_no": r.sequence_no}
+                {
+                    "id": f"msg-{r.sequence_no}",
+                    "role": r.role,
+                    "content": r.content,
+                    "sequence_no": r.sequence_no,
+                }
                 for r in rows
             ]
 
-    def get_user_id(self, session_id: str) -> int | None:
-        with self._db() as db:
+    async def get_user_id(self, session_id: str) -> int | None:
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
             row = (
-                db.query(SessionRow.user_id)
-                .filter(SessionRow.session_id == session_id)
-                .one_or_none()
-            )
-            return row.user_id if row is not None else None
+                await db.execute(
+                    select(SessionRow.user_id).where(SessionRow.session_id == session_id)
+                )
+            ).scalar_one_or_none()
+            # select(SessionRow.user_id) 直接返回标量 int，None 表示无记录
+            return row
 
-    def update_title(self, session_id: str, title: str) -> None:
-        with self._db() as db:
+    async def update_title(self, session_id: str, title: str) -> None:
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
-            db.execute(
+            await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
                 .values(title=title, updated_at=datetime.now(UTC))
             )
-            db.commit()
+            await db.commit()
 
-    def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str) -> None:
         # 软删除：标记 deleted_at，保留会话与消息数据。
         self._states.pop(session_id, None)
-        with self._db() as db:
+        async with self._db() as db:
             from app.model.session import Session as SessionRow
 
-            db.execute(
+            await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
                 .values(deleted_at=datetime.now(UTC))
             )
-            db.commit()
+            await db.commit()

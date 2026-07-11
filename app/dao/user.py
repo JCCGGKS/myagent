@@ -3,28 +3,34 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from sqlalchemy import select
+
 
 class UserDAO(ABC):
-    """用户数据访问接口（dao 层）。认证业务只依赖此接口。"""
+    """用户数据访问接口（dao 层）。认证业务只依赖此接口。
+
+    M2 起所有方法均为 ``async def``，底层使用 ``AsyncSession``，I/O 等待时
+    让出事件循环（详见 plans/full-async-plan.md）。内存实现同样为 async，仅逻辑同步。
+    """
 
     @abstractmethod
-    def get_by_username(self, username: str) -> dict[str, Any] | None:
+    async def get_by_username(self, username: str) -> dict[str, Any] | None:
         ...
 
     @abstractmethod
-    def get_by_email(self, email: str) -> dict[str, Any] | None:
+    async def get_by_email(self, email: str) -> dict[str, Any] | None:
         ...
 
     @abstractmethod
-    def get_by_id(self, user_id: int) -> dict[str, Any] | None:
+    async def get_by_id(self, user_id: int) -> dict[str, Any] | None:
         ...
 
     @abstractmethod
-    def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
+    async def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
         ...
 
     @abstractmethod
-    def update_password(self, user_id: int, password_hash: str) -> None:
+    async def update_password(self, user_id: int, password_hash: str) -> None:
         ...
 
 
@@ -37,19 +43,19 @@ class MemoryUserDAO(UserDAO):
         self._by_email: dict[str, int] = {}
         self._seq: int = 0
 
-    def get_by_username(self, username: str) -> dict[str, Any] | None:
+    async def get_by_username(self, username: str) -> dict[str, Any] | None:
         uid = self._by_username.get(username)
         return dict(self._by_id[uid]) if uid is not None else None
 
-    def get_by_email(self, email: str) -> dict[str, Any] | None:
+    async def get_by_email(self, email: str) -> dict[str, Any] | None:
         uid = self._by_email.get(email)
         return dict(self._by_id[uid]) if uid is not None else None
 
-    def get_by_id(self, user_id: int) -> dict[str, Any] | None:
+    async def get_by_id(self, user_id: int) -> dict[str, Any] | None:
         user = self._by_id.get(user_id)
         return dict(user) if user is not None else None
 
-    def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
+    async def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
         self._seq += 1
         user_id = self._seq
         user = {
@@ -63,14 +69,14 @@ class MemoryUserDAO(UserDAO):
         self._by_email[email] = user_id
         return dict(user)
 
-    def update_password(self, user_id: int, password_hash: str) -> None:
+    async def update_password(self, user_id: int, password_hash: str) -> None:
         user = self._by_id.get(user_id)
         if user is not None:
             user["password_hash"] = password_hash
 
 
 class SqlUserDAO(UserDAO):
-    """MySQL 实现（配置了 mysql 段时注入）。"""
+    """MySQL 实现（配置了 mysql 段且 aiomysql 可用时注入）。M2 起使用 AsyncSession。"""
 
     def __init__(self, session_factory: Any) -> None:
         self._session_factory = session_factory
@@ -87,43 +93,49 @@ class SqlUserDAO(UserDAO):
             "password_hash": user.password_hash,
         }
 
-    def get_by_username(self, username: str) -> dict[str, Any] | None:
-        with self._db() as db:
+    async def get_by_username(self, username: str) -> dict[str, Any] | None:
+        async with self._db() as db:
             from app.model.user import User
 
-            user = db.query(User).filter(User.username == username).first()
+            user = (
+                await db.execute(
+                    select(User).where(User.username == username)
+                )
+            ).scalar_one_or_none()
             return self._to_dict(user) if user else None
 
-    def get_by_email(self, email: str) -> dict[str, Any] | None:
-        with self._db() as db:
+    async def get_by_email(self, email: str) -> dict[str, Any] | None:
+        async with self._db() as db:
             from app.model.user import User
 
-            user = db.query(User).filter(User.email == email).first()
+            user = (
+                await db.execute(select(User).where(User.email == email))
+            ).scalar_one_or_none()
             return self._to_dict(user) if user else None
 
-    def get_by_id(self, user_id: int) -> dict[str, Any] | None:
-        with self._db() as db:
+    async def get_by_id(self, user_id: int) -> dict[str, Any] | None:
+        async with self._db() as db:
             from app.model.user import User
 
-            user = db.get(User, user_id)
+            user = await db.get(User, user_id)
             return self._to_dict(user) if user else None
 
-    def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
-        with self._db() as db:
+    async def create(self, username: str, email: str, password_hash: str) -> dict[str, Any]:
+        async with self._db() as db:
             from app.model.user import User
 
             user = User(username=username, email=email, password_hash=password_hash)
             db.add(user)
-            db.commit()
-            db.refresh(user)
+            await db.commit()
+            await db.refresh(user)
             return self._to_dict(user)
 
-    def update_password(self, user_id: int, password_hash: str) -> None:
-        with self._db() as db:
+    async def update_password(self, user_id: int, password_hash: str) -> None:
+        async with self._db() as db:
             from app.model.user import User
 
-            user = db.get(User, user_id)
+            user = await db.get(User, user_id)
             if user is None:
                 return
             user.password_hash = password_hash
-            db.commit()
+            await db.commit()
