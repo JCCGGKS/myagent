@@ -364,71 +364,25 @@ class CustomerServiceAgent:
         return payload
 
     def _build_chat_response(self, state: ConversationState) -> ChatResponse:
+        # 简化后只下发前端真正渲染的字段：reply（消息气泡）+ session_state（StatsPanel）。
+        # 其余意图/槽位/阶段等均在 session_state 内部，无需在顶层重复。
         return ChatResponse(
             reply=state.reply,
-            main_intent=state.current_main_intent,
-            sub_intent=state.current_sub_intent,
-            stage=state.stage,
-            needs_clarification=state.needs_clarification,
-            handoff=state.handoff,
-            slots=state.slots,
-            missing_slots=state.missing_slots,
-            summary=state.summary,
-            emotion=state.emotion,
-            current_action=state.current_action,
-            running_summary=state.running_summary,
-            tool_result=state.tool_result,
             session_state=self._build_session_snapshot(state),
-            turn_trace=self._build_turn_trace(state),
         )
 
     def _build_session_snapshot(self, state: ConversationState) -> dict[str, Any]:
+        # 仅下发 StatsPanel（经 sessionSnapshot）实际消费的字段，其余内部状态不进响应，
+        # 避免冗余 payload（详见前端 ConsoleView / StatsPanel）。
         return {
-            "session_id": state.session_id,
-            "user_id": state.user_id,
-            "channel": state.channel,
             "current_main_intent": state.current_main_intent,
             "current_sub_intent": state.current_sub_intent,
             "stage": state.stage,
             "slots": state.slots,
             "missing_slots": state.missing_slots,
-            "confirmed_slots": state.confirmed_slots,
-            "candidate_intents": state.candidate_intents,
             "needs_clarification": state.needs_clarification,
-            "handoff": state.handoff,
-            "handoff_reason": state.handoff_reason,
             "summary": state.summary,
-            "running_summary": state.running_summary,
-            "risk_level": state.risk_level,
-            "emotion": state.emotion.model_dump(),
-            "current_action": state.current_action,
-            "latest_action_name": state.latest_action_name,
-            "latest_action_result": state.latest_action_result,
-            "action_history": [item.model_dump() for item in state.action_history],
-            "recent_messages": state.recent_messages,
-            "reply": state.reply,
-            "archived_states": state.archived_states,
         }
-
-    def _build_turn_trace(self, state: ConversationState) -> list[str]:
-        trace = [
-            f"识别主意图: {state.current_main_intent}",
-            f"识别子意图: {state.current_sub_intent}",
-            f"当前阶段: {state.stage}",
-            f"策略动作: {state.current_action}",
-            f"情绪: {state.emotion.primary}",
-        ]
-        if state.slots:
-            trace.append(f"已填槽位: {state.slots}")
-        if state.missing_slots:
-            trace.append(f"缺失槽位: {state.missing_slots}")
-        if state.tool_result:
-            trace.append(f"工具调用结果: {state.tool_result.kind}")
-        if state.handoff:
-            trace.append(f"触发转人工: {state.handoff_reason or 'policy_decision'}")
-        if state.running_summary:
-            trace.append(f"运行摘要: {state.running_summary}")
-        return trace
 
     def _serialize_tool_result(self, state: ConversationState) -> dict[str, Any] | None:
         return state.tool_result.model_dump() if state.tool_result else None

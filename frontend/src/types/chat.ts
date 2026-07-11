@@ -35,20 +35,18 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   reply: string;
-  main_intent: MainIntentCode;
-  sub_intent: SubIntentCode;
+  session_state: SessionSnapshot;
+}
+
+// 后端下发的会话状态快照：仅为 StatsPanel 实际消费的字段，不含内部完整状态。
+export interface SessionSnapshot {
+  current_main_intent: MainIntentCode;
+  current_sub_intent: SubIntentCode;
   stage: string;
-  needs_clarification: boolean;
-  handoff: boolean;
   slots: Record<string, string>;
   missing_slots: string[];
+  needs_clarification: boolean;
   summary: string;
-  emotion: EmotionState;
-  current_action: string;
-  running_summary: string;
-  tool_result: ToolResult | null;
-  session_state: ConversationState;
-  turn_trace: string[];
 }
 
 export interface ConversationState {
@@ -149,7 +147,7 @@ export interface ChatSessionItem {
   updatedAt: string;
   messages: MessageItem[];
   turns: TurnItem[];
-  session: ConversationState | null;
+  session: SessionSnapshot | null;
 }
 
 export interface KnowledgeFileItem {

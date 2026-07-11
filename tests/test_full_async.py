@@ -89,7 +89,16 @@ def test_chat_returns_response_via_async():
     request = ChatRequest(session_id="s1", message="你好")
     response = asyncio.run(agent.chat(request, user_id=1))
     assert response.reply == "这是助手回复。"
-    assert response.main_intent  # 有主意图字段
+    # 精简后的 session_state 仅含 StatsPanel 消费的字段
+    assert set(response.session_state.keys()) == {
+        "current_main_intent",
+        "current_sub_intent",
+        "stage",
+        "slots",
+        "missing_slots",
+        "needs_clarification",
+        "summary",
+    }
 
 
 def test_chat_events_is_async_generator_and_emits_events():

@@ -54,7 +54,8 @@ class TestCustomerServiceAgent:
         agent.store.get.return_value = state
 
         response = asyncio.run(agent.chat(request, user_id=1))
-        assert response.main_intent == "order_query"
+        # main_intent 现位于 session_state 内（ChatResponse 仅下发 reply + session_state）
+        assert response.session_state["current_main_intent"] == "order_query"
         # 后续接入真实 LLM 后，断言会调用 agent_node
 
     def test_chat_should_route_to_response_generator(self, agent):
@@ -76,7 +77,7 @@ class TestCustomerServiceAgent:
         agent.store.get.return_value = state
 
         response = asyncio.run(agent.chat(request, user_id=1))
-        assert response.main_intent == "unrecognize"
+        assert response.session_state["current_main_intent"] == "unrecognize"
 
     def test_agent_node_should_call_tools(self, agent):
         """测试 agent_node 能够调用工具（如 rag_retrieve）。"""

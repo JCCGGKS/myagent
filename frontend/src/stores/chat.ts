@@ -409,6 +409,7 @@ export const useChatStore = defineStore("chat", () => {
 
     if (event.type === "final") {
       const response = event.response;
+      const ss = response.session_state;
       appendMessage({
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -417,19 +418,19 @@ export const useChatStore = defineStore("chat", () => {
       activeSession.value.session = response.session_state;
       activeSession.value.turns.unshift({
         id: `turn-${Date.now()}`,
-        mainIntent: response.main_intent,
-        subIntent: response.sub_intent,
-        stage: response.stage,
-        summary: response.summary,
-        trace: [...liveTrace.value, ...response.turn_trace],
-        toolResult: liveToolResult.value ?? response.tool_result,
+        mainIntent: ss.current_main_intent,
+        subIntent: ss.current_sub_intent,
+        stage: ss.stage,
+        summary: ss.summary,
+        trace: [...liveTrace.value],
+        toolResult: liveToolResult.value,
         createdAt: new Date().toLocaleTimeString("zh-CN", {
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
         }),
       });
-      touchSession(response.reply);
+      touchSession();
       const cost = requestStart.value ? Date.now() - requestStart.value : 0;
       responseStats.value = {
         count: responseStats.value.count + 1,
