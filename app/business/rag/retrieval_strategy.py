@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from app.config.rag_config import RagConfig
 from app.pkgs.vector import QdrantClient, get_qdrant_client
 
 

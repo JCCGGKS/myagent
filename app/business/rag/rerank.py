@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import requests
-
-from app.config.rag_config import load_rag_config_raw
 
 
 logger = logging.getLogger(__name__)

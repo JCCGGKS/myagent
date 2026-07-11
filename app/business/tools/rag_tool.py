@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.business.rag.retrieval_strategy import Document, get_strategy_from_config
+from app.business.rag.retrieval_strategy import (
+    Document,
+    RetrievalStrategy,
+    get_strategy_from_config,
+)
 from app.config.rag_config import get_rag_config_service
 from app.business.rag.rerank import build_rerank_client
 

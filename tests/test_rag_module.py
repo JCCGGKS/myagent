@@ -135,7 +135,7 @@ class TestRerankClient:
         from app.business.rag.rerank import build_rerank_client
         # 无配置 -> 返回 None
         monkeypatch.setattr(
-            "app.business.rag.rerank.load_rag_config_raw",
+            "app.config.rag_config.load_rag_config_raw",
             lambda: {},
         )
         assert build_rerank_client() is None
