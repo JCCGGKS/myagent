@@ -5,9 +5,12 @@ import { postChat, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, 
 import { ChatSSEClient } from "@/lib/sse";
 import {
   clearSessionIdFromStorage,
+  clearSessionMessages,
   generateSessionId,
   loadSessionIdFromStorage,
+  loadSessionMessages,
   saveSessionIdToStorage,
+  saveSessionMessages,
 } from "@/lib/session";
 import type {
   ChatSessionItem,
@@ -170,6 +173,7 @@ export const useChatStore = defineStore("chat", () => {
     activeSession.value.messages.push(message);
     if (message.role !== "system") {
       touchSession();
+      saveSessionMessages(activeSession.value.id, activeSession.value.messages);
     }
   }
 
@@ -305,6 +309,7 @@ export const useChatStore = defineStore("chat", () => {
     } catch (error) {
       // 纯本地会话后端可能不存在，忽略
     }
+    clearSessionMessages(id);
     sessions.value = sessions.value.filter((session) => session.id !== id);
     if (sessions.value.length === 0) {
       await createNewSession();
@@ -347,6 +352,7 @@ export const useChatStore = defineStore("chat", () => {
         const history = await getSessionMessages(id);
         if (history.length) {
           activeSession.value.messages = history;
+          saveSessionMessages(id, history);
         }
       } catch (error) {
         // 后端不可用时保留本地消息
@@ -356,9 +362,11 @@ export const useChatStore = defineStore("chat", () => {
 
   async function loadSessions() {
     const list = await getSessionList();
-    sessions.value = list.map((s) =>
-      createSession(s.title || "新会话", s.session_id),
-    );
+    sessions.value = list.map((s) => {
+      // 优先用本地缓存的消息恢复界面，避免刷新丢失（特别是处理中被打断的请求）。
+      const restored = loadSessionMessages(s.session_id);
+      return createSession(s.title || "新会话", s.session_id, restored ?? undefined);
+    });
   }
 
   async function initFromLocalStorage() {
@@ -383,6 +391,13 @@ export const useChatStore = defineStore("chat", () => {
       clearSessionIdFromStorage();
       statusText.value = "后端不可用，已新建会话";
       await createNewSession();
+    }
+    // 恢复被刷新打断的请求：当前会话最后一条是用户消息且尚无回复时，
+    // 自动续发该消息以取回回复（不重复追加用户消息，避免刷新后出现重复）。
+    const msgs = activeSession.value?.messages ?? [];
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === "user" && !pending.value) {
+      resumeInterruptedTurn(last.content);
     }
   }
 
@@ -476,6 +491,7 @@ export const useChatStore = defineStore("chat", () => {
       pending.value = false;
       draft.value = "";
       resetLiveTurn();
+      saveSessionMessages(target.id, target.messages);
     }
   }
 
@@ -538,6 +554,43 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
 
+  // 刷新时若请求处理中被打断，最后一条用户消息尚无回复：复用已有用户消息，
+  // 仅把内容重新发给后端取回回复，避免重复追加用户消息。
+  async function resumeInterruptedTurn(content: string) {
+    if (!content.trim() || pending.value) return;
+    pending.value = true;
+    statusText.value = "正在恢复上一次未完成的请求…";
+    requestStart.value = Date.now();
+    resetLiveTurn();
+
+    try {
+      await client.send({
+        session_id: sessionId.value,
+        channel: channel.value.trim() || "web",
+        message: content,
+      });
+    } catch (error) {
+      pending.value = false;
+      backendReady.value = false;
+      liveTrace.value.push("SSE 连接失败，回退到 HTTP /chat");
+      try {
+        const response = await postChat({
+          session_id: sessionId.value,
+          channel: channel.value.trim() || "web",
+          message: content,
+        });
+        handleSocketEvent({ type: "final", response });
+      } catch (fallbackError) {
+        appendMessage({
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: "请求恢复失败，请重新发送该消息。",
+        });
+        statusText.value = "恢复失败";
+      }
+    }
+  }
+
   return {
     activePanel,
     activeSession,
@@ -556,6 +609,7 @@ export const useChatStore = defineStore("chat", () => {
     pending,
     responseStats,
     refreshSession,
+    resumeInterruptedTurn,
     knowledgeFiles,
     removeKnowledgeFile,
     fetchKnowledgeFiles,
