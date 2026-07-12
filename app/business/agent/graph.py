@@ -381,7 +381,6 @@ class CustomerServiceAgent:
         state.handoff = False
         state.handoff_reason = ""
         state.current_action = ""
-        state.latest_action_result = None
 
         state.channel = request.channel
         # state.user_id 已在 _build_payload 初始化时设置

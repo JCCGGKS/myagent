@@ -288,7 +288,6 @@ class ToolExecutor:
             user_facing_summary=f"已创建人工服务单 {handoff.ticket_id}",
         )
         state.handoff = True
-        state.latest_action_result = state.tool_result.sanitized_result
         state.action_history.append(
             build_action_record("handoff_node", state.tool_result.user_facing_summary)
         )

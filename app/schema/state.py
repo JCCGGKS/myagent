@@ -55,7 +55,6 @@ class ConversationState(BaseModel):
     emotion: EmotionState = Field(default_factory=EmotionState)
     needs_clarification: bool = False
     current_action: str = ""
-    latest_action_result: dict[str, Any] | None = None
     action_history: list[ActionRecord] = Field(default_factory=list)
     summary: str = ""
     running_summary: str = ""

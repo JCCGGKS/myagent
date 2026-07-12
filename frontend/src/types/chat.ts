@@ -63,7 +63,6 @@ export interface ConversationState {
   emotion?: EmotionState;
   needs_clarification: boolean;
   current_action?: string;
-  latest_action_result?: Record<string, unknown> | null;
   action_history?: ActionRecord[];
   summary: string;
   running_summary?: string;

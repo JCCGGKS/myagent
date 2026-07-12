@@ -63,7 +63,6 @@ class ResponseService:
         reply = await self._call_llm(llm_messages, state)
 
         state.reply = reply
-        state.latest_action_result = {"reply": reply}
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
             state.action_history.append(build_action_record("response_generator", reply))
         return state

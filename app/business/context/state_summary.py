@@ -13,6 +13,6 @@ def build_state_summary(state: ConversationState) -> str:
         parts.append(f"已确认槽位={state.slots}")
     if state.missing_slots:
         parts.append(f"仍缺槽位={state.missing_slots}")
-    if state.latest_action_result:
-        parts.append(f"最近动作结果={state.latest_action_result}")
+    if state.action_history:
+        parts.append(f"最近动作结果={state.action_history[-1].summary}")
     return "；".join(parts)
