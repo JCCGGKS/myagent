@@ -15,6 +15,7 @@ def call_llm(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     fallback_content: str = LLM_CALL_FAILED_REPLY,
+    generation_kwargs: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """调用 OpenAI 兼容 LLM（同步），统一处理「未配置」与「调用异常」。
 
@@ -23,6 +24,9 @@ def call_llm(
 
     - 未配置 ``llm_client`` / ``llm_model``：raise ``RuntimeError``（缺配置为致命错误）。
     - 调用异常 / 无 choices：返回 ``fallback_content`` 与空 ``tool_calls``，不抛异常。
+    - ``generation_kwargs``：经 :meth:`LLMConfig.generation_kwargs` 构造的额外参数
+      （如 ``enable_thinking`` / ``temperature`` / ``max_tokens`` / ``top_p``），
+      原样透传到 ``chat.completions.create``。
     """
     if llm_client is None or not llm_model:
         raise RuntimeError(
@@ -35,6 +39,7 @@ def call_llm(
             model=llm_model,
             messages=messages,
             tools=tools if tools else None,
+            **(generation_kwargs or {}),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("LLM call failed err=%r", exc)
@@ -49,12 +54,15 @@ async def call_llm_async(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     fallback_content: str = LLM_CALL_FAILED_REPLY,
+    generation_kwargs: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """调用 OpenAI 兼容 LLM（异步，await 版本）。
 
     语义与 :func:`call_llm` 完全一致，仅底层 ``chat.completions.create`` 为
     ``AsyncOpenAI`` 的协程，需在 asyncio 事件循环内 ``await``，I/O 等待时让出
     事件循环（详见 plans/full-async-plan.md）。
+
+    ``generation_kwargs`` 透传同 :func:`call_llm`（如 ``enable_thinking`` 等）。
     """
     if llm_client is None or not llm_model:
         raise RuntimeError(
@@ -67,6 +75,7 @@ async def call_llm_async(
             model=llm_model,
             messages=messages,
             tools=tools if tools else None,
+            **(generation_kwargs or {}),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("LLM call failed err=%r", exc)

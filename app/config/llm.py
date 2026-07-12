@@ -21,11 +21,39 @@ class LLMConfig(BaseModel):
     base_url: str | None = None
     timeout_seconds: float = 20.0
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    # 生成参数（可选；为 None 时不下发，由模型/服务端取默认）。
+    # enable_thinking: 仅 Qwen3 等推理模型支持，通过 extra_body 下发；
+    #   默认 False（关闭思维链）以避免单次对话 20s 的推理开销。
+    enable_thinking: bool = False
+    temperature: float | None = None
+    max_tokens: int | None = None
+    top_p: float | None = None
     logging: LoggingConfig = LoggingConfig()
 
     @property
     def is_usable(self) -> bool:
         return self.enabled and bool(self.api_key.strip())
+
+    def generation_kwargs(self) -> dict[str, object]:
+        """构造 ``chat.completions.create`` 的通用生成参数（thinking/temperature 等）。
+
+        仅下发被显式设置的字段；``None`` 的字段不出现（由模型/服务端取默认）。
+        返回空 dict 时调用方不加任何额外参数。
+
+        - ``enable_thinking``：通过 ``extra_body`` 下发（Qwen3 兼容模式专用），
+          默认 ``False`` 即关闭思维链。
+        - ``temperature`` / ``max_tokens`` / ``top_p``：标准采样参数，设置后下发。
+        """
+        kwargs: dict[str, object] = {}
+        if self.enable_thinking is not None:
+            kwargs["extra_body"] = {"enable_thinking": self.enable_thinking}
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
+        return kwargs
 
 
 def _extract_config_sections(file_data: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:

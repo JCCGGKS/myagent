@@ -45,11 +45,16 @@ from langgraph.checkpoint.memory import MemorySaver
 def _make_summary_fold_fn(
     llm_client: Any | None,
     llm_model: str | None,
+    llm_config: Any | None = None,
 ) -> Callable[[str, list[dict]], Awaitable[str]] | None:
     """构造摘要折叠器（异步）：把已有摘要与新增溢出消息合并为一段连贯摘要。
 
     无 LLM 客户端时返回 None，由 ContextService 退化为拼接截断。
+    生成参数（thinking 等）沿用 LLMConfig，避免压缩步骤触发思维链推理。
     """
+    extra_body = None
+    if llm_config is not None and getattr(llm_config, "enable_thinking", None) is not None:
+        extra_body = {"enable_thinking": llm_config.enable_thinking}
 
     async def fold(old_summary: str, overflow: list[dict]) -> str:
         new_text = "\n".join(
@@ -74,7 +79,9 @@ def _make_summary_fold_fn(
             },
         ]
         try:
-            resp = await llm_client.chat.completions.create(model=llm_model, messages=messages)
+            resp = await llm_client.chat.completions.create(
+                model=llm_model, messages=messages, **(extra_body or {})
+            )
             summary = resp.choices[0].message.content or ""
             return summary.strip()
         except Exception as exc:  # noqa: BLE001
@@ -97,6 +104,7 @@ class CustomerServiceAgent:
         llm_fallback_service: LLMIntentFallbackService | None = None,
         llm_client: Any | None = None,
         llm_model: str | None = None,
+        llm_config: Any | None = None,
     ) -> None:
         self.store = store
         self.order_service = order_service
@@ -109,17 +117,19 @@ class CustomerServiceAgent:
         self.clarification_service = ClarificationService(
             llm_client=llm_client,
             llm_model=llm_model,
+            llm_config=llm_config,
         )
         context_config = get_context_config_service().get_config()
         self.context_service = ContextService(
             state_tracker=self.state_tracker_service,
             max_recent_messages=context_config.max_recent_messages,
             max_summary_chars=context_config.max_summary_chars,
-            summarizer=_make_summary_fold_fn(llm_client, llm_model),
+            summarizer=_make_summary_fold_fn(llm_client, llm_model, llm_config),
         )
         self.response_service = ResponseService(
             llm_client=llm_client,
             llm_model=llm_model,
+            llm_config=llm_config,
         )
         self.message_service = MessageService(store)
         # 统一工具执行服务（覆盖 LLM 函数调用工具与业务工具）
@@ -135,6 +145,7 @@ class CustomerServiceAgent:
             llm_model=llm_model,
             tool_executor=self.tool_executor,
             tools=build_tool_schemas(),  # 注册全部工具 schema 到 LLM function calling
+            llm_config=llm_config,
         )
         # langgraph 为硬依赖：不可用时显式报错
         if StateGraph is None:

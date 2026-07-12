@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.config import LLMConfig
 from app.schema import ConversationState
 from app.business.prompts import build_agent_system_prompt
 from app.business.tools.tool_executor import ToolExecutor
@@ -13,9 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class AgentNodeService:
-    """Agent 节点服务（ReAct 循环，仅负责决策与工具编排）。
+    """Agent 节点服务（ReAct 循环，决策与工具编排）。
 
-    最终答案由 response_generator 节点统一生成；本节点不写 ``state.reply``。
+    当 LLM 直接给出结论（无 tool_calls）时，本节点把 ``content`` 写入
+    ``state.reply``，使下游 ``response_generator`` 命中早返回、不再多调一次 LLM
+    （去冗余，详见任务「去冗余调用」）。需要工具或超限兜底时仍交给 generator。
     """
 
     def __init__(
@@ -26,6 +29,7 @@ class AgentNodeService:
         tools: list[dict[str, Any]] | None = None,
         tool_executor: ToolExecutor | None = None,
         max_tool_rounds: int = 3,
+        llm_config: LLMConfig | None = None,
     ) -> None:
         # 兼容旧字段 llm：仍允许直接传入已构造的 client。
         self.llm_client = llm if llm is not None else llm_client
@@ -33,9 +37,11 @@ class AgentNodeService:
         self.tools = tools or build_tool_schemas()
         self.tool_executor = tool_executor or ToolExecutor()
         self.max_tool_rounds = max_tool_rounds
+        # 生成参数（thinking/temperature 等）由 LLMConfig 统一下发，默认关闭思维链。
+        self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def run(self, state: ConversationState) -> ConversationState:
-        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则交给 generator；有 tool_calls 则执行后继续。"""
+        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则直接写 reply；有 tool_calls 则执行后继续。"""
         messages = self._build_messages(state)
 
         for _round in range(self.max_tool_rounds):
@@ -57,7 +63,11 @@ class AgentNodeService:
                 # 继续循环，让 LLM 根据工具结果决定下一步
                 continue
 
-            # 无 tool_calls：信息已足够，交给 response_generator 生成最终答案
+            # 无 tool_calls：LLM 已给出结论，直接写入 reply 供 response_generator
+            # 早返回（去冗余，避免再调一次 LLM 重新措辞）。
+            content = (response.get("content") or "").strip()
+            if content:
+                state.reply = content
             break
 
         # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_result 兜底生成
@@ -92,4 +102,10 @@ class AgentNodeService:
     async def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """调用 LLM（异步），返回响应（包含 content 或 tool_calls）。"""
         logger.debug("agent_node: calling LLM with %d messages", len(messages))
-        return await call_llm_async(self.llm_client, self.llm_model, messages, tools=self.tools)
+        return await call_llm_async(
+            self.llm_client,
+            self.llm_model,
+            messages,
+            tools=self.tools,
+            generation_kwargs=self.generation_kwargs,
+        )

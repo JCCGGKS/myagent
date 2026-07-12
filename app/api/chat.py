@@ -37,6 +37,7 @@ agent = CustomerServiceAgent(
     llm_fallback_service=LLMIntentFallbackService(llm_config),
     llm_client=llm_client,
     llm_model=llm_config.model if llm_client is not None else None,
+    llm_config=llm_config,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])

@@ -219,6 +219,8 @@ class LLMIntentFallbackService:
     async def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
         """Call chat.completions (async) and parse the JSON response."""
         try:
+            # 生成参数（thinking 等）统一走 LLMConfig，默认关闭思维链以降延迟。
+            gen_kwargs = self.config.generation_kwargs()
             response = await self.client.chat.completions.create(
                 model=self.config.model,
                 messages=[
@@ -226,8 +228,8 @@ class LLMIntentFallbackService:
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
-                extra_body={"enable_thinking": False},
                 stream=False,
+                **gen_kwargs,
             )
         except Exception as exc:
             logger.warning("chat.completions API error: %s", repr(exc))

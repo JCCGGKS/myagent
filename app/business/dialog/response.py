@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
+from app.config import LLMConfig
 from app.schema import ConversationState
 from app.business.prompts import build_response_system_prompt
 from app.utils import build_action_record, load_yaml_file
@@ -37,14 +38,17 @@ class ResponseService:
         prompt_registry: Optional[ResponsePromptRegistry] = None,
         llm_client: Any | None = None,
         llm_model: str | None = None,
+        llm_config: LLMConfig | None = None,
     ) -> None:
         self.prompt_registry = prompt_registry or ResponsePromptRegistry()
         self.llm_client = llm_client
         self.llm_model = llm_model
+        # 生成参数（thinking/temperature 等），默认关闭思维链。
+        self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def generate(self, state: ConversationState) -> ConversationState:
         """生成响应（由真实 LLM 驱动，异步）。"""
-        # 如果已经有 reply（如 agent_node 已生成），直接返回
+        # 如果已经有 reply（如 agent_node 已生成），直接返回（去冗余，不再调 LLM）
         if state.reply:
             return state
 
@@ -96,5 +100,10 @@ class ResponseService:
     async def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
         """调用 LLM 生成响应（需配置真实 LLM client，异步）。失败时兜底为统一道歉语。"""
         logger.debug("ResponseService: calling LLM with %d messages", len(messages))
-        result = await call_llm_async(self.llm_client, self.llm_model, messages)
+        result = await call_llm_async(
+            self.llm_client,
+            self.llm_model,
+            messages,
+            generation_kwargs=self.generation_kwargs,
+        )
         return result["content"].strip() or LLM_CALL_FAILED_REPLY

@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
+from app.config import LLMConfig
 from app.schema import ConversationState
 from app.business.prompts import build_clarification_system_prompt
 from app.utils import build_action_record, load_yaml_file
@@ -37,10 +38,13 @@ class ClarificationService:
         prompt_registry: Optional[ClarificationPromptRegistry] = None,
         llm_client: Any | None = None,
         llm_model: str | None = None,
+        llm_config: LLMConfig | None = None,
     ) -> None:
         self.prompt_registry = prompt_registry or ClarificationPromptRegistry()
         self.llm_client = llm_client
         self.llm_model = llm_model
+        # 生成参数（thinking/temperature 等），默认关闭思维链。
+        self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def generate(self, state: ConversationState) -> ConversationState:
         # 优先用澄清提示词走 LLM 生成追问话术
@@ -94,5 +98,6 @@ class ClarificationService:
             self.llm_model,
             [{"role": "system", "content": system_prompt}],
             fallback_content="",
+            generation_kwargs=self.generation_kwargs,
         )
         return result["content"].strip()

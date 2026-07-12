@@ -18,6 +18,17 @@ llm:
   # LLM 意图识别的最低置信度阈值（低于此值的结果会被丢弃）
   confidence_threshold: 0.7
 
+  # 生成参数（可选；不填则用默认值）
+  # 是否启用思维链（仅 Qwen3 等推理模型支持，经 extra_body 下发）。
+  # 默认 false（关闭）以避免单次对话 20s 的推理开销；需强推理时置 true。
+  enable_thinking: false
+  # 采样温度（0~2，越大越随机）；留空用模型默认。
+  temperature: 0.3
+  # 单次回复最大 token 数；留空用模型默认。
+  # max_tokens: 1024
+  # 核采样概率阈值（0~1）；留空用模型默认。
+  # top_p: 0.9
+
 # RAG 配置
 rag:
   # 检索策略：bm25 | semantic | hybrid

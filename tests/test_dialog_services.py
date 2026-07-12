@@ -5,8 +5,11 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.config import LLMConfig
 from app.schema import ConversationState, ToolExecutionResult
 from app.business.dialog import ClarificationService, ResponseService
+from app.business.agent.agent_node import AgentNodeService
+from app.business.tools.tool_executor import ToolExecutor
 
 
 @pytest.fixture
@@ -58,7 +61,7 @@ def response_service():
     )
 
 
-class DialogServicesTestCase:
+class TestDialogServices:
     """测试对话服务的核心功能。"""
 
     def test_clarification_prompt_registry_should_load_default_yaml_prompts(self):
@@ -103,3 +106,76 @@ class DialogServicesTestCase:
         request.message = "你好"
         result = asyncio.run(service.persist(state, request))
         assert result is not None
+
+    def test_generation_kwargs_should_pass_thinking_and_temperature(self):
+        """LLMConfig 的 enable_thinking/temperature 应原样透传到 chat.completions.create。"""
+        config = LLMConfig(enable_thinking=True, temperature=0.5, max_tokens=512, top_p=0.9)
+        llm_client = AsyncMock()
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="追问文案"))]
+        )
+        service = ClarificationService(
+            llm_client=llm_client,
+            llm_model="fake-model",
+            llm_config=config,
+        )
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            current_action="ask_slot_clarification",
+        )
+        state.missing_slots = ["order_id"]
+        asyncio.run(service.generate(state))
+
+        _, kwargs = llm_client.chat.completions.create.call_args
+        assert kwargs.get("extra_body") == {"enable_thinking": True}
+        assert kwargs.get("temperature") == 0.5
+        assert kwargs.get("max_tokens") == 512
+        assert kwargs.get("top_p") == 0.9
+
+    def test_default_llm_config_should_disable_thinking(self):
+        """默认 LLMConfig 应关闭思维链（enable_thinking=False），避免推理开销。"""
+        config = LLMConfig()
+        assert config.enable_thinking is False
+        gen = config.generation_kwargs()
+        assert gen.get("extra_body") == {"enable_thinking": False}
+        # 未显式设置的采样参数不应出现
+        assert "temperature" not in gen
+        assert "max_tokens" not in gen
+        assert "top_p" not in gen
+
+    def test_agent_node_should_write_reply_to_remove_redundant_call(self):
+        """agent_node 在 LLM 直接给出结论时应写入 state.reply，使 response_generator 命中早返回（去冗余）。"""
+        llm_client = AsyncMock()
+        # LLM 直接返回 content、无 tool_calls
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="已为你处理完成。", tool_calls=None))]
+        )
+
+        service = AgentNodeService(
+            llm_client=llm_client,
+            llm_model="fake-model",
+            tool_executor=ToolExecutor(),
+            max_tool_rounds=3,
+        )
+        state = ConversationState(session_id="test-session", user_id=1, channel="web")
+        state.recent_messages.append({"role": "user", "content": "把订单 A1001 退掉"})
+        result = asyncio.run(service.run(state))
+
+        assert result.reply == "已为你处理完成。"
+
+    def test_response_generator_should_skip_llm_when_reply_present(self):
+        """response_generator 在 state.reply 已存在时应直接返回，不再调用 LLM（去冗余）。"""
+        llm_client = AsyncMock()
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="不应出现"))]
+        )
+        service = ResponseService(
+            llm_client=llm_client,
+            llm_model="fake-model",
+        )
+        state = ConversationState(session_id="test-session", user_id=1, channel="web")
+        state.reply = "已由 agent_node 生成"
+        result = asyncio.run(service.generate(state))
+        assert result.reply == "已由 agent_node 生成"
+        # 不应再调用 LLM
+        llm_client.chat.completions.create.assert_not_called()
