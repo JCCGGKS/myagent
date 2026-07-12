@@ -13,6 +13,7 @@ from app.business import (
     LLMIntentFallbackService,
     LogisticsService,
     OrderService,
+    RefundService,
 )
 from app.config import load_llm_config
 from app.business.dialog import SessionService, get_session_service
@@ -32,6 +33,7 @@ agent = CustomerServiceAgent(
     order_service=OrderService(),
     logistics_service=LogisticsService(),
     handoff_service=HandoffService(),
+    refund_service=RefundService(),
     llm_fallback_service=LLMIntentFallbackService(llm_config),
     llm_client=llm_client,
     llm_model=llm_config.model if llm_client is not None else None,

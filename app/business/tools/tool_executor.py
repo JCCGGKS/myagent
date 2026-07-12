@@ -5,7 +5,12 @@ import logging
 from typing import Any
 
 from app.schema import ConversationState, ToolExecutionResult
-from app.business.tools.domain import HandoffService, LogisticsService, OrderService
+from app.business.tools.domain import (
+    HandoffService,
+    LogisticsService,
+    OrderService,
+    RefundService,
+)
 from app.business.tools.rag_tool import RagRetrieveTool
 from app.utils import build_action_record
 
@@ -50,12 +55,69 @@ _HANDOFF_SCHEMA: dict[str, Any] = {
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
 }
+_REFUND_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "request_refund",
+        "description": (
+            "发起售后退款/退货/换货/维修。当用户明确表示要退款、退货、换货、维修，"
+            "或系统识别出 after_sale_refund 类意图时调用。需提供订单号；"
+            "refund_type 可选 refund(退款)/return(无理由退货)/exchange(换货)/warranty(质量问题维修)。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "订单号"},
+                "refund_type": {
+                    "type": "string",
+                    "description": "退款类型",
+                    "enum": ["refund", "return", "exchange", "warranty"],
+                },
+                "reason": {"type": "string", "description": "退款/退货原因（可选）"},
+            },
+            "required": ["order_id"],
+        },
+    },
+}
+_MODIFY_ADDRESS_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "modify_address",
+        "description": "修改订单收货地址。当用户要改地址、修改地址、换收货地址时调用。需提供订单号与新地址。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "订单号"},
+                "new_address": {"type": "string", "description": "新的收货地址"},
+            },
+            "required": ["order_id", "new_address"],
+        },
+    },
+}
+_INVOICE_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "apply_invoice",
+        "description": "开具电子发票。当用户要开发票、开票、要发票时调用。需提供订单号与发票抬头（可选）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "订单号"},
+                "invoice_title": {"type": "string", "description": "发票抬头（可选）"},
+            },
+            "required": ["order_id"],
+        },
+    },
+}
 
 TOOLS: dict[str, dict[str, Any]] = {
     "rag_retrieve": {"schema": RagRetrieveTool().to_tool_schema(), "handler": "_rag_retrieve"},
     "query_order": {"schema": _ORDER_SCHEMA, "handler": "_query_order"},
     "query_logistics": {"schema": _LOGISTICS_SCHEMA, "handler": "_query_logistics"},
     "create_handoff": {"schema": _HANDOFF_SCHEMA, "handler": "_handle_handoff"},
+    "request_refund": {"schema": _REFUND_SCHEMA, "handler": "_request_refund"},
+    "modify_address": {"schema": _MODIFY_ADDRESS_SCHEMA, "handler": "_modify_address"},
+    "apply_invoice": {"schema": _INVOICE_SCHEMA, "handler": "_apply_invoice"},
 }
 # LLM 可能返回的历史别名，统一归并到规范名
 TOOL_ALIASES: dict[str, str] = {
@@ -63,6 +125,10 @@ TOOL_ALIASES: dict[str, str] = {
     "logistics": "query_logistics",
     "handoff_service": "create_handoff",
     "request_human": "create_handoff",
+    "refund": "request_refund",
+    "return": "request_refund",
+    "exchange": "request_refund",
+    "warranty": "request_refund",
 }
 # 供 registry.build_tool_schemas() 读取
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {name: spec["schema"] for name, spec in TOOLS.items()}
@@ -82,11 +148,13 @@ class ToolExecutor:
         order_service: OrderService | None = None,
         logistics_service: LogisticsService | None = None,
         handoff_service: HandoffService | None = None,
+        refund_service: RefundService | None = None,
         rag_tool: RagRetrieveTool | None = None,
     ) -> None:
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
+        self.refund_service = refund_service or RefundService()
         self.rag_tool = rag_tool or RagRetrieveTool()
         # 从单点注册表构建 名称 -> handler 方法 的映射
         self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
@@ -226,3 +294,54 @@ class ToolExecutor:
             build_action_record("handoff_node", state.tool_result.user_facing_summary)
         )
         return state
+
+    def _request_refund(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        order_id = args.get("order_id") or state.slots.get("order_id")
+        if not order_id:
+            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号，以便为您发起退款。")
+        if self.refund_service is None:
+            return ToolExecutionResult(kind="error", user_facing_summary=f"退款服务未配置，无法处理: {order_id}")
+        refund_type = args.get("refund_type", "refund")
+        reason = args.get("reason", "")
+        result = self.refund_service.request_refund(order_id, refund_type=refund_type, reason=reason)
+        return ToolExecutionResult(
+            kind="aftersale_refund",
+            raw_result=result.model_dump(),
+            sanitized_result=result.model_dump(),
+            user_facing_summary=f"已为订单 {order_id} 提交{refund_type}申请，受理单号 {result.refund_id}",
+        )
+
+    def _modify_address(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        order_id = args.get("order_id") or state.slots.get("order_id")
+        new_address = args.get("new_address", "")
+        if not order_id or not new_address:
+            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号与新收货地址。")
+        if self.order_service is None:
+            return ToolExecutionResult(kind="error", user_facing_summary=f"订单服务未配置，无法修改地址: {order_id}")
+        result = self.order_service.modify_address(order_id, new_address)
+        if not result.get("ok"):
+            return ToolExecutionResult(kind="error", user_facing_summary=result.get("message", "地址修改失败。"))
+        return ToolExecutionResult(
+            kind="order_query",
+            raw_result=result,
+            sanitized_result=result,
+            user_facing_summary=f"订单 {order_id} 的收货地址已提交修改为：{new_address}",
+        )
+
+    def _apply_invoice(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        order_id = args.get("order_id") or state.slots.get("order_id")
+        invoice_title = args.get("invoice_title", "")
+        if not order_id:
+            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号，以便开具发票。")
+        if self.order_service is None:
+            return ToolExecutionResult(kind="error", user_facing_summary=f"订单服务未配置，无法开票: {order_id}")
+        result = self.order_service.apply_invoice(order_id, invoice_title=invoice_title)
+        if not result.get("ok"):
+            return ToolExecutionResult(kind="error", user_facing_summary=result.get("message", "开票失败。"))
+        suffix = f"（抬头：{invoice_title}）" if invoice_title else ""
+        return ToolExecutionResult(
+            kind="order_query",
+            raw_result=result,
+            sanitized_result=result,
+            user_facing_summary=f"订单 {order_id} 的电子发票已开具{suffix}",
+        )

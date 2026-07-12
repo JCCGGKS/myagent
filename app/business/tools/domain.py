@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import re
 
-from app.schema import HandoffResult, LogisticsEvent, LogisticsInfo, OrderInfo
+from app.schema import (
+    HandoffResult,
+    LogisticsEvent,
+    LogisticsInfo,
+    OrderInfo,
+    RefundResult,
+)
 from app.dao.data import load_orders, load_logistics
 
 
@@ -27,6 +33,28 @@ class OrderService:
 
     def get_order_status(self, order_id: str) -> OrderInfo | None:
         return self._orders.get(order_id)
+
+    def modify_address(self, order_id: str, new_address: str) -> dict[str, object]:
+        """修改订单收货地址（mock：无真实订单后端，返回受理结果）。"""
+        if order_id not in self._orders:
+            return {"ok": False, "order_id": order_id, "message": "没有查到这个订单号"}
+        return {
+            "ok": True,
+            "order_id": order_id,
+            "new_address": new_address,
+            "message": "地址修改申请已提交，待仓库确认",
+        }
+
+    def apply_invoice(self, order_id: str, invoice_title: str = "") -> dict[str, object]:
+        """开具电子发票（mock：无真实发票后端，返回受理结果）。"""
+        if order_id not in self._orders:
+            return {"ok": False, "order_id": order_id, "message": "没有查到这个订单号"}
+        return {
+            "ok": True,
+            "order_id": order_id,
+            "invoice_title": invoice_title,
+            "message": "电子发票已开具",
+        }
 
 
 class LogisticsService:
@@ -57,3 +85,23 @@ class HandoffService:
 def extract_order_id(text: str) -> str | None:
     match = ORDER_ID_PATTERN.search(text.upper())
     return match.group(0) if match else None
+
+
+class RefundService:
+    """售后退款/退货/换货/维修受理服务（mock：无真实订单后端）。
+
+    设计 §2.1 明确要求 ``RefundTool``；此前缺失导致 after_sale_refund 类意图
+    在 agent_node 无工具可调用，退化为 ``create_handoff`` 转人工。
+    """
+
+    def __init__(self) -> None:
+        self._counter = 2000
+
+    def request_refund(self, order_id: str, refund_type: str = "refund", reason: str = "") -> RefundResult:
+        self._counter += 1
+        return RefundResult(
+            refund_id=f"R{self._counter}",
+            order_id=order_id,
+            refund_type=refund_type,
+            status="已受理",
+        )

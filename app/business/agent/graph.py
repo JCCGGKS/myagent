@@ -24,6 +24,7 @@ from app.business import (
     LogisticsService,
     MessageService,
     OrderService,
+    RefundService,
     ResponseService,
     StateTrackerService,
 )
@@ -92,6 +93,7 @@ class CustomerServiceAgent:
         order_service: OrderService,
         logistics_service: LogisticsService,
         handoff_service: HandoffService,
+        refund_service: RefundService | None = None,
         llm_fallback_service: LLMIntentFallbackService | None = None,
         llm_client: Any | None = None,
         llm_model: str | None = None,
@@ -125,6 +127,7 @@ class CustomerServiceAgent:
             order_service=order_service,
             logistics_service=logistics_service,
             handoff_service=handoff_service,
+            refund_service=refund_service,
         )
         # agent_node 初始化（工具编排节点）
         self.agent_node_service = AgentNodeService(

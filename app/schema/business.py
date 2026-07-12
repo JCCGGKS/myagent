@@ -26,3 +26,12 @@ class LogisticsInfo(BaseModel):
 class HandoffResult(BaseModel):
     ticket_id: str
     summary: str
+
+
+class RefundResult(BaseModel):
+    """售后退款/退货/换货/维修的受理结果（mock 实现，无真实订单后端）。"""
+
+    refund_id: str
+    order_id: str
+    refund_type: str = "refund"
+    status: str = "已受理"

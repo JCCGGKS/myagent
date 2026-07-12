@@ -14,6 +14,7 @@ from app.schema.business import (
     LogisticsEvent,
     LogisticsInfo,
     OrderInfo,
+    RefundResult,
 )
 from app.schema.chat import ChatRequest, ChatResponse
 from app.schema.intent import (
@@ -51,6 +52,7 @@ __all__ = [
     "MainIntentCode",
     "OrderInfo",
     "PendingIntent",
+    "RefundResult",
     "SessionRenameRequest",
     "SubIntentCode",
     "ToolExecutionResult",

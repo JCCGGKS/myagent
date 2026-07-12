@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from app.business.tools.domain import OrderService, RefundService
 from app.schema import (
     ConversationState,
     HandoffResult,
@@ -191,3 +192,99 @@ class TestToolExecutor:
         assert updated.tool_result.kind == "handoff"
         assert updated.handoff is True
         assert updated.tool_result.sanitized_result["ticket_id"] == "T-001"
+
+    def test_run_request_refund_returns_aftersale_result(self):
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_r1",
+                "type": "function",
+                "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'},
+            }
+        ]
+        state = _state()
+        executor.run(tool_calls, state)
+
+        assert state.tool_result is not None
+        assert state.tool_result.kind == "aftersale_refund"
+        assert state.tool_result.sanitized_result["order_id"] == "A1001"
+        assert state.tool_result.sanitized_result["refund_id"].startswith("R")
+
+    def test_request_refund_missing_order_id_errors(self):
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_r2",
+                "type": "function",
+                "function": {"name": "request_refund", "arguments": "{}"},
+            }
+        ]
+        state = _state()
+        executor.run(tool_calls, state)
+
+        assert state.tool_result is not None
+        assert state.tool_result.kind == "error"
+
+    def test_run_modify_address_uses_order_service(self):
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=OrderService(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_m1",
+                "type": "function",
+                "function": {"name": "modify_address", "arguments": '{"order_id": "A1001", "new_address": "北京市朝阳区"}'},
+            }
+        ]
+        state = _state()
+        executor.run(tool_calls, state)
+
+        assert state.tool_result is not None
+        assert state.tool_result.kind == "order_query"
+        assert state.tool_result.sanitized_result["new_address"] == "北京市朝阳区"
+
+    def test_run_apply_invoice_uses_order_service(self):
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=OrderService(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_i1",
+                "type": "function",
+                "function": {"name": "apply_invoice", "arguments": '{"order_id": "A1001", "invoice_title": "XX公司"}'},
+            }
+        ]
+        state = _state()
+        executor.run(tool_calls, state)
+
+        assert state.tool_result is not None
+        assert state.tool_result.kind == "order_query"
+        assert state.tool_result.sanitized_result["invoice_title"] == "XX公司"

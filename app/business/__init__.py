@@ -12,6 +12,7 @@ from app.business.tools.domain import (
     HandoffService,
     LogisticsService,
     OrderService,
+    RefundService,
     extract_order_id,
 )
 from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
@@ -39,6 +40,7 @@ __all__ = [
     "MessageService",
     "ResponsePromptRegistry",
     "OrderService",
+    "RefundService",
     "SessionService",
     "get_session_service",
     "ResponseService",
