@@ -52,13 +52,9 @@ class ConversationState(BaseModel):
     slots: dict[str, str] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
     confirmed_slots: list[str] = Field(default_factory=list)
-    candidate_intents: list[str] = Field(default_factory=list)
-    risk_level: Literal["low", "medium", "high"] = "low"
     emotion: EmotionState = Field(default_factory=EmotionState)
     needs_clarification: bool = False
-    topic_changed: bool = False
     current_action: str = ""
-    latest_action_name: str = ""
     latest_action_result: dict[str, Any] | None = None
     action_history: list[ActionRecord] = Field(default_factory=list)
     summary: str = ""

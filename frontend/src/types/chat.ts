@@ -60,13 +60,9 @@ export interface ConversationState {
   slots: Record<string, string>;
   missing_slots: string[];
   confirmed_slots?: string[];
-  candidate_intents?: string[];
-  risk_level: "low" | "medium" | "high";
   emotion?: EmotionState;
   needs_clarification: boolean;
-  topic_changed?: boolean;
   current_action?: string;
-  latest_action_name?: string;
   latest_action_result?: Record<string, unknown> | null;
   action_history?: ActionRecord[];
   summary: string;

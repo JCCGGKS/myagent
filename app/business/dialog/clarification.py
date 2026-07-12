@@ -53,7 +53,6 @@ class ClarificationService:
             reply = await self._call_llm(build_clarification_system_prompt(state, examples=examples))
             if reply:
                 state.reply = reply
-                state.latest_action_name = "clarification_node"
                 state.latest_action_result = {"reply": reply}
                 state.action_history.append(build_action_record("clarification_node", reply))
                 return state
@@ -85,7 +84,6 @@ class ClarificationService:
             )
         else:
             state.reply = prompts["generic_fallback"]
-        state.latest_action_name = "clarification_node"
         state.latest_action_result = {"reply": state.reply}
         state.action_history.append(build_action_record("clarification_node", state.reply))
         return state

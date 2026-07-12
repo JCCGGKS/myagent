@@ -326,11 +326,8 @@ class StateTrackerService:
 
         state.current_main_intent = intent.main_intent
         state.current_sub_intent = intent.sub_intent
-        state.candidate_intents = list(intent.candidate_intents)
-        state.risk_level = intent.risk_level
         state.emotion = intent.emotion
         state.needs_clarification = intent.needs_clarification
-        state.topic_changed = intent.is_intent_shift
         state.handoff = intent.main_intent == "handoff_service"
         state.handoff_reason = intent.handoff_reason
 
