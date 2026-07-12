@@ -1,272 +1,72 @@
 # 意图识别单点评估报告（规则 + LLM 兜底）
 
-## 评估方式
-
-评估 `IntentRouterService` 的完整路由链路。
-
 ## 总体结果
-
 - 样本总数：1000
-- 命中样本：757
-- 准确率：75.70%
-- 路由来源分布：
-  - `llm_fallback`: 510
-  - `fallback`: 103
-  - `rule`: 387
+- 命中：753
+- 准确率：75.30%
+- 路由分布：
+  - 规则命中：584 条
+  - 未识别（走兜底）：2 条
+  - LLM 兜底：346 条
+  - 上下文跟进：68 条
 
-## 按主意图统计
+## 按主意图
+- `after_sale_refund`: 318/448 = 70.98%
+- `complaint`: 21/23 = 91.30%
+- `handoff_service`: 11/11 = 100.00%
+- `logistics`: 191/263 = 72.62%
+- `order_query`: 182/223 = 81.61%
+- `unrecognize`: 26/28 = 92.86%
+- `unsupported_biz`: 4/4 = 100.00%
 
-- `after_sale_refund`: 66 / 136 = 48.53%
-- `chitchat`: 128 / 128 = 100.00%
-- `complaint`: 111 / 126 = 88.10%
-- `handoff_service`: 81 / 126 = 64.29%
-- `logistics`: 139 / 159 = 87.42%
-- `order_query`: 171 / 193 = 88.60%
-- `unrecognize`: 61 / 132 = 46.21%
-
-## 未覆盖/误判样本
-
-- `case_0003`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0010`: `A1346` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0011`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0014`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0018`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0021`: `什么时候好` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0022`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0026`: `能不能快点` -> expected `after_sale_refund / after_sale_refund.consult_policy`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0045`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0049`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0053`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0059`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0065`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0070`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0072`: `有消息没` -> expected `logistics / logistics.not_received`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0075`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0077`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0079`: `东西坏了能退吗` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0082`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0083`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0085`: `A1466` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0087`: `A1136` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0088`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0093`: `A1290` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0095`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0102`: `A1461` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0104`: `A1405` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0105`: `A1318` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0106`: `质量太差了要退款` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0116`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0124`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0125`: `A1233` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0129`: `A1122` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0134`: `A1313` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0139`: `A1159` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0149`: `A1073` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0152`: `A1227` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0156`: `A1467` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0158`: `A1425` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0159`: `A1463` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0160`: `A1297` -> expected `order_query / order_query.query_status`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0163`: `A1240` -> expected `logistics / logistics.not_received`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0178`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0192`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0199`: `今天天气怎么样` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0202`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0206`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0209`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0210`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0216`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0217`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0223`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0224`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0225`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0229`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0234`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0243`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0245`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0250`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0255`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0258`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0269`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0270`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0273`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0280`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0297`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0301`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0304`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0307`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0308`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0311`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0314`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0332`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0334`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0335`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0336`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0342`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0346`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0353`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0356`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0357`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0360`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0363`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0364`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0367`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0370`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0379`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0391`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0398`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0405`: `质量太差了要退款` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0412`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0417`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0419`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0420`: `我要跟人讲` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0423`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0430`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0437`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0440`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0441`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0446`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0447`: `东西坏了能退吗` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0451`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0454`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0455`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0458`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0462`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0475`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0476`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0479`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0482`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0483`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0486`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0489`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0490`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0493`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0496`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0501`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0504`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0507`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0510`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0514`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0517`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0518`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0521`: `今天天气怎么样` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0524`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0532`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0535`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0538`: `东西坏了能退吗` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0539`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0546`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0552`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0553`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0556`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0559`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0560`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0561`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0566`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0570`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0573`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0577`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0584`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0585`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0594`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0596`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0598`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0616`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0619`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0626`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0627`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0630`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0633`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0640`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0642`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0643`: `质量太差了要退款` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0644`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0648`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0650`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0651`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0654`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0661`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0669`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0675`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0678`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0682`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0689`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0693`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0696`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0699`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0703`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0710`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0713`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0720`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0727`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0731`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0732`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0734`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0736`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0741`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0745`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0748`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0755`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0760`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0762`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0766`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0769`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0770`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0773`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0774`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0775`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0776`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0777`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0784`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0787`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0790`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0798`: `不想跟机器人说话` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0799`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0806`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0811`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0815`: `好的` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0818`: `质量太差了要退款` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0822`: `多久发货` -> expected `unrecognize / unrecognize.unknown`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0825`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0826`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0832`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0833`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0836`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0839`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0840`: `我要跟人讲` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0843`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0846`: `发错货了` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0848`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0850`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0854`: `叫你们负责人来` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0855`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0857`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0860`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0864`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0867`: `收到的货不对` -> expected `after_sale_refund / after_sale_refund.wrong_goods`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0868`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0869`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0874`: `质量太差了要退款` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0879`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0883`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0895`: `东西有问题我要退` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0913`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0920`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-- `case_0923`: `我不想买了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0924`: `我要跟人讲` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0929`: `发货了没有啊` -> expected `logistics / logistics.not_received`, actual `order_query / order_query.query_status` (source=llm_fallback)
-- `case_0937`: `不想要了能退吗` -> expected `after_sale_refund / after_sale_refund.no_reason_return`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0938`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0939`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0946`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0948`: `退款多久到账` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0953`: `给我赔偿` -> expected `complaint / complaint.compensate`, actual `complaint / complaint.service_complaint` (source=rule)
-- `case_0955`: `怎么加盟` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0963`: `帮我看下买的东西到哪了` -> expected `order_query / order_query.query_status`, actual `logistics / logistics.not_received` (source=llm_fallback)
-- `case_0965`: `收到坏的了` -> expected `after_sale_refund / after_sale_refund.damage_refund`, actual `unrecognize / unrecognize.unknown` (source=fallback)
-- `case_0969`: `退货政策是什么` -> expected `unrecognize / unrecognize.unknown`, actual `after_sale_refund / after_sale_refund.consult_policy` (source=rule)
-- `case_0973`: `机器人听不懂` -> expected `handoff_service / handoff_service.request_human`, actual `unrecognize / unrecognize.unknown` (source=llm_fallback)
-- `case_0976`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0983`: `你们招人吗` -> expected `unrecognize / unrecognize.unknown`, actual `unsupported_biz / unsupported_biz.out_of_scope` (source=llm_fallback)
-- `case_0997`: `再见` -> expected `unrecognize / unrecognize.unknown`, actual `chitchat / chitchat.greeting` (source=llm_fallback)
-
+## 未命中样本（前 50 条）
+- `case_0001`: `请问收到的东西坏了，单号A1001`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0005`: `麻烦买的东西想退，单号A1001`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0010`: `麻烦收到的东西坏了，单号B6688`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0011`: `麻烦丢件，单号C3090`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0014`: `申请把买的退了，单号D7721`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0017`: `请问这单我后悔了，单号C3090`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0023`: `单号D7721，麻烦商品损坏了要退款`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0028`: `我想七天无理由退货，单号B6688`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0029`: `麻烦七天无理由退货，单号D7721`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0035`: `我想物流更新很慢，单号D7721`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0039`: `快递延迟了，单号D7721`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0044`: `单号D7721，我想收到的货有点问题`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.damage_refund`（路由：LLM 兜底）
+- `case_0046`: `单号E4455，我想商品损坏了要退款`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0047`: `单号C3090，我想修改地址`  expected `order_query/order_query.modify_address`  actual `order_query/order_query.query_status`（路由：规则命中）
+- `case_0059`: `我想丢件，单号C3090`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0068`: `麻烦商品损坏了要退款，单号E4455`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0071`: `麻烦收到的东西坏了`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0079`: `单号D7721，这单我后悔了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0080`: `请问开发票，单号C3090`  expected `order_query/order_query.apply_invoice`  actual `order_query/order_query.query_status`（路由：规则命中）
+- `case_0091`: `单号D7721，我想丢件`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0113`: `单号E4455，我想这单我后悔了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0121`: `单号A1001，麻烦这单我后悔了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0123`: `麻烦商品损坏了要退款，单号D7721`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0129`: `单号C3090，我的东西发出来没有`  expected `logistics/logistics.not_received`  actual `order_query/order_query.query_status`（路由：LLM 兜底）
+- `case_0136`: `麻烦商品损坏了要退款，单号C3090`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0139`: `我想这单我后悔了，单号B6688`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0142`: `我想收到的东西坏了，单号E4455`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0145`: `单号D7721，我想物流更新很慢`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0146`: `单号C3090，我想收到的东西坏了`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0150`: `麻烦买的东西想退，单号B6688`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0153`: `麻烦配送`  expected `logistics/logistics.not_received`  actual `logistics/logistics.delayed`（路由：LLM 兜底）
+- `case_0159`: `单号A1001，请问我的东西发出来没有`  expected `logistics/logistics.not_received`  actual `order_query/order_query.query_status`（路由：LLM 兜底）
+- `case_0161`: `请问七天无理由退货，单号C3090`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0163`: `单号C3090，麻烦啥时候能送过来`  expected `logistics/logistics.not_received`  actual `logistics/logistics.delayed`（路由：LLM 兜底）
+- `case_0164`: `快递延迟了，单号B6688`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0165`: `麻烦申请把买的退了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0166`: `麻烦七天无理由退货，单号C3090`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0167`: `单号A1001，请问商品损坏了要退款`  expected `after_sale_refund/after_sale_refund.damage_refund`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0171`: `修改地址，单号B6688`  expected `order_query/order_query.modify_address`  actual `order_query/order_query.query_status`（路由：规则命中）
+- `case_0179`: `请问不想要了想退，单号B6688`  expected `after_sale_refund/after_sale_refund.no_reason_return`  actual `after_sale_refund/after_sale_refund.consult_policy`（路由：规则命中）
+- `case_0180`: `单号A1001，我想收到的货有点问题`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.damage_refund`（路由：LLM 兜底）
+- `case_0188`: `单号B6688，我想这单我后悔了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0189`: `单号B6688，请问东西有问题想退`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0201`: `麻烦我的东西发出来没有`  expected `logistics/logistics.not_received`  actual `order_query/order_query.query_status`（路由：LLM 兜底）
+- `case_0204`: `我的东西发出来没有，单号E4455`  expected `logistics/logistics.not_received`  actual `order_query/order_query.query_status`（路由：LLM 兜底）
+- `case_0206`: `单号C3090，我想物流更新很慢`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0213`: `我想丢件，单号E4455`  expected `logistics/logistics.lost_package`  actual `logistics/logistics.not_received`（路由：规则命中）
+- `case_0214`: `请问申请把买的退了`  expected `after_sale_refund/after_sale_refund.consult_policy`  actual `after_sale_refund/after_sale_refund.request_refund`（路由：LLM 兜底）
+- `case_0219`: `请问改地址，单号E4455`  expected `order_query/order_query.modify_address`  actual `order_query/order_query.query_status`（路由：规则命中）
+- `case_0222`: `单号D7721，我想快递延迟了`  expected `logistics/logistics.delayed`  actual `logistics/logistics.not_received`（路由：规则命中）

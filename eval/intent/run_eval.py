@@ -57,6 +57,11 @@ def run_single_step(use_llm: bool) -> dict:
 
     for case in cases:
         state = ConversationState(session_id="eval", user_id=0, channel="eval")
+        # 多轮跟进：把上一轮子意图写入 state，使 slot_followup 路由生效
+        prev_sub = case.get("previous_sub_intent")
+        if prev_sub:
+            state.current_sub_intent = prev_sub
+            state.current_main_intent = prev_sub.split(".", 1)[0]
         actual = asyncio.run(router.route(state, case["message"]))
 
         matched = (
@@ -150,6 +155,24 @@ def write_single_step_report(metrics: dict, tag: str) -> None:
         f.write(report + "\n")
 
 
+def _compare_per_category(no_path: Path, with_path: Path) -> list[tuple[str, dict]]:
+    """按样本类别拆解两份结果的命中率，返回 [(category, {total, no, yes}), ...]。"""
+    if not (no_path.exists() and with_path.exists()):
+        return []
+    no_results = load_json(no_path)["results"]
+    with_results = load_json(with_path)["results"]
+    cats: dict[str, dict[str, int]] = {}
+    for r_no, r_with in zip(no_results, with_results):
+        cat = r_no.get("category", "?")
+        bucket = cats.setdefault(cat, {"total": 0, "no": 0, "yes": 0})
+        bucket["total"] += 1
+        if r_no.get("matched"):
+            bucket["no"] += 1
+        if r_with.get("matched"):
+            bucket["yes"] += 1
+    return sorted(cats.items(), key=lambda kv: -kv[1]["total"])
+
+
 def run_compare() -> None:
     """读取两份单点结果，生成对比报告和 JSON。"""
     if not NO_LLM_RESULTS.exists():
@@ -187,12 +210,34 @@ def run_compare() -> None:
             "",
             "## 差异",
             f"- 命中数：+{delta}" if delta >= 0 else f"- 命中数：{delta}",
-            f"- 准确率：+{acc_delta:+.2%}",
-            "",
-            "## 结论",
-            "- LLM 兜底对口语化、省略表达有明显提升。" if delta > 0
-            else "- 当前 LLM 兜底未带来明显提升，建议优先优化规则层。",
+            f"- 准确率：{acc_delta:+.2%}",
         ]
+
+        # 按样本类别拆解：LLM 在哪些类别带来提升 / 哪些被拖累
+        per_cat = _compare_per_category(NO_LLM_RESULTS, WITH_LLM_RESULTS)
+        if per_cat:
+            lines += [
+                "",
+                "## 按样本类别拆解",
+                "",
+                "| 类别 | 样本数 | 规则-only | 规则+LLM | Δ |",
+                "|---|---|---|---|---|",
+            ]
+            for cat, v in per_cat:
+                d = (v["yes"] - v["no"]) / v["total"] if v["total"] else 0.0
+                lines.append(
+                    f"| {cat} | {v['total']} | {v['no']/v['total']:.2%} "
+                    f"| {v['yes']/v['total']:.2%} | {d:+.2%} |"
+                )
+            lines += [
+                "",
+                "## 结论",
+                "- LLM 兜底对「口语化/省略表达」(colloquial) 与「规则只给粗子意图」"
+                "(finer_subintent) 提升明显；",
+                "- 但 LLM 覆盖（confidence<0.8 的规则结果被 LLM 覆盖、未识别走 LLM 兜底）"
+                "会反噬少数已正确的规则命中 (rule_hit) 与问候/未识别 (unrecognize) 样本，"
+                "属已知权衡，可作为后续优化点。",
+            ]
     else:
         lines += [
             "## 规则+LLM",
