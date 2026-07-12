@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
+import os
 from collections.abc import AsyncGenerator, Awaitable
 from typing import Any, Callable
 
@@ -34,6 +37,8 @@ except ImportError:  # pragma: no cover
     END = "END"
     START = "START"
     StateGraph = None
+
+from langgraph.checkpoint.memory import MemorySaver
 
 
 def _make_summary_fold_fn(
@@ -133,6 +138,18 @@ class CustomerServiceAgent:
             raise RuntimeError(
                 "LangGraph is required for agent orchestration; please install langgraph."
             )
+        # 图态持久化层（checkpointer）：优先 Redis，未配置时回退进程内 MemorySaver。
+        # 具体 choice 见 _build_checkpointer；Redis 路径需 langgraph-checkpoint-redis
+        # + redis 已安装且 REDIS_URL 已配置。
+        #
+        # 关键：AsyncRedisSaver 构造依赖运行中的事件循环（其内部调用
+        # asyncio.get_running_loop），而本服务在模块导入期（无事件循环）就构造
+        # CustomerServiceAgent（见 app/api/chat.py 模块级 agent），故 checkpointer
+        # 不能在此同步构建，改为首次异步请求时惰性构建（_ensure_checkpointer），
+        # 此处先以无 checkpointer 占位编译图，惰性构建完成后再重编译。
+        self.checkpointer = None
+        self._cp_ready = False
+        self._cp_lock = asyncio.Lock()
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -170,7 +187,64 @@ class CustomerServiceAgent:
         builder.add_edge("handoff_node", "response_generator")
         builder.add_edge("response_generator", "context_compressor")
         builder.add_edge("context_compressor", END)
-        return builder.compile()
+        return builder.compile(checkpointer=self.checkpointer)
+
+    def _build_checkpointer(self) -> Any:
+        """构造图态持久化层（checkpointer）。
+
+        优先级：配置了 ``REDIS_URL`` 且 ``langgraph-checkpoint-redis`` + ``redis`` 可用
+        → ``AsyncRedisSaver``（跨重启 / 跨 worker 真持久化）；否则回退进程内
+        ``MemorySaver``（dev / 测试 / 无 Redis 环境，行为等价于原内存态，但不跨重启）。
+
+        Redis 路径为**显式 opt-in**（需设置环境变量），避免无服务器时连接阻塞。
+        """
+        redis_url = os.getenv("REDIS_URL") or os.getenv("AGENT_REDIS_URL")
+        if not redis_url:
+            return MemorySaver()
+        try:
+            from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+        except ImportError:
+            logger.warning(
+                "REDIS_URL set but langgraph-checkpoint-redis/redis not installed; "
+                "falling back to MemorySaver."
+            )
+            return MemorySaver()
+        try:
+            # 直接传 redis_url 字符串（让 AsyncRedisSaver 内部惰性建 client）；
+            # 不要预先构造 redis.asyncio.Redis，否则其 __init__ 也会要求运行中的事件循环。
+            return AsyncRedisSaver(
+                redis_url=redis_url,
+                connection_args={"socket_connect_timeout": 3, "socket_timeout": 3},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Redis saver init failed, fallback MemorySaver: %r", exc)
+            return MemorySaver()
+
+    async def _ensure_checkpointer(self) -> None:
+        """惰性构建 checkpointer 并（重）编译图。
+
+        AsyncRedisSaver 构造依赖运行中的事件循环，而 agent 在导入期（无循环）创建，
+        故延到首次异步请求时在此（已有事件循环）构建，并据此重编译图。
+
+        若 Redis setup 失败（如服务器不可用），回退 MemorySaver 并重新编译图。
+        用锁保证并发首请求只构建一次。
+        """
+        if self._cp_ready:
+            return
+        async with self._cp_lock:
+            if self._cp_ready:
+                return
+            self.checkpointer = self._build_checkpointer()
+            self.graph = self._build_graph()
+            setup_fn = getattr(self.checkpointer, "setup", None)
+            if setup_fn is not None and inspect.iscoroutinefunction(setup_fn):
+                try:
+                    await self.checkpointer.setup()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("checkpointer setup failed, fallback MemorySaver: %r", exc)
+                    self.checkpointer = MemorySaver()
+                    self.graph = self._build_graph()
+            self._cp_ready = True
 
     async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
@@ -197,8 +271,9 @@ class CustomerServiceAgent:
         （如澄清分支）则不产生 final 事件，落库仍照常进行。
         """
         payload = await self._build_payload(request, user_id)
+        config = {"configurable": {"thread_id": request.session_id}}
         final_state: ConversationState | None = None
-        async for chunk in self.graph.astream(payload):
+        async for chunk in self.graph.astream(payload, config=config):
             for node_name, node_payload in chunk.items():
                 # node_payload is the full payload dict: {"state": ..., "request": ...}
                 state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
@@ -251,16 +326,33 @@ class CustomerServiceAgent:
 
     async def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
         payload = await self._build_payload(request, user_id)
-        payload = await self.graph.ainvoke(payload)
+        config = {"configurable": {"thread_id": request.session_id}}
+        payload = await self.graph.ainvoke(payload, config=config)
         return payload["state"]
 
     async def _build_payload(self, request: ChatRequest, user_id: int) -> dict[str, Any]:
-        # 注意括号：先 await，再做 or 默认构造，避免 await 作用于整个 or 表达式
-        state = (await self.store.get(request.session_id)) or ConversationState(
-            session_id=request.session_id,
-            user_id=user_id,
-            channel=request.channel,
-        )
+        # 图态从 checkpointer 按 thread_id（= session_id）恢复，替代原 store.get 读内存态。
+        # 无历史（新会话 / 老会话 / Redis 清空）→ get_state/aget_state 返回 None → 新建空 state。
+        await self._ensure_checkpointer()
+        config = {"configurable": {"thread_id": request.session_id}}
+        # 两套 saver 接口相反：MemorySaver 仅实现同步 get_tuple（用 graph.get_state）；
+        # AsyncRedisSaver 仅实现异步 aget_tuple（用 graph.aget_state，同步会报
+        # InvalidStateError）。按 checkpointer 是否具备 aget_tuple 分发。
+        # 注意：aget_state/get_state 是 graph 的方法，能力判断要看 checkpointer 的
+        # aget_tuple/get_tuple。
+        if self.checkpointer is not None and hasattr(self.checkpointer, "aget_tuple"):
+            snap = await self.graph.aget_state(config)
+        else:
+            snap = self.graph.get_state(config)
+        state = None
+        if snap is not None and getattr(snap, "values", None):
+            state = snap.values.get("state")
+        if state is None:
+            state = ConversationState(
+                session_id=request.session_id,
+                user_id=user_id,
+                channel=request.channel,
+            )
         return {"state": state, "request": request}
 
     async def input_normalizer(self, payload: dict[str, Any]) -> dict[str, Any]:

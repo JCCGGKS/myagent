@@ -38,6 +38,14 @@ class SessionService:
     async def save(self, state: ConversationState) -> ConversationState:
         return await self._store.save(state)
 
+    async def save_metadata(self, state: ConversationState) -> None:
+        """仅更新会话元数据（user_id / channel / status），不持久化图态本身。
+
+        图态由 checkpointer 接管后，agent 路径经 MessageService.persist 调此方法，
+        避免把整个 ConversationState 再写回进程内存 / state 列。
+        """
+        await self._store.save_metadata(state)
+
     async def append_message(
         self,
         session_id: str,

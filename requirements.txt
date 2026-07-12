@@ -2,6 +2,12 @@ fastapi>=0.111.0,<1.0.0
 uvicorn>=0.30.0,<1.0.0
 pydantic>=2.7.0,<3.0.0
 langgraph>=0.2.0,<1.0.0
+# 图态持久化（checkpointer）依赖；须与 langgraph 主版本兼容：
+# langgraph 0.6.x 要求 langgraph-checkpoint <4.0.0，故 pin 到 3.x；
+# langgraph-checkpoint-redis 0.5+ 会拉入不兼容的 4.x，故上限 <0.5.0。
+langgraph-checkpoint>=3.0.0,<4.0.0
+langgraph-checkpoint-redis>=0.3.0,<0.5.0
+redis>=5.0.0,<8.0.0
 openai>=1.99.0,<2.0.0
 qdrant-client>=1.15.2,<2.0.0
 PyYAML>=6.0.2,<7.0.0

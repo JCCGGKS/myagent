@@ -51,6 +51,14 @@ class SessionStore(ABC):
         ...
 
     @abstractmethod
+    async def save_metadata(self, state: ConversationState) -> None:
+        """仅更新会话元数据（user_id / channel / status），不持久化图态本身。
+
+        图态由 checkpointer（Redis / MemorySaver）接管后，agent 路径改调此方法，
+        避免把整个 ConversationState 再写进进程内存字典或 state 列。
+        """
+
+    @abstractmethod
     async def append_message(
         self,
         session_id: str,
@@ -155,6 +163,31 @@ class MemorySessionStore(SessionStore):
             }
         )
         return state
+
+    async def save_metadata(self, state: ConversationState) -> None:
+        record = self._sessions.setdefault(
+            state.session_id,
+            {
+                "session": {
+                    "session_id": state.session_id,
+                    "user_id": state.user_id,
+                    "channel": state.channel,
+                    "status": SESSION_STATUS_ACTIVE,
+                    "created_at": _now(),
+                    "updated_at": _now(),
+                },
+                "messages": [],
+                "state": None,
+            },
+        )
+        record["session"].update(
+            {
+                "user_id": state.user_id,
+                "channel": state.channel,
+                "status": SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE,
+                "updated_at": _now(),
+            }
+        )
 
     async def append_message(
         self,
@@ -321,6 +354,24 @@ class SqlSessionStore(SessionStore):
             row.status = SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE
             await db.commit()
         return state
+
+    async def save_metadata(self, state: ConversationState) -> None:
+        # 仅更新 SessionRow 元数据；图态由 checkpointer 接管，不再写 _states。
+        async with self._db() as db:
+            from app.model.session import Session as SessionRow
+
+            row = (
+                await db.execute(
+                    select(SessionRow).where(SessionRow.session_id == state.session_id)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = SessionRow(session_id=state.session_id)
+                db.add(row)
+            row.user_id = state.user_id
+            row.channel = state.channel
+            row.status = SESSION_STATUS_HANDOFF if state.handoff else SESSION_STATUS_ACTIVE
+            await db.commit()
 
     async def append_message(
         self,

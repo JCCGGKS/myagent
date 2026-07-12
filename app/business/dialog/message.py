@@ -21,5 +21,7 @@ class MessageService:
             state.reply,
             "clarification" if state.current_action.startswith("ask_") else "text",
         )
-        await self.store.save(state)
+        # 图态由 checkpointer 接管（每步自动落盘），这里只更新会话元数据
+        # （user_id / channel / status），不再把整个 state 写回内存字典。
+        await self.store.save_metadata(state)
         return state

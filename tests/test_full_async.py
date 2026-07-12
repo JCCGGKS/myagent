@@ -154,9 +154,33 @@ def test_message_service_persist_is_async():
 
     result = asyncio.run(service.persist(state, request))
     assert result is state
-    # 两次 append_message（user/assistant）+ 一次 save 都被 await 调用
+    # 两次 append_message（user/assistant）+ 一次 save_metadata 都被 await 调用
     assert store.append_message.await_count == 2
-    assert store.save.await_count == 1
+    assert store.save_metadata.await_count == 1
+
+
+def test_checkpointer_persists_state_across_turns():
+    """图态由 checkpointer 按 thread_id 落盘：第一轮后 get_state 能取回上一轮 state。
+
+    验证 _build_payload 已从 store.get（进程内存）切换为 graph.get_state（checkpointer）。
+    """
+    agent = _make_agent()
+    sid = "cp-session"
+
+    def _latest():
+        return agent.graph.get_state({"configurable": {"thread_id": sid}})
+
+    asyncio.run(agent.chat(ChatRequest(session_id=sid, message="你好"), user_id=1))
+    snap1 = _latest()
+    assert snap1 is not None and snap1.values is not None
+    assert snap1.values.get("state") is not None
+    assert snap1.values["state"].session_id == sid
+
+    # 第二轮：checkpointer 被更新（仍可读到同一 thread 的最新 state）
+    asyncio.run(agent.chat(ChatRequest(session_id=sid, message="再看看"), user_id=1))
+    snap2 = _latest()
+    assert snap2 is not None and snap2.values is not None
+    assert snap2.values.get("state") is not None
 
 
 def test_m2_user_dao_async_roundtrip():
