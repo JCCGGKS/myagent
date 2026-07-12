@@ -108,7 +108,9 @@ class IntentRouterService:
             )
 
         # 规则置信度低时，尝试用 LLM 结果覆盖
-        if intent.route_source == "rule" and intent.confidence < 0.8:
+        # 阈值从 0.8 提高到 0.7：0.76/0.78 这类高置信规则结果不再被 LLM 覆盖改错
+        # （对比评估显示覆盖会反噬 ~6 个已正确的规则命中）。
+        if intent.route_source == "rule" and intent.confidence < 0.7:
             llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
                 logger.info(

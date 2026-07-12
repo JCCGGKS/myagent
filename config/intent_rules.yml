@@ -26,6 +26,46 @@ routing_rules:
     risk_level: medium
     handoff_reason: user_request
 
+  # —— 细分子意图规则（放在通用规则前拦截，确定性产出，避免 LLM 塌缩到默认子意图）——
+  - intent: order_query
+    sub_intent: order_query.modify_address
+    keywords: [改地址, 修改地址]
+    confidence: 0.88
+  - intent: order_query
+    sub_intent: order_query.apply_invoice
+    keywords: [开发票]
+    confidence: 0.88
+  - intent: logistics
+    sub_intent: logistics.lost_package
+    keywords: [丢件, 包裹丢了]
+    confidence_with_order: 0.9
+    confidence_without_order: 0.82
+    needs_order: true
+  - intent: logistics
+    sub_intent: logistics.delayed
+    keywords: [延迟, 配送太慢]
+    confidence_with_order: 0.9
+    confidence_without_order: 0.82
+    needs_order: true
+  - intent: after_sale_refund
+    sub_intent: after_sale_refund.no_reason_return
+    keywords: [无理由, 七天无理由, 不想要了想退]
+    confidence: 0.88
+  - intent: after_sale_refund
+    sub_intent: after_sale_refund.wrong_goods
+    keywords: [错货, 发错, 收到错货]
+    confidence: 0.88
+  - intent: after_sale_refund
+    sub_intent: after_sale_refund.damage_refund
+    keywords: [商品损坏, 损坏了, 收到的东西坏了, 坏了要退, 质量问题要退]
+    confidence: 0.88
+  - intent: complaint
+    sub_intent: complaint.compensate
+    keywords: [赔偿, 赔付]
+    confidence: 0.92
+    risk_level: high
+    handoff_reason: complaint
+
   - intent: complaint
     sub_intent: complaint.service_complaint
     keywords:
@@ -105,9 +145,17 @@ routing_rules:
       - 直接退
       - 帮退一下
       - 退掉
+      - 后悔了
+      - 申请退
     confidence_with_order: 0.88
     confidence_without_order: 0.8
     needs_clarification_when_action_and_no_order: true
+
+  # —— 纯问候/闲聊兜底（必须置于最后：仅当其它规则均未命中时触发）——
+  - intent: unrecognize
+    sub_intent: unrecognize.unknown
+    keywords: [你好, 在吗, 有人吗, hello, 嗨, 在不在, 在么, 随便聊聊]
+    confidence: 0.95
 
 # 情绪关键词（供 _detect_emotion 使用，不参与意图路由）
 # 仅分三类：negative / positive / neutral（默认）。命中 negative 视为负面情绪。

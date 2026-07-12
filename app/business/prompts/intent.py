@@ -47,20 +47,39 @@ def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
 {sub_lines}
 
 判定原则：
-- 简单问候（你好、在吗、hello）不属于业务咨询，返回 unrecognize.unknown
+- 简单问候（你好、在吗、有人吗、hello、随便聊聊）不属于业务咨询，返回 unrecognize.unknown
 - 转人工类：要人工客服、投诉 -> handoff_service.request_human
 - 订单类：查订单、发货了吗、订单状态 -> order_query（按需选 query_status / modify_address / apply_invoice）
+  · 改地址 / 修改地址 -> order_query.modify_address
+  · 开发票 -> order_query.apply_invoice
 - 物流类：快递到哪了、物流更新、配送进度、丢件 -> logistics（按需选 not_received / lost_package / delayed）
+  · 仅询问配送/到货进度、未明确说「丢件/丢失/延迟/太慢」时，默认 logistics.not_received
+  · 明确说丢件/包裹丢了 -> logistics.lost_package
+  · 明确说延迟/太慢/好慢 -> logistics.delayed
 - 退款售后类：退款、退货、售后、要退款 -> after_sale_refund，按细节判断：
-  · 咨询退款政策 -> after_sale_refund.consult_policy
-  · 明确要申请退款 -> after_sale_refund.request_refund
+  · 咨询退款政策、仅说「质量/坏了/有问题」但未明确要退 -> after_sale_refund.consult_policy
+  · 明确要申请退款（我要退款/申请退/想退/后悔了/退掉） -> after_sale_refund.request_refund
   · 商品损坏退款 -> after_sale_refund.damage_refund
-  · 无理由退货退款 -> after_sale_refund.no_reason_return
-  · 收到错货 -> after_sale_refund.wrong_goods
-- 投诉类：投诉、差评、赔付、太差了、情绪激动 -> complaint（compensate / service_complaint）
+  · 无理由/七天无理由退货退款 -> after_sale_refund.no_reason_return
+  · 收到错货/发错货 -> after_sale_refund.wrong_goods
+- 投诉类：投诉、差评、太差了、情绪激动 -> complaint（compensate / service_complaint）
+  · 明确说赔偿/赔付 -> complaint.compensate
 - 超出业务范围：招聘、加盟等 -> unsupported_biz.out_of_scope
 - 其它未覆盖能力或无法稳定判断 -> unrecognize.unknown
 - 若一句话含多个独立诉求，返回 intents 列表（每项含独立的 main_intent / sub_intent / slots），不要把多个诉求合并成一个。
+
+示例：
+- 「改一下收货地址」 -> order_query.modify_address
+- 「麻烦开个发票」 -> order_query.apply_invoice
+- 「我的快递丢件了」 -> logistics.lost_package
+- 「物流怎么这么慢」 -> logistics.delayed
+- 「我的货到哪了」 -> logistics.not_received
+- 「买的东西想退」 -> after_sale_refund.request_refund
+- 「收到的东西坏了要退款」 -> after_sale_refund.damage_refund
+- 「七天无理由退货」 -> after_sale_refund.no_reason_return
+- 「发错货了」 -> after_sale_refund.wrong_goods
+- 「要求赔偿」 -> complaint.compensate
+- 「有人吗」 -> unrecognize.unknown
 
 上一轮子意图：{previous_sub_intent}
 当前用户输入：{message}
