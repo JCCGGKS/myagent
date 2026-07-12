@@ -119,6 +119,12 @@ class IntentRouterService:
                 )
                 intent = llm_intent
 
+        # 统一把规则层抽取到的实体并入 slots：规则/槽跟进路径构造 IntentResult 时
+        # 不带 slots，若不在此补齐，state.slots 会为空，导致跨意图继承（如 order_id）
+        # 失效——用户先查订单再退款时会被重复追问订单号（见回归测试）。
+        if order_id and not intent.slots.get("order_id"):
+            intent.slots["order_id"] = order_id
+
         # 多意图排队与续办（Phase 3）：入队次要意图 / 激活队首（继续信号）/ 去重
         self._handle_pending_intents(state, message, intent)
 

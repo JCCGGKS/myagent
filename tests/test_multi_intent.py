@@ -107,3 +107,40 @@ class MultiIntentTestCase:
         result = asyncio.run(svc.route(state, "查物流另外退款"))
 
         assert state.pending_intents == []
+
+
+class IntentInheritanceTestCase:
+    """回归：先查订单（带订单号）再退款，order_id 应跨意图继承，不重复追问。"""
+
+    def test_order_id_inherited_across_intent_shift(self):
+        from app.business.intent.routing import StateTrackerService
+        from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
+
+        rule_registry = IntentRuleRegistry()
+        svc = IntentRouterService(rule_registry=rule_registry)
+        tracker = StateTrackerService(schema_registry=IntentSchemaRegistry())
+
+        # 第一轮：查订单 A1001（规则命中，需订单号）
+        state = ConversationState(session_id="s", user_id=1, channel="web")
+        intent1 = asyncio.run(svc.route(state, "订单A1001的发货情况"))
+        tracker.apply(state, intent1)
+        assert state.current_main_intent == "order_query"
+        # 修复点：规则路径也要把抽取到的 order_id 并入 slots
+        assert state.slots.get("order_id") == "A1001"
+
+        # 第二轮：退款（规则不命中 → LLM 识别，但消息本身无订单号）
+        async def fake_llm(message, prev):
+            return IntentResult(
+                main_intent="after_sale_refund",
+                sub_intent="after_sale_refund.request_refund",
+                slots={},  # LLM 不知道订单号
+                confidence=0.85,
+            )
+
+        svc._route_with_llm_fallback = fake_llm
+        intent2 = asyncio.run(svc.route(state, "把它退了吧"))
+        tracker.apply(state, intent2)
+        assert state.current_main_intent == "after_sale_refund"
+        # 关键断言：order_id 应从上一轮继承，无需再追问
+        assert state.slots.get("order_id") == "A1001"
+        assert state.missing_slots == []
