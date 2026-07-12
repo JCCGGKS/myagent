@@ -41,8 +41,19 @@ class AgentNodeService:
         self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def run(self, state: ConversationState) -> ConversationState:
-        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则直接写 reply；有 tool_calls 则执行后继续。"""
+        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则直接写 reply；有 tool_calls 则执行后继续。
+
+        关键修复：只有当**整轮循环从未调用过工具**时，才把 LLM 的收尾文本当作最终
+        回复写入 ``state.reply``（这是「LLM 直接作答、无需工具」的情形，下游
+        ``response_generator`` 命中早返回、避免重复调 LLM 重新措辞）。
+
+        一旦调用过工具，收尾轮的 ``content`` 往往只是模型的「已有足够信息、无需再调
+        工具」之类的**决策旁白**，并非面向用户的答案。此时**不**写入 ``state.reply``，
+        留空交由 ``response_generator`` 基于 ``tool_result`` 生成友好且接地气的回答
+        （其本职就是根据工具结果措辞）。否则用户会收到模型内部决策文本（见评估发现）。
+        """
         messages = self._build_messages(state)
+        tool_called = False
 
         for _round in range(self.max_tool_rounds):
             logger.debug("agent_node: round %d, session=%s", _round, state.session_id)
@@ -50,6 +61,7 @@ class AgentNodeService:
             response = await self._call_llm(messages)
 
             if response.get("tool_calls"):
+                tool_called = True
                 for tool_call in response["tool_calls"]:
                     messages.append(
                         {
@@ -63,10 +75,11 @@ class AgentNodeService:
                 # 继续循环，让 LLM 根据工具结果决定下一步
                 continue
 
-            # 无 tool_calls：LLM 已给出结论，直接写入 reply 供 response_generator
-            # 早返回（去冗余，避免再调一次 LLM 重新措辞）。
+            # 无 tool_calls：仅当本轮循环从未调用过工具（即 LLM 直接作答）时，
+            # 才把内容当作最终回复；否则（调用过工具后的收尾旁白）留空，
+            # 由 response_generator 基于 tool_result 生成真正面向用户的回答。
             content = (response.get("content") or "").strip()
-            if content:
+            if content and not tool_called:
                 state.reply = content
             break
 

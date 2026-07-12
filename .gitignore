@@ -226,4 +226,5 @@ plans/
 .codex
 .agents
 .claude
+eval/intent/intent_single_step_cases.json.bak
 
