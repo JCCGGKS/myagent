@@ -174,13 +174,9 @@ class CustomerServiceAgent:
 
     async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
-        # 先构建图输入（加载历史上下文），再尽早落库用户消息：
-        # 这样图内 in-memory 上下文不会把刚落库的用户消息重复加载，且处理中刷新也不丢消息。
-        payload = await self._build_payload(request, user_id)
-        await self.message_service.persist_user_message(payload["state"], request)
-        state = await self._run_graph(payload)
-        # 边界落库：图运行结束后落库助手回复
-        await self.message_service.persist_assistant_reply(state, request)
+        state = await self._execute_request(request, user_id)
+        # 边界落库：图运行期间只收集数据，结束后批量写入会话存储
+        state = await self.message_service.persist(state, request)
         logger.info(
             "chat done session=%s user=%s intent=%s.%s action=%s",
             request.session_id, user_id,
@@ -201,8 +197,6 @@ class CustomerServiceAgent:
         （如澄清分支）则不产生 final 事件，落库仍照常进行。
         """
         payload = await self._build_payload(request, user_id)
-        # 尽早落库用户消息：处理过程中刷新页面也不会丢失用户刚发送的内容。
-        await self.message_service.persist_user_message(payload["state"], request)
         final_state: ConversationState | None = None
         async for chunk in self.graph.astream(payload):
             for node_name, node_payload in chunk.items():
@@ -215,9 +209,9 @@ class CustomerServiceAgent:
                         if ev.get("type") == "final":
                             continue
                         yield ev
-        # 边界落库：先持久化助手回复（用户消息已在开头落库），再下发 final 事件。
+        # 边界落库：先持久化（用户消息 + 助手回复 + 状态快照），再下发 final 事件。
         if final_state is not None:
-            await self.message_service.persist_assistant_reply(final_state, request)
+            await self.message_service.persist(final_state, request)
             yield {"type": "final", "response": self._build_chat_response(final_state).model_dump()}
 
     def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
@@ -255,7 +249,8 @@ class CustomerServiceAgent:
         # 其他节点不推事件（或推通用 trace）
         return events
 
-    async def _run_graph(self, payload: dict[str, Any]) -> ConversationState:
+    async def _execute_request(self, request: ChatRequest, user_id: int) -> ConversationState:
+        payload = await self._build_payload(request, user_id)
         payload = await self.graph.ainvoke(payload)
         return payload["state"]
 
