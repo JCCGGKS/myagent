@@ -23,21 +23,27 @@ _SLOT_FOLLOWUP_SUB_INTENTS = {
 
 class IntentRouterService:
     @classmethod
-    def from_env(cls, use_llm: bool = True) -> IntentRouterService:
+    def from_env(
+        cls, use_llm: bool = True, override_threshold: float = 0.7
+    ) -> IntentRouterService:
         from app.config import load_llm_config
         from app.business.intent.llm_fallback import LLMIntentFallbackService
 
         config = load_llm_config()
         llm_fallback = LLMIntentFallbackService(config) if (config.enabled and use_llm) else None
-        return cls(llm_fallback_service=llm_fallback)
+        return cls(llm_fallback_service=llm_fallback, override_threshold=override_threshold)
 
     def __init__(
         self,
         llm_fallback_service: LLMIntentFallbackService | None = None,
         rule_registry: IntentRuleRegistry | None = None,
+        override_threshold: float = 0.7,
     ) -> None:
         self.llm_fallback_service = llm_fallback_service
         self.rule_registry = rule_registry or IntentRuleRegistry()
+        # LLM 覆盖阈值：规则命中且 confidence < override_threshold 时才用 LLM 覆盖。
+        # 调优方法见 eval 文档「覆盖阈值调优方法」。设为 >=2.0 可强制覆盖所有规则命中（评估用）。
+        self.override_threshold = override_threshold
 
     async def route(self, state: ConversationState, message: str) -> IntentResult:
         lowered = message.casefold()
@@ -107,10 +113,12 @@ class IntentRouterService:
                 intent.main_intent, intent.route_source, state.session_id,
             )
 
-        # 规则置信度低时，尝试用 LLM 结果覆盖
-        # 阈值从 0.8 提高到 0.7：0.76/0.78 这类高置信规则结果不再被 LLM 覆盖改错
+        # 规则置信度低时，尝试用 LLM 结果覆盖。
+        # 阈值由 self.override_threshold 控制（默认 0.7）：
+        # 0.76/0.78 这类高置信规则结果不再被 LLM 覆盖改错
         # （对比评估显示覆盖会反噬 ~6 个已正确的规则命中）。
-        if intent.route_source == "rule" and intent.confidence < 0.7:
+        # 调优时可用 eval/run_eval.py --sweep-threshold 扫描最优阈值。
+        if intent.route_source == "rule" and intent.confidence < self.override_threshold:
             llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
             if llm_intent is not None:
                 logger.info(
