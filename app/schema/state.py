@@ -28,16 +28,6 @@ class ToolExecutionResult(BaseModel):
     user_facing_summary: str = ""
 
 
-class ArchivedTaskState(BaseModel):
-    main_intent: MainIntentCode
-    sub_intent: SubIntentCode
-    stage: str
-    slots: dict[str, str] = Field(default_factory=dict)
-    missing_slots: list[str] = Field(default_factory=list)
-    summary: str = ""
-    archived_reason: str = ""
-
-
 class PendingIntent(BaseModel):
     """多意图场景中，排队等待处理的次要意图（见计划 Phase 3）。
 
@@ -71,8 +61,6 @@ class ConversationState(BaseModel):
     latest_action_name: str = ""
     latest_action_result: dict[str, Any] | None = None
     action_history: list[ActionRecord] = Field(default_factory=list)
-    current_form_name: str = ""
-    current_form_slot_states: dict[str, str] = Field(default_factory=dict)
     summary: str = ""
     running_summary: str = ""
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
@@ -80,9 +68,7 @@ class ConversationState(BaseModel):
     tool_result: ToolExecutionResult | None = None
     handoff: bool = False
     handoff_reason: str = ""
-    archived_states: list[ArchivedTaskState] = Field(default_factory=list)
     pending_intents: list[PendingIntent] = Field(default_factory=list)
-    clarification_count: int = 0
     slot_clarification_count: int = 0
     intent_clarification_count: int = 0
     reply: str = ""

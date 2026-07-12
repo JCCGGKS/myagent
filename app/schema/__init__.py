@@ -4,7 +4,7 @@
 - ``intent``：意图与情绪（MainIntentCode / SubIntentCode / ActionCode / EmotionState / IntentResult）
 - ``session``：会话管理（SessionRenameRequest）
 - ``business``：业务领域（OrderInfo / LogisticsEvent / LogisticsInfo / HandoffResult）
-- ``state``：会话状态与执行产物（ActionRecord / ToolExecutionResult / ArchivedTaskState / ConversationState）
+- ``state``：会话状态与执行产物（ActionRecord / ToolExecutionResult / PendingIntent / ConversationState）
 - ``chat``：对话 I/O（ChatRequest / ChatResponse）
 - ``auth``：认证请求/响应（见 auth.py）
 """
@@ -30,7 +30,6 @@ from app.schema.session import (
 )
 from app.schema.state import (
     ActionRecord,
-    ArchivedTaskState,
     ConversationState,
     PendingIntent,
     ToolExecutionResult,
@@ -39,7 +38,6 @@ from app.schema.state import (
 __all__ = [
     "ActionCode",
     "ActionRecord",
-    "ArchivedTaskState",
     "ChatRequest",
     "ChatResponse",
     "ConversationState",

@@ -312,17 +312,6 @@ class StateTrackerService:
         )
 
         if self.policy.should_archive(intent, previous_main_intent):
-            state.archived_states.append(
-                {
-                    "main_intent": previous_main_intent,
-                    "sub_intent": previous_sub_intent,
-                    "stage": state.stage,
-                    "slots": previous_slots,
-                    "missing_slots": list(state.missing_slots),
-                    "summary": state.summary,
-                    "archived_reason": f"intent_shift_to_{intent.main_intent}",
-                }
-            )
             inherited_slots = self.policy.inherit_slots(previous_main_intent, intent.main_intent, previous_slots)
             state.slots = inherited_slots
             state.confirmed_slots = list(inherited_slots.keys())
@@ -348,8 +337,6 @@ class StateTrackerService:
         schema = self.schema_registry.get(state.current_main_intent)
         required_slots = schema["required_slots"]
         state.missing_slots = [slot for slot in required_slots if not state.slots.get(slot)]
-        state.current_form_name = state.current_main_intent
-        state.current_form_slot_states = dict(state.slots)
 
         if state.handoff:
             state.stage = "handoff"

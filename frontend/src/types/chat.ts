@@ -75,7 +75,6 @@ export interface ConversationState {
   handoff: boolean;
   handoff_reason?: string;
   reply: string;
-  archived_states?: Array<Record<string, unknown>>;
 }
 
 export interface OrderToolData {
