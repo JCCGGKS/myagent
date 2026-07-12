@@ -30,7 +30,7 @@
   {
     "message": "麻烦买的东西想退，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0005"
   },
@@ -91,7 +91,7 @@
     "id": "case_0013"
   },
   {
-    "message": "申请把买的退了，单号D7721",
+    "message": "收到的货有点问题，单号D7721",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -113,9 +113,9 @@
     "id": "case_0016"
   },
   {
-    "message": "请问这单我后悔了，单号C3090",
+    "message": "请问申请把买的退了，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0017"
   },
@@ -305,9 +305,9 @@
     "id": "case_0043"
   },
   {
-    "message": "单号D7721，我想收到的货有点问题",
+    "message": "单号D7721，我想东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0044"
   },
@@ -553,9 +553,9 @@
     "id": "case_0078"
   },
   {
-    "message": "单号D7721，这单我后悔了",
+    "message": "单号D7721，申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0079"
   },
@@ -793,9 +793,9 @@
     "id": "case_0112"
   },
   {
-    "message": "单号E4455，我想这单我后悔了",
+    "message": "单号E4455，我想申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0113"
   },
@@ -850,9 +850,9 @@
     "id": "case_0120"
   },
   {
-    "message": "单号A1001，麻烦这单我后悔了",
+    "message": "单号A1001，麻烦申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0121"
   },
@@ -976,9 +976,9 @@
     "id": "case_0138"
   },
   {
-    "message": "我想这单我后悔了，单号B6688",
+    "message": "我想申请把买的退了，单号B6688",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0139"
   },
@@ -1056,7 +1056,7 @@
   {
     "message": "麻烦买的东西想退，单号B6688",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0150"
   },
@@ -1160,7 +1160,7 @@
     "id": "case_0164"
   },
   {
-    "message": "麻烦申请把买的退了",
+    "message": "麻烦收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -1265,9 +1265,9 @@
     "id": "case_0179"
   },
   {
-    "message": "单号A1001，我想收到的货有点问题",
+    "message": "单号A1001，我想东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0180"
   },
@@ -1321,16 +1321,16 @@
     "id": "case_0187"
   },
   {
-    "message": "单号B6688，我想这单我后悔了",
+    "message": "单号B6688，我想申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0188"
   },
   {
-    "message": "单号B6688，请问东西有问题想退",
+    "message": "单号B6688，请问这单我后悔了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0189"
   },
@@ -1506,7 +1506,7 @@
     "id": "case_0213"
   },
   {
-    "message": "请问申请把买的退了",
+    "message": "请问收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -1634,9 +1634,9 @@
     "id": "case_0231"
   },
   {
-    "message": "单号E4455，请问这单我后悔了",
+    "message": "单号E4455，请问申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0232"
   },
@@ -1754,7 +1754,7 @@
     "id": "case_0248"
   },
   {
-    "message": "单号E4455，请问申请把买的退了",
+    "message": "单号E4455，请问收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -1782,7 +1782,7 @@
     "id": "case_0252"
   },
   {
-    "message": "麻烦申请把买的退了，单号B6688",
+    "message": "麻烦收到的货有点问题，单号B6688",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -1853,9 +1853,9 @@
     "id": "case_0262"
   },
   {
-    "message": "这单我后悔了，单号A1001",
+    "message": "申请把买的退了，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0263"
   },
@@ -1952,9 +1952,9 @@
     "id": "case_0276"
   },
   {
-    "message": "单号E4455，这单我后悔了",
+    "message": "单号E4455，申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0277"
   },
@@ -2066,9 +2066,9 @@
     "id": "case_0292"
   },
   {
-    "message": "收到的货有点问题，单号E4455",
+    "message": "东西有问题想退，单号E4455",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0293"
   },
@@ -2161,7 +2161,7 @@
   {
     "message": "麻烦买的东西想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0306"
   },
@@ -2188,9 +2188,9 @@
     "id": "case_0309"
   },
   {
-    "message": "单号A1001，我想这单我后悔了",
+    "message": "单号A1001，我想申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0310"
   },
@@ -2230,9 +2230,9 @@
     "id": "case_0315"
   },
   {
-    "message": "单号A1001，我想东西有问题想退",
+    "message": "单号A1001，我想这单我后悔了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0316"
   },
@@ -2288,7 +2288,7 @@
   {
     "message": "麻烦买的东西想退，单号D7721",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0324"
   },
@@ -2358,9 +2358,9 @@
     "id": "case_0333"
   },
   {
-    "message": "请问东西有问题想退，单号A1001",
+    "message": "请问这单我后悔了，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0334"
   },
@@ -2562,9 +2562,9 @@
     "id": "case_0362"
   },
   {
-    "message": "单号C3090，这单我后悔了",
+    "message": "单号C3090，申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0363"
   },
@@ -2818,7 +2818,7 @@
     "id": "case_0398"
   },
   {
-    "message": "麻烦申请把买的退了，单号A1001",
+    "message": "麻烦收到的货有点问题，单号A1001",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -2847,9 +2847,9 @@
     "id": "case_0402"
   },
   {
-    "message": "单号B6688，麻烦收到的货有点问题",
+    "message": "单号B6688，麻烦东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0403"
   },
@@ -2869,9 +2869,9 @@
     "id": "case_0405"
   },
   {
-    "message": "请问东西有问题想退，单号B6688",
+    "message": "请问这单我后悔了，单号B6688",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0406"
   },
@@ -2883,7 +2883,7 @@
     "id": "case_0407"
   },
   {
-    "message": "单号B6688，我想申请把买的退了",
+    "message": "单号B6688，我想收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -3136,9 +3136,9 @@
     "id": "case_0443"
   },
   {
-    "message": "麻烦东西有问题想退，单号D7721",
+    "message": "麻烦这单我后悔了，单号D7721",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0444"
   },
@@ -3150,9 +3150,9 @@
     "id": "case_0445"
   },
   {
-    "message": "请问收到的货有点问题，单号B6688",
+    "message": "请问东西有问题想退，单号B6688",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0446"
   },
@@ -3566,7 +3566,7 @@
     "id": "case_0504"
   },
   {
-    "message": "单号D7721，申请把买的退了",
+    "message": "单号D7721，收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -3601,9 +3601,9 @@
     "id": "case_0509"
   },
   {
-    "message": "收到的货有点问题，单号C3090",
+    "message": "东西有问题想退，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0510"
   },
@@ -3700,9 +3700,9 @@
     "id": "case_0523"
   },
   {
-    "message": "单号C3090，请问东西有问题想退",
+    "message": "单号C3090，请问这单我后悔了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0524"
   },
@@ -3845,7 +3845,7 @@
   {
     "message": "单号E4455，买的东西想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0544"
   },
@@ -4047,9 +4047,9 @@
     "id": "case_0572"
   },
   {
-    "message": "单号D7721，我想东西有问题想退",
+    "message": "单号D7721，我想这单我后悔了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0573"
   },
@@ -4190,7 +4190,7 @@
   {
     "message": "麻烦买的东西想退，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0593"
   },
@@ -4273,9 +4273,9 @@
     "id": "case_0604"
   },
   {
-    "message": "单号D7721，请问东西有问题想退",
+    "message": "单号D7721，请问这单我后悔了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0605"
   },
@@ -4322,7 +4322,7 @@
     "id": "case_0611"
   },
   {
-    "message": "单号A1001，申请把买的退了",
+    "message": "单号A1001，收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -4352,7 +4352,7 @@
   {
     "message": "单号A1001，麻烦买的东西想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0616"
   },
@@ -4435,7 +4435,7 @@
     "id": "case_0627"
   },
   {
-    "message": "单号C3090，我想申请把买的退了",
+    "message": "单号C3090，我想收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -4554,9 +4554,9 @@
     "id": "case_0644"
   },
   {
-    "message": "单号A1001，这单我后悔了",
+    "message": "单号A1001，申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0645"
   },
@@ -4638,9 +4638,9 @@
     "id": "case_0656"
   },
   {
-    "message": "我想东西有问题想退，单号A1001",
+    "message": "我想这单我后悔了，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0657"
   },
@@ -5042,9 +5042,9 @@
     "id": "case_0713"
   },
   {
-    "message": "麻烦收到的货有点问题，单号E4455",
+    "message": "麻烦东西有问题想退，单号E4455",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0714"
   },
@@ -5063,9 +5063,9 @@
     "id": "case_0716"
   },
   {
-    "message": "单号D7721，收到的货有点问题",
+    "message": "单号D7721，东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0717"
   },
@@ -5246,9 +5246,9 @@
     "id": "case_0742"
   },
   {
-    "message": "单号D7721，麻烦这单我后悔了",
+    "message": "单号D7721，麻烦申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0743"
   },
@@ -5465,7 +5465,7 @@
     "id": "case_0773"
   },
   {
-    "message": "麻烦申请把买的退了，单号E4455",
+    "message": "麻烦收到的货有点问题，单号E4455",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -5507,9 +5507,9 @@
     "id": "case_0779"
   },
   {
-    "message": "单号A1001，请问这单我后悔了",
+    "message": "单号A1001，请问申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0780"
   },
@@ -5599,7 +5599,7 @@
     "id": "case_0792"
   },
   {
-    "message": "单号E4455，申请把买的退了",
+    "message": "单号E4455，收到的货有点问题",
     "expected_main_intent": "after_sale_refund",
     "expected_sub_intent": "after_sale_refund.consult_policy",
     "category": "colloquial",
@@ -5655,9 +5655,9 @@
     "id": "case_0800"
   },
   {
-    "message": "单号C3090，请问这单我后悔了",
+    "message": "单号C3090，请问申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0801"
   },
@@ -5762,7 +5762,7 @@
   {
     "message": "单号B6688，麻烦买的东西想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0816"
   },
@@ -5925,7 +5925,7 @@
   {
     "message": "买的东西想退，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0839"
   },
@@ -5958,9 +5958,9 @@
     "id": "case_0843"
   },
   {
-    "message": "我想这单我后悔了，单号C3090",
+    "message": "我想申请把买的退了，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0844"
   },
@@ -6059,7 +6059,7 @@
   {
     "message": "买的东西想退，单号E4455",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0858"
   },
@@ -6114,9 +6114,9 @@
     "id": "case_0865"
   },
   {
-    "message": "单号C3090，我想收到的货有点问题",
+    "message": "单号C3090，我想东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0866"
   },
@@ -6213,16 +6213,16 @@
     "id": "case_0879"
   },
   {
-    "message": "东西有问题想退，单号B6688",
+    "message": "这单我后悔了，单号B6688",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0880"
   },
   {
-    "message": "请问收到的货有点问题，单号D7721",
+    "message": "请问东西有问题想退，单号D7721",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0881"
   },
@@ -6313,7 +6313,7 @@
   {
     "message": "单号A1001，我想买的东西想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0894"
   },
@@ -6348,7 +6348,7 @@
   {
     "message": "买的东西想退，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0899"
   },
@@ -6523,9 +6523,9 @@
     "id": "case_0923"
   },
   {
-    "message": "请问这单我后悔了，单号D7721",
+    "message": "请问申请把买的退了，单号D7721",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0924"
   },
@@ -6624,7 +6624,7 @@
   {
     "message": "请问买的东西想退，单号D7721",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0938"
   },
@@ -6721,9 +6721,9 @@
     "id": "case_0951"
   },
   {
-    "message": "请问东西有问题想退，单号C3090",
+    "message": "请问这单我后悔了，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0952"
   },
@@ -6806,9 +6806,9 @@
     "id": "case_0963"
   },
   {
-    "message": "我想这单我后悔了，单号A1001",
+    "message": "我想申请把买的退了，单号A1001",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0964"
   },
@@ -6820,9 +6820,9 @@
     "id": "case_0965"
   },
   {
-    "message": "单号B6688，麻烦这单我后悔了",
+    "message": "单号B6688，麻烦申请把买的退了",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0966"
   },
@@ -6855,9 +6855,9 @@
     "id": "case_0970"
   },
   {
-    "message": "单号E4455，麻烦收到的货有点问题",
+    "message": "单号E4455，麻烦东西有问题想退",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0971"
   },
@@ -6934,7 +6934,7 @@
   {
     "message": "我想买的东西想退，单号C3090",
     "expected_main_intent": "after_sale_refund",
-    "expected_sub_intent": "after_sale_refund.consult_policy",
+    "expected_sub_intent": "after_sale_refund.request_refund",
     "category": "colloquial",
     "id": "case_0982"
   },

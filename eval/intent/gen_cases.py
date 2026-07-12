@@ -108,8 +108,11 @@ COLLOQUIAL = [
     ("order_query", "order_query.query_status", [
         "看下我拍下的", "帮查下我买的东西", "我想知道我下的单咋样了", "查一下我买的",
     ]),
+    ("after_sale_refund", "after_sale_refund.request_refund", [
+        "买的东西想退", "东西有问题想退", "这单我后悔了", "申请把买的退了",
+    ]),
     ("after_sale_refund", "after_sale_refund.consult_policy", [
-        "买的东西想退", "收到的货有点问题", "东西有问题想退", "这单我后悔了", "申请把买的退了",
+        "收到的货有点问题",
     ]),
     ("complaint", "complaint.service_complaint", [
         "这体验太烂了", "你们这态度我真服了", "越想越气", "太让人失望了",
