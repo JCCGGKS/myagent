@@ -193,6 +193,25 @@ class TestToolExecutor:
         assert updated.handoff is True
         assert updated.tool_result.sanitized_result["ticket_id"] == "T-001"
 
+    def test_create_handoff_writes_reply_to_skip_redundant_llm(self):
+        """create_handoff 应直接写 state.reply，使 response_generator 命中早返回、不再调 LLM。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            rag_tool=rag_tool,
+        )
+        state = _state(summary="需要人工处理")
+
+        updated = executor.create_handoff(state)
+
+        assert updated.reply
+        assert "T-001" in updated.reply
+        # reply 非空 → response_generator 会直接 return，不触发额外 LLM 调用
+        assert updated.handoff is True
+
     def test_run_request_refund_returns_aftersale_result(self):
         rag_tool = MagicMock()
         rag_tool.run.return_value = []

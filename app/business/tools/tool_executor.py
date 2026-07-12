@@ -279,6 +279,8 @@ class ToolExecutor:
                 kind="error",
                 user_facing_summary="转人工服务未配置，无法创建服务单。",
             )
+            # 直接落地回复，避免 response_generator 再调一次 LLM（去冗余）。
+            state.reply = state.tool_result.user_facing_summary
             return state
         handoff = self.handoff_service.create_handoff(state.session_id, state.summary)
         state.tool_result = ToolExecutionResult(
@@ -286,6 +288,12 @@ class ToolExecutor:
             raw_result=handoff.model_dump(),
             sanitized_result=handoff.model_dump(),
             user_facing_summary=f"已创建人工服务单 {handoff.ticket_id}",
+        )
+        # 直接落地面向用户的最终回复，使下游 response_generator 命中早返回、
+        # 不再多调一次 LLM 把 tool_result 改写成话术（去冗余，与 agent 直答同思路）。
+        state.reply = (
+            f"已为你转人工客服，服务单号 {handoff.ticket_id}。"
+            "人工客服会基于当前会话上下文继续处理。"
         )
         state.handoff = True
         state.action_history.append(
