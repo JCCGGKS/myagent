@@ -1,52 +1,11 @@
 {
   "metrics": {
     "total_cases": 1000,
-    "matched_cases": 965,
-    "accuracy": 0.965,
-    "route_source_distribution": {
-      "rule": 670,
-      "fallback": 1,
-      "llm_fallback": 261,
-      "slot_followup": 68
-    },
-    "llm_fallback_hits": 261,
-    "per_main_intent": {
-      "after_sale_refund": {
-        "total": 448,
-        "matched": 448,
-        "accuracy": 1.0
-      },
-      "complaint": {
-        "total": 23,
-        "matched": 23,
-        "accuracy": 1.0
-      },
-      "handoff_service": {
-        "total": 11,
-        "matched": 11,
-        "accuracy": 1.0
-      },
-      "logistics": {
-        "total": 263,
-        "matched": 229,
-        "accuracy": 0.8707
-      },
-      "order_query": {
-        "total": 223,
-        "matched": 222,
-        "accuracy": 0.9955
-      },
-      "unrecognize": {
-        "total": 28,
-        "matched": 28,
-        "accuracy": 1.0
-      },
-      "unsupported_biz": {
-        "total": 4,
-        "matched": 4,
-        "accuracy": 1.0
-      }
-    },
+    "matched_cases": 960,
+    "accuracy": 0.96,
+    "route_source_distribution": {},
+    "llm_fallback_hits": 0,
+    "per_main_intent": {},
     "failed_cases": [
       {
         "message": "我想物流更新很慢，单号D7721",
@@ -68,6 +27,18 @@
         "id": "case_0129",
         "actual_main_intent": "order_query",
         "actual_sub_intent": "order_query.query_status",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
+        "message": "单号A1001，买的东西一直没动静",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0143",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
         "route_source": "llm_fallback",
         "confidence": 0.95,
         "matched": false
@@ -109,18 +80,6 @@
         "matched": false
       },
       {
-        "message": "麻烦我的东西发出来没有",
-        "expected_main_intent": "logistics",
-        "expected_sub_intent": "logistics.not_received",
-        "category": "colloquial",
-        "id": "case_0201",
-        "actual_main_intent": "order_query",
-        "actual_sub_intent": "order_query.query_status",
-        "route_source": "llm_fallback",
-        "confidence": 0.95,
-        "matched": false
-      },
-      {
         "message": "我的东西发出来没有，单号E4455",
         "expected_main_intent": "logistics",
         "expected_sub_intent": "logistics.not_received",
@@ -145,6 +104,30 @@
         "matched": false
       },
       {
+        "message": "我想我的东西发出来没有，单号B6688",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0231",
+        "actual_main_intent": "order_query",
+        "actual_sub_intent": "order_query.query_status",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
+        "message": "单号D7721，请问买的东西一直没动静",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0309",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
         "message": "我的东西发出来没有，单号B6688",
         "expected_main_intent": "logistics",
         "expected_sub_intent": "logistics.not_received",
@@ -164,6 +147,18 @@
         "id": "case_0355",
         "actual_main_intent": "order_query",
         "actual_sub_intent": "order_query.query_status",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
+        "message": "买的东西一直没动静，单号C3090",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0367",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
         "route_source": "llm_fallback",
         "confidence": 0.95,
         "matched": false
@@ -193,11 +188,11 @@
         "matched": false
       },
       {
-        "message": "麻烦查一下我买的",
+        "message": "查一下我买的",
         "expected_main_intent": "order_query",
         "expected_sub_intent": "order_query.query_status",
         "category": "colloquial",
-        "id": "case_0419",
+        "id": "case_0394",
         "actual_main_intent": "unrecognize",
         "actual_sub_intent": "unrecognize.unknown",
         "route_source": "fallback",
@@ -222,18 +217,6 @@
         "expected_sub_intent": "logistics.not_received",
         "category": "colloquial",
         "id": "case_0478",
-        "actual_main_intent": "order_query",
-        "actual_sub_intent": "order_query.query_status",
-        "route_source": "llm_fallback",
-        "confidence": 0.95,
-        "matched": false
-      },
-      {
-        "message": "麻烦我的东西发出来没有，单号D7721",
-        "expected_main_intent": "logistics",
-        "expected_sub_intent": "logistics.not_received",
-        "category": "colloquial",
-        "id": "case_0484",
         "actual_main_intent": "order_query",
         "actual_sub_intent": "order_query.query_status",
         "route_source": "llm_fallback",
@@ -373,6 +356,30 @@
         "matched": false
       },
       {
+        "message": "买的东西一直没动静，单号E4455",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0681",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
+        "message": "我想买的东西一直没动静，单号D7721",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0686",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
         "message": "请问我的东西发出来没有",
         "expected_main_intent": "logistics",
         "expected_sub_intent": "logistics.not_received",
@@ -409,6 +416,18 @@
         "matched": false
       },
       {
+        "message": "单号B6688，我想买的东西一直没动静",
+        "expected_main_intent": "logistics",
+        "expected_sub_intent": "logistics.not_received",
+        "category": "colloquial",
+        "id": "case_0873",
+        "actual_main_intent": "logistics",
+        "actual_sub_intent": "logistics.delayed",
+        "route_source": "llm_fallback",
+        "confidence": 0.95,
+        "matched": false
+      },
+      {
         "message": "麻烦买的东西一直没动静",
         "expected_main_intent": "logistics",
         "expected_sub_intent": "logistics.not_received",
@@ -417,7 +436,7 @@
         "actual_main_intent": "logistics",
         "actual_sub_intent": "logistics.delayed",
         "route_source": "llm_fallback",
-        "confidence": 0.95,
+        "confidence": 0.8,
         "matched": false
       },
       {
@@ -733,7 +752,7 @@
       "actual_main_intent": "order_query",
       "actual_sub_intent": "order_query.query_status",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -2192,10 +2211,10 @@
       "category": "colloquial",
       "id": "case_0143",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "不想要，单号B6688",
@@ -2890,11 +2909,11 @@
       "expected_sub_intent": "logistics.not_received",
       "category": "colloquial",
       "id": "case_0201",
-      "actual_main_intent": "order_query",
-      "actual_sub_intent": "order_query.query_status",
+      "actual_main_intent": "logistics",
+      "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
-      "confidence": 0.95,
-      "matched": false
+      "confidence": 0.8,
+      "matched": true
     },
     {
       "message": "C3090",
@@ -3051,7 +3070,7 @@
       "actual_main_intent": "after_sale_refund",
       "actual_sub_intent": "after_sale_refund.consult_policy",
       "route_source": "llm_fallback",
-      "confidence": 0.85,
+      "confidence": 0.9,
       "matched": true
     },
     {
@@ -3254,11 +3273,11 @@
       "expected_sub_intent": "logistics.not_received",
       "category": "colloquial",
       "id": "case_0231",
-      "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_main_intent": "order_query",
+      "actual_sub_intent": "order_query.query_status",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "单号E4455，请问申请把买的退了",
@@ -4018,7 +4037,7 @@
       "actual_main_intent": "order_query",
       "actual_sub_intent": "order_query.query_status",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -4199,10 +4218,10 @@
       "category": "colloquial",
       "id": "case_0309",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "单号A1001，我想申请把买的退了",
@@ -4237,7 +4256,7 @@
       "actual_main_intent": "logistics",
       "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -4899,10 +4918,10 @@
       "category": "colloquial",
       "id": "case_0367",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "麻烦货到没到啊，单号E4455",
@@ -5225,11 +5244,11 @@
       "expected_sub_intent": "order_query.query_status",
       "category": "colloquial",
       "id": "case_0394",
-      "actual_main_intent": "order_query",
-      "actual_sub_intent": "order_query.query_status",
-      "route_source": "llm_fallback",
-      "confidence": 0.8,
-      "matched": true
+      "actual_main_intent": "unrecognize",
+      "actual_sub_intent": "unrecognize.unknown",
+      "route_source": "fallback",
+      "confidence": 0.2,
+      "matched": false
     },
     {
       "message": "单号E4455，查一下我买的",
@@ -5527,11 +5546,11 @@
       "expected_sub_intent": "order_query.query_status",
       "category": "colloquial",
       "id": "case_0419",
-      "actual_main_intent": "unrecognize",
-      "actual_sub_intent": "unrecognize.unknown",
-      "route_source": "fallback",
-      "confidence": 0.2,
-      "matched": false
+      "actual_main_intent": "order_query",
+      "actual_sub_intent": "order_query.query_status",
+      "route_source": "llm_fallback",
+      "confidence": 0.9,
+      "matched": true
     },
     {
       "message": "单号A1001，退掉",
@@ -5746,7 +5765,7 @@
       "actual_main_intent": "logistics",
       "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
-      "confidence": 0.95,
+      "confidence": 0.8,
       "matched": true
     },
     {
@@ -6310,11 +6329,11 @@
       "expected_sub_intent": "logistics.not_received",
       "category": "colloquial",
       "id": "case_0484",
-      "actual_main_intent": "order_query",
-      "actual_sub_intent": "order_query.query_status",
+      "actual_main_intent": "logistics",
+      "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": false
+      "matched": true
     },
     {
       "message": "单号B6688，我想收到的东西坏了",
@@ -7411,7 +7430,7 @@
       "actual_main_intent": "logistics",
       "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -7713,7 +7732,7 @@
       "actual_main_intent": "after_sale_refund",
       "actual_sub_intent": "after_sale_refund.request_refund",
       "route_source": "llm_fallback",
-      "confidence": 0.95,
+      "confidence": 0.98,
       "matched": true
     },
     {
@@ -8050,7 +8069,7 @@
       "actual_main_intent": "after_sale_refund",
       "actual_sub_intent": "after_sale_refund.consult_policy",
       "route_source": "llm_fallback",
-      "confidence": 0.85,
+      "confidence": 0.9,
       "matched": true
     },
     {
@@ -8687,10 +8706,10 @@
       "category": "colloquial",
       "id": "case_0681",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "单号A1001，帮我退款",
@@ -8747,10 +8766,10 @@
       "category": "colloquial",
       "id": "case_0686",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "单号D7721，麻烦帮我退款",
@@ -9015,7 +9034,7 @@
       "actual_main_intent": "logistics",
       "actual_sub_intent": "logistics.not_received",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -9147,7 +9166,7 @@
       "actual_main_intent": "after_sale_refund",
       "actual_sub_intent": "after_sale_refund.request_refund",
       "route_source": "llm_fallback",
-      "confidence": 0.8,
+      "confidence": 0.95,
       "matched": true
     },
     {
@@ -9207,7 +9226,7 @@
       "actual_main_intent": "handoff_service",
       "actual_sub_intent": "handoff_service.request_human",
       "route_source": "llm_fallback",
-      "confidence": 0.95,
+      "confidence": 0.8,
       "matched": true
     },
     {
@@ -11001,10 +11020,10 @@
       "category": "colloquial",
       "id": "case_0873",
       "actual_main_intent": "logistics",
-      "actual_sub_intent": "logistics.not_received",
+      "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
       "confidence": 0.95,
-      "matched": true
+      "matched": false
     },
     {
       "message": "单号D7721，麻烦什么时候到",
@@ -11280,7 +11299,7 @@
       "actual_main_intent": "logistics",
       "actual_sub_intent": "logistics.delayed",
       "route_source": "llm_fallback",
-      "confidence": 0.95,
+      "confidence": 0.8,
       "matched": false
     },
     {
@@ -11532,7 +11551,7 @@
       "actual_main_intent": "after_sale_refund",
       "actual_sub_intent": "after_sale_refund.request_refund",
       "route_source": "llm_fallback",
-      "confidence": 0.98,
+      "confidence": 0.95,
       "matched": true
     },
     {
