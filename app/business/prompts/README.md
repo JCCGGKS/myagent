@@ -12,14 +12,19 @@ LLM 提示词**定义与构造**层：集中存放各节点的 system / user 提
 
 ### `system.py` — 对话节点提示词
 - `SYSTEM_PROMPT_PREFIX`：客服助手前缀常量。
-- `build_prompt_context(state)`：**上下文隔离**入口。状态对象承载了大量仅供执行/调度使用的字段（如 `session_id` / `user_id` / `channel` / `action_history` / `running_summary` / `recent_messages` / `pending_intents` / 各类计数器 / `reply` 等），这些对 LLM 生成回复或决策没有帮助。本函数用白名单 `_PROMPT_CONTEXT_FIELDS` 只抽取对执行有帮助的字段（当前意图 / 阶段 / 槽位 / 已确认槽位 / 情绪 / 是否需要澄清），省略空值，得到一份「提示词可见」的上下文切片。白名单之外的字段**一律不进入提示词**，避免 token 浪费与噪声。
-- `_build_base_system_prompt(state)`：基于隔离后的上下文切片，构造公共上下文部分（当前意图、阶段、已填/缺失槽位等），供各对话节点复用。
-- `build_agent_system_prompt(state)`：Agent 调度节点提示——只做决策与工具调用，不输出最终回复。
-- `build_clarification_system_prompt(state, examples=None)`：澄清节点提示——生成追问话术；额外追加节点专属的 `current_action`。`examples` 由 `dialog` 注入示例参考。
-- `build_response_system_prompt(state, examples=None)`：回复生成节点提示——显式透传执行产物 `tool_result`（仅此节点需要，其余节点不透传），要求语气与示例一致；`examples` 由 `dialog` 注入示例参考。
+- **按节点隔离的字段白名单**：每个助手只取「对它执行有帮助」的状态字段，互不相同——
+  - `AGENT_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 缺失槽位 / 当前动作`（调度节点决策调工具用，**不含情绪**，因为它不生成面向用户的文本）。
+  - `CLARIFICATION_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 缺失槽位 / 当前动作 / 情绪`（澄清节点生成追问用，借情绪定语气）。
+  - `RESPONSE_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 已确认槽位 / 情绪 / 是否需要澄清`（最终回复节点组织友好回复用，**不含当前动作 / 缺失槽位**，因为回复是收尾）。
+  - 白名单之外的字段（`session_id` / `user_id` / `channel` / `action_history` / `running_summary` / `recent_messages` / `pending_intents` / 各类计数器 / `reply` 等）**一律不进入任何提示词**。
+- `build_prompt_context(state, fields)`：**上下文隔离**入口。从状态对象按给定白名单抽取非空字段，得到只属于该节点的「提示词可见」切片。
+- `_render_base_context(ctx)`：把隔离后的切片渲染成公共片段（意图/阶段/槽位/情绪等，按 ctx 中实际存在的字段渲染）。
+- `build_agent_system_prompt(state)`：Agent 调度节点提示——只做决策与工具调用，不输出最终回复；`tools=` 参数另发工具 schema，提示词不罗列。
+- `build_clarification_system_prompt(state, examples=None)`：澄清节点提示——生成追问话术；基于 `CLARIFICATION_FIELDS` 隔离切片（含当前动作、缺失槽位、情绪）。`examples` 由 `dialog` 注入。
+- `build_response_system_prompt(state, examples=None)`：回复生成节点提示——基于 `RESPONSE_FIELDS` 隔离切片（含情绪、已确认槽位、是否需要澄清），并显式透传执行产物 `tool_result`（仅此节点需要）。`examples` 由 `dialog` 注入。
 - `_append_examples(prompt, examples)`：把示例拼为固定的 `【回复示例参考】` 小节。
 
-> **上下文隔离原则**：所有对话节点提示词都从 `build_prompt_context(state)` 取数，而非直接读 `state` 的任意字段。新增状态字段时，只有加入 `_PROMPT_CONTEXT_FIELDS` 白名单才会被透传给 LLM；对执行无帮助的字段默认隔离，无需在提示词里逐个排除。
+> **上下文隔离原则**：三个对话节点的提示词**各自从自己的字段白名单**取数，而非共享一份或读 `state` 任意字段。某个状态字段要透传给特定助手，只需加入对应的 `*_FIELDS` 白名单；对执行无帮助的字段默认隔离，无需在提示词里逐个排除。
 
 ## 分层与依赖
 

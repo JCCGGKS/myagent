@@ -1,46 +1,71 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.schema import ConversationState
 
 SYSTEM_PROMPT_PREFIX = "你是一个客服助手，负责回答用户问题。"
 
-# 仅向 LLM 透传对「执行」有帮助的字段。
-# 状态对象承载了大量仅供执行/调度使用的字段（会话标识、渠道、内部计数、
-# 历史归档、工具结果等），它们对 LLM 生成回复或决策没有帮助，直接透传只
-# 会增加 token 成本与噪声。这里用白名单显式界定「提示词可见」的上下文切片，
-# 实现状态对象到提示词的上下文隔离：白名单之外的字段一律不进入提示词。
-_PROMPT_CONTEXT_FIELDS = (
+# 视为「空」、不进入提示词的字段取值。
+_EMPTY_VALUES = (None, "", {}, [])
+
+# 每个节点只取「对它本身执行有帮助」的状态字段——通过不同的字段
+# 白名单做上下文隔离，避免把无关字段喂给对应助手。例如：
+# - 调度节点（agent）只需意图/阶段/槽位/当前动作来决策调工具，不需要情绪；
+# - 澄清节点需要缺失槽位/当前动作来生成追问，并借情绪定语气；
+# - 最终回复节点需要已确认槽位/情绪/是否需要澄清来组织友好回复。
+# 白名单之外的字段（session_id / user_id / channel / action_history /
+# running_summary / recent_messages / pending_intents / 计数器 / reply 等）
+# 一律不进入提示词，也不被任何节点透传。
+AGENT_FIELDS = (
     "current_main_intent",
     "current_sub_intent",
     "stage",
     "slots",
     "missing_slots",
+    "current_action",
+)
+CLARIFICATION_FIELDS = (
+    "current_main_intent",
+    "current_sub_intent",
+    "stage",
+    "slots",
+    "missing_slots",
+    "current_action",
+    "emotion",
+)
+RESPONSE_FIELDS = (
+    "current_main_intent",
+    "current_sub_intent",
+    "stage",
+    "slots",
     "confirmed_slots",
     "emotion",
     "needs_clarification",
 )
 
 
-def build_prompt_context(state: ConversationState) -> dict:
-    """从状态对象抽取「提示词可见」的上下文切片（上下文隔离）。
+def build_prompt_context(state: ConversationState, fields: tuple[str, ...]) -> dict[str, Any]:
+    """从状态对象抽取「指定节点可见」的上下文切片（按节点隔离）。
 
-    只保留与「当前意图 + 槽位 + 情绪」相关的字段，其余字段（如
-    ``session_id`` / ``user_id`` / ``channel`` / ``action_history`` /
-    ``running_summary`` / ``recent_messages`` / ``pending_intents`` / 各类
-    计数器 / ``reply`` 等执行侧上下文）一律不进入提示词。省略空值字段以
-    保持提示词紧凑。
+    仅保留 ``fields`` 列出的、且非空的状态字段，得到一份只属于该
+    节点的提示词上下文。省略空值字段以保持提示词紧凑。
     """
-    ctx: dict = {}
-    for field in _PROMPT_CONTEXT_FIELDS:
+    ctx: dict[str, Any] = {}
+    for field in fields:
         value = getattr(state, field)
-        if value in (None, "", {}, []):
+        if value in _EMPTY_VALUES:
             continue
         ctx[field] = value
     return ctx
 
 
-def _render_base_context(ctx: dict) -> str:
-    """把隔离后的上下文切片渲染成提示词公共片段。"""
+def _render_base_context(ctx: dict[str, Any]) -> str:
+    """把隔离后的上下文切片渲染成提示词公共片段。
+
+    仅渲染切片里实际存在的字段——白名单之外的字段本就不会出现在
+    ``ctx`` 中，故不会泄露给 LLM。
+    """
     prompt = SYSTEM_PROMPT_PREFIX
     if "current_main_intent" in ctx:
         prompt += f"\n当前意图：{ctx['current_main_intent']}.{ctx.get('current_sub_intent', '')}"
@@ -52,27 +77,25 @@ def _render_base_context(ctx: dict) -> str:
         prompt += f"\n缺失槽位：{ctx['missing_slots']}"
     if "confirmed_slots" in ctx:
         prompt += f"\n已确认槽位：{ctx['confirmed_slots']}"
-    if "emotion" in ctx:
+    if "current_action" in ctx:
+        prompt += f"\n当前动作：{ctx['current_action']}"
+    # 仅当情绪非中性时才透传——neutral 不携带信号，对生成无帮助。
+    if "emotion" in ctx and ctx["emotion"].primary != "neutral":
         prompt += f"\n用户情绪：{ctx['emotion'].primary}"
     if ctx.get("needs_clarification"):
         prompt += "\n需要澄清：是"
     return prompt
 
 
-def _build_base_system_prompt(state: ConversationState) -> str:
-    """构造系统提示的公共部分（意图、阶段、槽位等上下文）。"""
-    return _render_base_context(build_prompt_context(state))
-
-
 def build_agent_system_prompt(state: ConversationState) -> str:
-    """Agent 节点系统提示（仅工具编排/决策，不生成最终答案）。
+    """Agent 调度节点系统提示（仅工具编排/决策，不生成最终答案）。
 
     明确告知 LLM：本节点负责判断是否调用工具获取信息；
     当已有足够信息（无需再调用工具）时，结束本节点、由回复节点生成最终答案。
-    可调用工具通过 ``tools=`` API 参数（结构化 schema）下发给模型用于
-    function calling，不在此重复以自然语言罗列，避免提示词冗余。
+    可调用工具通过 ``tools=`` API 参数（结构化 schema）下发，不在此罗列。
     """
-    prompt = _build_base_system_prompt(state)
+    ctx = build_prompt_context(state, AGENT_FIELDS)
+    prompt = _render_base_context(ctx)
     prompt += (
         "\n\n你是客服助手的【调度节点】，只负责决定下一步动作："
         "\n1. 若需要更多信息来回答用户（如订单状态、物流、知识库内容），请调用合适的工具；"
@@ -93,13 +116,10 @@ def build_clarification_system_prompt(
     state: ConversationState, examples: str | None = None
 ) -> str:
     """澄清节点系统提示（生成追问话术，需补全信息时调用）。"""
-    prompt = _build_base_system_prompt(state)
-    # current_action 仅澄清节点需要，作为节点专属上下文追加（基于已隔离的状态切片）。
-    if state.current_action:
-        prompt += f"\n当前动作：{state.current_action}"
+    ctx = build_prompt_context(state, CLARIFICATION_FIELDS)
+    prompt = _render_base_context(ctx)
     prompt += (
         "\n\n你是客服助手，当前需要向用户追问以补全信息。"
-        f"\n缺失槽位：{state.missing_slots}"
         "\n请生成一句友好的追问话术，引导用户补充所需信息（例如缺订单号时请用户提供订单号）。"
         "只输出追问内容本身，不要包含多余解释或客套话。"
     )
@@ -110,7 +130,8 @@ def build_response_system_prompt(
     state: ConversationState, examples: str | None = None
 ) -> str:
     """回复生成节点的系统提示（含工具结果，要求生成友好响应）。"""
-    prompt = _build_base_system_prompt(state)
+    ctx = build_prompt_context(state, RESPONSE_FIELDS)
+    prompt = _render_base_context(ctx)
     # tool_result 是执行产物、供回复引用，仅在回复节点显式透传（其余节点不透传）。
     if state.tool_result:
         prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
