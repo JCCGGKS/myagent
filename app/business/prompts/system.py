@@ -64,34 +64,13 @@ def _build_base_system_prompt(state: ConversationState) -> str:
     return _render_base_context(build_prompt_context(state))
 
 
-def _render_tools(tools: list[dict] | None) -> str:
-    """把工具 schema 渲染成「名称：描述」清单（供提示词告知模型可调用的工具）。
-
-    只取 function.name / function.description，不重复整段 JSON schema——
-    结构化 schema 已由 ``tools=`` API 参数下发给模型用于 function calling，
-    此处仅以自然语言补充一份「可调用工具目录」，让模型知道有哪些工具可用。
-    """
-    if not tools:
-        return ""
-    lines = []
-    for tool in tools:
-        func = tool.get("function", {}) if isinstance(tool, dict) else {}
-        name = func.get("name")
-        desc = func.get("description", "")
-        if name:
-            lines.append(f"- {name}：{desc}")
-    return "\n".join(lines)
-
-
-def build_agent_system_prompt(
-    state: ConversationState, tools: list[dict] | None = None
-) -> str:
+def build_agent_system_prompt(state: ConversationState) -> str:
     """Agent 节点系统提示（仅工具编排/决策，不生成最终答案）。
 
     明确告知 LLM：本节点负责判断是否调用工具获取信息；
     当已有足够信息（无需再调用工具）时，结束本节点、由回复节点生成最终答案。
-    通过 ``tools=`` API 参数下发的工具 schema 已具备 function calling 能力，
-    这里额外以自然语言列出可调用工具目录，让模型清楚有哪些工具可用。
+    可调用工具通过 ``tools=`` API 参数（结构化 schema）下发给模型用于
+    function calling，不在此重复以自然语言罗列，避免提示词冗余。
     """
     prompt = _build_base_system_prompt(state)
     prompt += (
@@ -100,9 +79,6 @@ def build_agent_system_prompt(
         "\n2. 若当前上下文已足够回答用户，请不要调用任何工具，直接结束本节点。"
         "\n注意：你只做决策与工具调用，不要在此输出给用户的最终回复，最终回复由专门的回复节点生成。"
     )
-    tools_text = _render_tools(tools)
-    if tools_text:
-        prompt += "\n\n当前可调用的工具：\n" + tools_text
     return prompt
 
 

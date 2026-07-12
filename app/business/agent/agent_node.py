@@ -81,8 +81,8 @@ class AgentNodeService:
         """
         messages = []
 
-        # 系统提示（附带可调用工具目录，供模型决策调用）
-        system_prompt = build_agent_system_prompt(state, tools=self.tools)
+        # 系统提示（工具信息仍经 tools= API 参数下发，提示词不重复罗列）
+        system_prompt = build_agent_system_prompt(state)
         messages.append({"role": "system", "content": system_prompt})
 
         # 注入压缩摘要缓冲：让模型看到活动窗口之外的上下文
