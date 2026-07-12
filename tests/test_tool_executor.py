@@ -143,6 +143,38 @@ class TestToolExecutor:
         assert state.tool_result is not None
         assert state.tool_result.kind == "error"
 
+    def test_run_create_handoff_serializes_without_state_error(self):
+        """回归：create_handoff 经 run() 调用时，工具消息内容必须是可 JSON 序列化的
+        ToolExecutionResult，不能是整份 ConversationState（否则 json.dumps 报
+        'Object of type ConversationState is not JSON serializable'）。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_5",
+                "type": "function",
+                "function": {"name": "create_handoff", "arguments": "{}"},
+            }
+        ]
+        state = _state(summary="需要人工处理")
+        messages = executor.run(tool_calls, state)
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "tool"
+        # 关键：内容可被标准 json 序列化（不再整段塞入 ConversationState）
+        import json
+
+        parsed = json.loads(messages[0]["content"])
+        assert parsed["kind"] == "handoff"
+        assert state.tool_result is not None
+        assert state.tool_result.kind == "handoff"
+
     def test_create_handoff_sets_handoff_state(self):
         rag_tool = MagicMock()
         rag_tool.run.return_value = []

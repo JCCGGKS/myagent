@@ -6,7 +6,10 @@ from app.schema import HandoffResult, LogisticsEvent, LogisticsInfo, OrderInfo
 from app.dao.data import load_orders, load_logistics
 
 
-ORDER_ID_PATTERN = re.compile(r"\b[A-Z]\d{4}\b")
+# 不依赖 \b：Python3 默认 unicode 模式下中文也算「单词字符」，
+# 中文与订单号之间没有 \b 边界，会导致「订单A1001」抽取失败。
+# 改用显式「非字母数字」前后断言，让中文/标点/空格/字符串边界都成为合法边界。
+ORDER_ID_PATTERN = re.compile(r"(?<![A-Za-z0-9])[A-Z]\d{4}(?![A-Za-z0-9])")
 
 
 def load_mock_json_file(filename: str) -> list[dict]:

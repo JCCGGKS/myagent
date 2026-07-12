@@ -197,8 +197,13 @@ class ToolExecutor:
             user_facing_summary=summary,
         )
 
-    def _handle_handoff(self, args: dict[str, Any], state: ConversationState) -> ConversationState:
-        return self.create_handoff(state)
+    def _handle_handoff(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        # create_handoff 会就地把 tool_result 写入 state，并返回 state；
+        # 作为工具处理器需返回 ToolExecutionResult 供 run() 序列化 tool 消息，
+        # 否则会把整个 ConversationState 交给 json.dumps 而报
+        # "Object of type ConversationState is not JSON serializable"。
+        self.create_handoff(state)
+        return state.tool_result
 
     def create_handoff(self, state: ConversationState) -> ConversationState:
         if self.handoff_service is None:
