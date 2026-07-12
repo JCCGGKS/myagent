@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.schema import ConversationState
 from app.schema.intent import MAIN_INTENT_CODES, SUB_INTENT_CODES
 
 
@@ -35,7 +36,15 @@ def _build_intent_lists() -> tuple[str, str]:
     return main_lines, sub_lines
 
 
-def build_llm_intent_user_prompt(message: str, previous_sub_intent: str) -> str:
+def build_llm_intent_user_prompt(
+    message: str,
+    previous_sub_intent: str = "",
+    state: ConversationState | None = None,
+) -> str:
+    # 优先从状态对象借用上下文（上下文隔离：只取上一轮子意图，
+    # 不直接透传整份状态，避免把无关字段喂给 LLM）。
+    if state is not None:
+        previous_sub_intent = state.current_sub_intent
     main_lines, sub_lines = _build_intent_lists()
     return f"""
 请对下面的客服用户输入做意图分类，只能输出给定 schema。

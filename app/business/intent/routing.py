@@ -90,7 +90,7 @@ class IntentRouterService:
 
         # LLM 兜底分类
         if intent is None:
-            llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
+            llm_intent = await self._route_with_llm_fallback(message, state)
             if llm_intent is not None:
                 # 合并规则层已抽出的实体，避免 LLM 漏抽订单号
                 if order_id:
@@ -119,7 +119,7 @@ class IntentRouterService:
         # （对比评估显示覆盖会反噬 ~6 个已正确的规则命中）。
         # 调优时可用 eval/run_eval.py --sweep-threshold 扫描最优阈值。
         if intent.route_source == "rule" and intent.confidence < self.override_threshold:
-            llm_intent = await self._route_with_llm_fallback(message, previous_sub_intent)
+            llm_intent = await self._route_with_llm_fallback(message, state)
             if llm_intent is not None:
                 logger.info(
                     "Rule result overridden by LLM: %s.%s -> %s.%s session=%s",
@@ -147,11 +147,11 @@ class IntentRouterService:
         return intent
 
     async def _route_with_llm_fallback(
-        self, message: str, previous_sub_intent: str
+        self, message: str, state: ConversationState
     ) -> IntentResult | None:
         if self.llm_fallback_service is None or not self.llm_fallback_service.enabled:
             return None
-        return await self.llm_fallback_service.classify(message, previous_sub_intent)
+        return await self.llm_fallback_service.classify(message, state)
 
     # 续办信号关键词（Phase 3）：用户未给出明确新意图、但希望处理下一个待办
     _CONTINUE_SIGNALS = ("继续", "下一个", "接着", "还有呢", "处理下一个", "再处理", "然后呢", "下一个吧")

@@ -165,17 +165,19 @@ class LLMIntentFallbackService:
     def enabled(self) -> bool:
         return self.client is not None
 
-    async def classify(self, message: str, previous_sub_intent: str) -> IntentResult | None:
+    async def classify(self, message: str, state: ConversationState) -> IntentResult | None:
         if self.client is None:
             logger.debug("LLM fallback skipped: client not available")
             return None
 
+        # 从状态对象借用上下文（上下文隔离：只取上一轮子意图）。
+        previous_sub_intent = state.current_sub_intent
         logger.debug(
             "LLM fallback classify message=%r previous_sub_intent=%s",
             message[:80], previous_sub_intent,
         )
         try:
-            prompt = build_llm_intent_user_prompt(message, previous_sub_intent)
+            prompt = build_llm_intent_user_prompt(message, state=state)
             parsed = await self._classify_with_chat_completions(prompt)
         except Exception as exc:
             logger.warning("LLM fallback classify crashed: %s", repr(exc))

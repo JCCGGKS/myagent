@@ -8,15 +8,18 @@ LLM 提示词**定义与构造**层：集中存放各节点的 system / user 提
 ### `intent.py` — 意图识别提示词
 - `LLM_INTENT_SYSTEM_PROMPT`：意图分类器的系统提示（约束只能从给定意图中选择、输出合法 JSON、不编造意图）。
 - `_group_sub_intents()` / `_build_intent_lists()`：基于 `app.schema.intent` 的权威枚举 `MAIN_INTENT_CODES` / `SUB_INTENT_CODES` **动态生成**可选主/子意图列表，新增意图无需改提示词代码。
-- `build_llm_intent_user_prompt(message, previous_sub_intent)`：构造意图识别的 user 提示，内嵌判定原则（问候 / 转人工 / 订单 / 物流 / 退款售后 / 投诉 / 超范围 / 未覆盖）与多轮上下文（上一轮子意图）。
+- `build_llm_intent_user_prompt(message, previous_sub_intent="", state=None)`：构造意图识别的 user 提示，内嵌判定原则（问候 / 转人工 / 订单 / 物流 / 退款售后 / 投诉 / 超范围 / 未覆盖）与多轮上下文（上一轮子意图）。传入 `state` 时优先从状态对象借用上下文（`state.current_sub_intent`），同样只取对意图识别有用的字段，避免透传整份状态。
 
 ### `system.py` — 对话节点提示词
 - `SYSTEM_PROMPT_PREFIX`：客服助手前缀常量。
-- `_build_base_system_prompt(state)`：构造公共上下文部分（当前意图、阶段、已填/缺失槽位），供各对话节点复用。
+- `build_prompt_context(state)`：**上下文隔离**入口。状态对象承载了大量仅供执行/调度使用的字段（如 `session_id` / `user_id` / `channel` / `action_history` / `running_summary` / `recent_messages` / `pending_intents` / 各类计数器 / `reply` 等），这些对 LLM 生成回复或决策没有帮助。本函数用白名单 `_PROMPT_CONTEXT_FIELDS` 只抽取对执行有帮助的字段（当前意图 / 阶段 / 槽位 / 已确认槽位 / 情绪 / 是否需要澄清），省略空值，得到一份「提示词可见」的上下文切片。白名单之外的字段**一律不进入提示词**，避免 token 浪费与噪声。
+- `_build_base_system_prompt(state)`：基于隔离后的上下文切片，构造公共上下文部分（当前意图、阶段、已填/缺失槽位等），供各对话节点复用。
 - `build_agent_system_prompt(state)`：Agent 调度节点提示——只做决策与工具调用，不输出最终回复。
-- `build_clarification_system_prompt(state, examples=None)`：澄清节点提示——生成追问话术；`examples` 由 `dialog` 注入示例参考。
-- `build_response_system_prompt(state, examples=None)`：回复生成节点提示——含工具结果，要求语气与示例一致；`examples` 由 `dialog` 注入示例参考。
+- `build_clarification_system_prompt(state, examples=None)`：澄清节点提示——生成追问话术；额外追加节点专属的 `current_action`。`examples` 由 `dialog` 注入示例参考。
+- `build_response_system_prompt(state, examples=None)`：回复生成节点提示——显式透传执行产物 `tool_result`（仅此节点需要，其余节点不透传），要求语气与示例一致；`examples` 由 `dialog` 注入示例参考。
 - `_append_examples(prompt, examples)`：把示例拼为固定的 `【回复示例参考】` 小节。
+
+> **上下文隔离原则**：所有对话节点提示词都从 `build_prompt_context(state)` 取数，而非直接读 `state` 的任意字段。新增状态字段时，只有加入 `_PROMPT_CONTEXT_FIELDS` 白名单才会被透传给 LLM；对执行无帮助的字段默认隔离，无需在提示词里逐个排除。
 
 ## 分层与依赖
 
