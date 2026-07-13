@@ -11,6 +11,15 @@ from typing import Any, Callable
 from app.schema import ChatRequest, ChatResponse, ConversationState
 
 logger = logging.getLogger(__name__)
+
+
+def _tag(stage: str, msg: str) -> str:
+    """给日志加 pipeline 阶段标签，形如 `[intent] ...`，便于按阶段检索/归类。
+
+    阶段取值：input / intent / state / policy / clarification / agent / handoff /
+    response / compressor / tool / persist / agent。
+    """
+    return f"[{stage}] {msg}"
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas
@@ -86,7 +95,7 @@ def _make_summary_fold_fn(
             summary = resp.choices[0].message.content or ""
             return summary.strip()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("summary fold LLM call failed err=%r", exc)
+            logger.warning(_tag("infra", "summary fold LLM call failed err=%r"), exc)
             return ""
 
     if llm_client is None or not llm_model:
@@ -272,14 +281,14 @@ class CustomerServiceAgent:
             state = await self.message_service.persist(state, request)
         except Exception as exc:
             logger.error(
-                "persist_failed session=%s user=%s err=%r",
+                _tag("persist", "failed session=%s user=%s err=%r"),
                 request.session_id, user_id, exc,
             )
         # 事件流落库（best-effort）：非流式仅落 final 事件；完整决策链由 SSE 路径记录。
         final_event = {"type": "final", "trace_id": trace_id, "response": self._build_chat_response(state).model_dump()}
         await self.message_service.persist_events(request.session_id, trace_id, [final_event])
         logger.info(
-            "chat done session=%s user=%s trace_id=%s intent=%s.%s action=%s",
+            _tag("agent", "chat done session=%s user=%s trace_id=%s intent=%s.%s action=%s"),
             request.session_id, user_id, trace_id,
             state.current_main_intent, state.current_sub_intent, state.current_action,
         )
@@ -336,7 +345,7 @@ class CustomerServiceAgent:
                 await self.message_service.persist(final_state, request)
             except Exception as exc:  # 落库异常隔离，保证 final 必达
                 logger.error(
-                    "persist_failed session=%s user=%s err=%r",
+                    _tag("persist", "failed session=%s user=%s err=%r"),
                     request.session_id, user_id, exc,
                 )
             # 事件流落库（best-effort）：含已下发的 intent/state/tool_result + final
@@ -425,7 +434,7 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         request: ChatRequest = payload["request"]
         message = normalize_whitespace(request.message)
-        logger.debug("node=input_normalizer session=%s message=%r", state.session_id, message[:80])
+        logger.debug(_tag("input", "session=%s message=%r"), state.session_id, message[:80])
 
         state.reply = ""
         state.intent_result = None
@@ -442,12 +451,12 @@ class CustomerServiceAgent:
 
     async def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=intent_router session=%s", state.session_id)
+        logger.debug(_tag("intent", "session=%s"), state.session_id)
         state.intent_result = await self.intent_router_service.route(
             state, state.recent_messages[-1]["content"]
         )
         logger.debug(
-            "node=intent_router result intent=%s.%s source=%s",
+            _tag("intent", "result intent=%s.%s source=%s"),
             state.intent_result.main_intent if state.intent_result else None,
             state.intent_result.sub_intent if state.intent_result else None,
             state.intent_result.route_source if state.intent_result else None,
@@ -459,68 +468,68 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         intent = state.intent_result
         if intent is None:
-            logger.warning("state_tracker: no intent_result session=%s", state.session_id)
+            logger.warning(_tag("state", "no intent_result session=%s"), state.session_id)
             return payload
-        logger.debug("node=state_tracker session=%s intent=%s", state.session_id, intent.main_intent)
+        logger.debug(_tag("state", "session=%s intent=%s"), state.session_id, intent.main_intent)
         payload["state"] = self.state_tracker_service.apply(state, intent)
         return payload
 
     async def policy_layer(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=policy_layer session=%s", state.session_id)
+        logger.debug(_tag("policy", "session=%s"), state.session_id)
         payload["state"] = self.policy_service.decide(state)
-        logger.debug("node=policy_layer decision action=%s", state.current_action)
+        logger.debug(_tag("policy", "decision action=%s"), state.current_action)
         return payload
 
     def route_after_policy(self, payload: dict[str, Any]) -> str:
         state: ConversationState = payload["state"]
         action = state.current_action
         if action in {"ask_intent_clarification", "ask_slot_clarification"}:
-            logger.debug("route_after_policy -> clarification_node session=%s", state.session_id)
+            logger.debug(_tag("policy", "route -> clarification_node session=%s"), state.session_id)
             return "clarification_node"
         # agent_process 路由到 agent_node（工具调用）
         if action == "agent_process":
-            logger.debug("route_after_policy -> agent_node session=%s", state.session_id)
+            logger.debug(_tag("policy", "route -> agent_node session=%s"), state.session_id)
             return "agent_node"
         if action == "handoff_human":
-            logger.debug("route_after_policy -> handoff_node session=%s", state.session_id)
+            logger.debug(_tag("policy", "route -> handoff_node session=%s"), state.session_id)
             return "handoff_node"
         # 其他情况（如 answer_directly）路由到 response_generator
-        logger.debug("route_after_policy -> response_generator session=%s", state.session_id)
+        logger.debug(_tag("policy", "route -> response_generator session=%s"), state.session_id)
         return "response_generator"
 
     async def clarification_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=clarification_node session=%s", state.session_id)
+        logger.debug(_tag("clarification", "session=%s"), state.session_id)
         payload["state"] = await self.clarification_service.generate(state)
         return payload
 
     async def agent_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=agent_node session=%s", state.session_id)
+        logger.debug(_tag("agent", "session=%s"), state.session_id)
         payload["state"] = await self.agent_node_service.run(state)
         return payload
 
     async def handoff_node(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.info("node=handoff_node session=%s reason=%s", state.session_id, state.handoff_reason)
+        logger.info(_tag("handoff", "session=%s reason=%s"), state.session_id, state.handoff_reason)
         payload["state"] = self.tool_executor.create_handoff(state)
         return payload
 
     async def response_generator(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=response_generator session=%s", state.session_id)
+        logger.debug(_tag("response", "session=%s"), state.session_id)
         payload["state"] = await self.response_service.generate(state)
         # 多意图续办提示：有待处理意图时，在回复末尾提示用户可继续（Phase 3）
         if state.pending_intents and not state.handoff:
             names = "、".join(p.main_intent for p in state.pending_intents)
             state.reply = f"{state.reply}\n\n（还有「{names}」待处理，需要的话我可以继续处理。）"
-        logger.debug("response=%r session=%s", state.reply[:80] if state.reply else "", state.session_id)
+        logger.debug(_tag("response", "reply=%r session=%s"), state.reply[:80] if state.reply else "", state.session_id)
         return payload
 
     async def context_compressor(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]
-        logger.debug("node=context_compressor session=%s", state.session_id)
+        logger.debug(_tag("compressor", "session=%s"), state.session_id)
         payload["state"] = await self.context_service.compress(state)
         return payload
 
