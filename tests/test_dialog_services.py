@@ -143,12 +143,14 @@ class TestDialogServices:
         assert "max_tokens" not in gen
         assert "top_p" not in gen
 
-    def test_agent_node_should_write_reply_to_remove_redundant_call(self):
-        """agent_node 在 LLM 直接给出结论时应写入 state.reply，使 response_generator 命中早返回（去冗余）。"""
+    def test_agent_node_should_not_leak_scheduler_monologue_to_reply(self):
+        """agent_node 是调度节点，其 content 输出只是内部决策旁白，绝不能当作面向用户的
+        state.reply 输出（否则会把「直接结束本节点、由回复节点…」这类内部 monologue 漏给用户）。
+        用户回复统一由 response_generator 基于上下文生成。"""
         llm_client = AsyncMock()
-        # LLM 直接返回 content、无 tool_calls
+        # LLM 直接返回 content、无 tool_calls（典型的「内部决策旁白」场景）
         llm_client.chat.completions.create.return_value = MagicMock(
-            choices=[MagicMock(message=MagicMock(content="已为你处理完成。", tool_calls=None))]
+            choices=[MagicMock(message=MagicMock(content="调度节点：信息不足，直接结束本节点，由回复节点向用户索要订单号。", tool_calls=None))]
         )
 
         service = AgentNodeService(
@@ -161,7 +163,10 @@ class TestDialogServices:
         state.recent_messages.append({"role": "user", "content": "把订单 A1001 退掉"})
         result = asyncio.run(service.run(state))
 
-        assert result.reply == "已为你处理完成。"
+        # 调度节点的自言自语绝不能成为用户可见的回复
+        assert result.reply == ""
+        # 但调度决策本身（调用 LLM）照常发生
+        llm_client.chat.completions.create.assert_called()
 
     def test_response_generator_should_skip_llm_when_reply_present(self):
         """response_generator 在 state.reply 已存在时应直接返回，不再调用 LLM（去冗余）。"""
