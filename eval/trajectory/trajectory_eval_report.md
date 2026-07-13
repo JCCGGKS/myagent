@@ -2,251 +2,343 @@
 
 ## 总体结果（路径/决策正确性，规则评估，不依赖 LLM 裁判）
 - 样本总数：1000
-- 节点路径准确率（route）：98.90%
-- 意图准确率（intent）：88.20%
-- 动作/分支准确率（action）：66.50%
+- 节点路径准确率（route）：98.40%
+- 意图准确率（intent）：87.70%
+- 动作/分支准确率（action）：95.80%
 - 槽位抽取准确率（slot_extraction）：100.00%
 - 缺失槽位准确率（missing_slot）：100.00%
 - 澄清行为准确率（clarification）：99.40%
-- **轨迹总准确率（trajectory_overall，六项全过）**：61.10%
+- **轨迹总准确率（trajectory_overall，六项全过）**：86.40%
 
 ## 响应时间（单条样本 agent 跑完整图耗时，含工具调用，不含 LLM 裁判）
-- 最短：0.676s
-- 最长：49.831s
-- 平均：6.280s
-- P50：5.295s
+- 最短：0.011s
+- 最长：10.650s
+- 平均：4.673s
+- P50：4.700s
 
 ## 按类别
 
 | 类别 | 样本数 | 路径 | 意图 | 动作 | 槽位抽取 | 缺失槽位 | 澄清 | 总准确率 | 平均耗时(s) |
 |---|---|---|---|---|---|---|---|---|---|
-| clarify_no_id | 25 | 2.00% | 2.50% | 2.00% | 2.50% | 2.50% | 2.00% | 2.00% | 3.152 |
-| complaint | 55 | 5.00% | 5.00% | 5.00% | 5.50% | 5.50% | 5.50% | 5.00% | 7.619 |
-| greeting | 35 | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 1.447 |
-| handoff | 30 | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 1.435 |
-| logistics | 140 | 14.00% | 14.00% | 9.60% | 14.00% | 14.00% | 14.00% | 9.60% | 5.230 |
-| multiturn_followup | 25 | 2.50% | 2.50% | 0.90% | 2.50% | 2.50% | 2.50% | 0.90% | 6.789 |
-| order_query | 236 | 23.60% | 23.60% | 15.40% | 23.60% | 23.60% | 23.60% | 15.40% | 4.473 |
-| refund_consult | 187 | 18.70% | 14.10% | 18.70% | 18.70% | 18.70% | 18.70% | 14.10% | 7.696 |
-| refund_consult_clarify | 30 | 2.90% | 2.90% | 2.90% | 3.00% | 3.00% | 2.90% | 2.90% | 24.596 |
-| refund_request | 212 | 21.20% | 14.60% | 3.00% | 21.20% | 21.20% | 21.20% | 2.20% | 7.013 |
-| unsupported | 25 | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 2.662 |
+| clarify_no_id | 25 | 2.00% | 2.50% | 2.00% | 2.50% | 2.50% | 2.00% | 2.00% | 1.412 |
+| complaint | 55 | 4.50% | 4.50% | 4.50% | 5.50% | 5.50% | 5.50% | 4.50% | 3.056 |
+| greeting | 35 | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 3.50% | 1.745 |
+| handoff | 30 | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 3.00% | 0.245 |
+| logistics | 140 | 14.00% | 14.00% | 14.00% | 14.00% | 14.00% | 14.00% | 14.00% | 4.889 |
+| multiturn_followup | 25 | 2.50% | 2.50% | 1.70% | 2.50% | 2.50% | 2.50% | 1.70% | 5.022 |
+| order_query | 236 | 23.60% | 23.60% | 23.60% | 23.60% | 23.60% | 23.60% | 23.60% | 4.516 |
+| refund_consult | 187 | 18.70% | 14.10% | 18.70% | 18.70% | 18.70% | 18.70% | 14.10% | 6.180 |
+| refund_consult_clarify | 30 | 2.90% | 2.90% | 2.90% | 3.00% | 3.00% | 2.90% | 2.90% | 4.826 |
+| refund_request | 212 | 21.20% | 14.60% | 19.40% | 21.20% | 21.20% | 21.20% | 14.60% | 5.403 |
+| unsupported | 25 | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 2.50% | 3.189 |
 
 ## 轨迹未完全达标样本（前 80 条）
 
-- `ans_0017` [order_query] `A1001 的订单详情`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0054` [refund_request] `A1001 的退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0005` [order_query] `请问单号A1002，帮我查下订单`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0007` [order_query] `单号A1002，帮我查下订单`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0009` [order_query] `订单详情，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
 - `ans_0421` [refund_consult] `七天无理由怎么退，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0015` [refund_request] `麻烦A1002 的退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0893` [order_query] `订单状态，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0018` [refund_request] `退掉这单 A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0670` [refund_request] `单号A1002，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0372` [logistics] `请问A1001 的物流信息`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0483` [logistics] `配送进度，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0027` [logistics] `什么时候送到，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0028` [refund_request] `帮我单号A1002，帮我退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0324` [refund_request] `A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0031` [order_query] `我想我的订单，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0572` [refund_request] `请问A1001 的申请退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0035` [refund_request] `这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0039` [refund_request] `请问A1002 的帮我退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0046` [refund_consult] `帮我退款规则，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+- `ans_0670` [refund_request] `单号A1002，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0047` [logistics] `我想包裹到哪了 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+- `ans_0324` [refund_request] `A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0629` [refund_request] `单号A1001，帮我退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+    - 未过维度：意图
+- `ans_0035` [refund_request] `这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0054` [refund_request] `A1001 的退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+    - 未过维度：意图
+- `ans_0353` [complaint] `越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0046` [refund_consult] `帮我退款规则，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0055` [refund_request] `请问这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0056` [order_query] `麻烦A1001 的发货了吗`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0062` [logistics] `帮我A1001 的货到没到`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0865` [refund_request] `麻烦我要退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0580` [refund_request] `麻烦A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+    - 未过维度：意图
+- `ans_0055` [refund_request] `请问这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图/动作
-- `ans_0072` [order_query] `我想单号A1001，发货了吗`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
+- `ans_0580` [refund_request] `麻烦A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0642` [logistics] `麻烦单号A1001，货到没到`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0075` [refund_request] `单号A1002，帮我退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
+    - 未过维度：意图
 - `ans_0076` [multiturn_followup] `A1002 怎么样了`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：动作
-- `ans_0080` [order_query] `我想查订单，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0231` [refund_consult] `请问单号A1002，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+- `ans_0231` [refund_consult] `请问单号A1002，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0083` [multiturn_followup] `继续处理 A1002`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+- `ans_0085` [refund_request] `我想退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0085` [refund_request] `我想退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0733` [refund_request] `我想A1002 的退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0613` [logistics] `什么时候送到 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0091` [refund_request] `单号A1001，退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
+    - 未过维度：意图
 - `ans_0092` [refund_request] `请问A1001 的退货退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图/动作
-- `ans_0095` [refund_request] `我想A1002 的申请退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0102` [refund_request] `A1002 的申请退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0103` [refund_request] `我想单号A1001，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0106` [refund_request] `我想退货退款，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+- `ans_0103` [refund_request] `我想单号A1001，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0107` [refund_request] `退货退款 A1001`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+- `ans_0106` [refund_request] `我想退货退款，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图/动作
-- `ans_0108` [refund_consult] `麻烦七天无理由怎么退 A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+- `ans_0107` [refund_request] `退货退款 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0108` [refund_consult] `麻烦七天无理由怎么退 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0111` [logistics] `帮我货到没到 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+- `ans_0118` [refund_request] `帮我退货退款 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0112` [refund_request] `麻烦A1001 的退掉这单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0113` [refund_request] `帮我单号A1002，我要退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0116` [order_query] `订单状态 A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0118` [refund_request] `帮我退货退款 A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+    - 未过维度：意图
+- `ans_0564` [refund_request] `请问退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图/动作
-- `ans_0120` [logistics] `请问单号A1001，物流`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+- `ans_0141` [refund_request] `帮我单号A1002，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0152` [refund_consult] `我想A1002 的七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0159` [refund_consult] `帮我退款政策 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0257` [complaint] `我想越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0181` [refund_consult] `七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0206` [refund_consult] `帮我七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0201` [refund_request] `帮我退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0203` [refund_request] `帮我这单不想要了退了吧 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0206` [refund_consult] `帮我七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0221` [refund_request] `麻烦单号A1001，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0223` [refund_consult] `我想七天无理由怎么退 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0231` [refund_consult] `请问单号A1002，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0239` [refund_request] `请问单号A1001，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0242` [refund_request] `我想这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0439` [refund_consult] `帮我退款政策，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0255` [refund_consult] `请问单号A1001，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0257` [complaint] `我想越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0263` [refund_request] `麻烦这单不想要了退了吧，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0753` [complaint] `麻烦越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0297` [refund_request] `A1001 的退货退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0307` [refund_consult] `麻烦单号A1001，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0310` [refund_consult] `麻烦七天无理由怎么退，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0316` [refund_consult] `帮我退款规则 A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0324` [refund_request] `A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0337` [refund_request] `我想A1002 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0341` [refund_consult_clarify] `帮我退款`  期望动作 agent_process；实际动作 ask_slot_clarification 工具 None 回复节点 clarification_node
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'clarification_node', 'context_compressor']
+    - 未过维度：路径/意图/动作/澄清
+- `ans_0343` [refund_request] `请问单号A1002，这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0353` [complaint] `越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0355` [refund_request] `我想A1001 的退货退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0356` [refund_request] `请问单号A1001，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0386` [refund_request] `单号A1001，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0389` [refund_consult] `帮我七天无理由怎么退，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0677` [refund_consult] `帮我退款政策，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0404` [refund_request] `请问这单不想要了退了吧，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0409` [refund_consult] `帮我单号A1002，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0421` [refund_consult] `七天无理由怎么退，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0773` [refund_request] `退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0439` [refund_consult] `帮我退款政策，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0448` [refund_request] `帮我A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0456` [refund_request] `请问单号A1002，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0458` [refund_request] `帮我这单不想要了退了吧 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0751` [complaint] `请问越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0462` [refund_consult] `麻烦A1002 的七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0464` [refund_request] `A1002 的退货退款`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0799` [refund_consult] `麻烦单号A1002，七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0467` [clarify_no_id] `帮我看看我买的东西`  期望动作 ask_slot_clarification；实际动作 agent_process 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'clarification_node', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：路径/动作/澄清
+- `ans_0468` [refund_consult] `我想七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0484` [refund_consult] `我想七天无理由怎么退，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0493` [multiturn_followup] `再等等 A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：动作
-- `ans_0121` [order_query] `发货了吗，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
+- `ans_0495` [refund_request] `请问退货退款 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0126` [refund_request] `请问退掉这单，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+    - 未过维度：意图/动作
+- `ans_0507` [refund_request] `我想退货退款 A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0527` [refund_consult] `我想A1001 的七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0529` [refund_consult] `帮我七天无理由怎么退 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0816` [complaint] `帮我越想越气`  期望动作 agent_process；实际动作 answer_directly 工具 None 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'response_generator', 'context_compressor']
+    - 未过维度：路径/意图/动作
+- `ans_0533` [refund_request] `我想这单不想要了退了吧 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0994` [refund_request] `麻烦这单不想要了退了吧 A1001`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0546` [refund_request] `请问退货退款 A1002`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图/动作
+- `ans_0552` [refund_request] `单号A1002，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
+    - 未过维度：意图
+- `ans_0560` [multiturn_followup] `再等等 A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：动作
@@ -254,103 +346,11 @@
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图/动作
-- `ans_0134` [refund_request] `我想帮我退款 A1001`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0141` [refund_request] `帮我单号A1002，退货退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0722` [logistics] `我想物流 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0151` [order_query] `帮我订单详情 A1002`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0152` [refund_consult] `我想A1002 的七天无理由怎么退`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
+- `ans_0580` [refund_request] `麻烦A1001 的这单不想要了退了吧`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0153` [logistics] `A1001 的货到没到`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0155` [refund_request] `我想申请退款，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0159` [refund_consult] `帮我退款政策 A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
+- `ans_0583` [refund_request] `这单不想要了退了吧，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
     - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
     - 未过维度：意图
-- `ans_0160` [refund_request] `帮我退掉这单，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0161` [order_query] `我想A1001 的订单详情`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0162` [refund_request] `请问我要退款，单号A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0169` [order_query] `我想发货了吗 A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0171` [refund_request] `帮我单号A1002，申请退款`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0172` [order_query] `麻烦发货了吗 A1001`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0174` [logistics] `帮我什么时候送到 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0544` [order_query] `请问A1001 的看看我的单`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0181` [refund_consult] `七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图
-- `ans_0400` [logistics] `快递到哪了 A1001`  期望动作 agent_process；实际动作 agent_process 工具 order_query 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0445` [order_query] `麻烦单号A1001，查订单`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0206` [refund_consult] `帮我七天无理由怎么退 A1002`  期望动作 agent_process；实际动作 agent_process 工具 aftersale_refund 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图
-- `ans_0196` [logistics] `A1001 的快递到哪了`  期望动作 agent_process；实际动作 agent_process 工具 knowledge 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0201` [refund_request] `帮我退货退款，单号A1002`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0202` [refund_request] `帮我A1002 的申请退款`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
-- `ans_0203` [refund_request] `帮我这单不想要了退了吧 A1001`  期望动作 agent_process；实际动作 agent_process 工具 handoff 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：意图/动作
-- `ans_0205` [order_query] `A1001 的订单状态`  期望动作 agent_process；实际动作 agent_process 工具 logistics 回复节点 response_generator
-    - 期望路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 实际路径 ['input_normalizer', 'intent_router', 'state_tracker', 'policy_layer', 'agent_node', 'response_generator', 'context_compressor']
-    - 未过维度：动作
