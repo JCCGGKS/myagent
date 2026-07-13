@@ -27,7 +27,12 @@ _ORDER_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "query_order",
-        "description": "查询指定订单的状态、商品、金额等信息。当用户提供订单号并询问订单状态、发货情况、订单详情时调用。",
+        "description": (
+            "查询【订单本身】的状态与信息：是否已下单/已发货、是否待付款、商品名称、金额等。"
+            "当用户询问「订单状态/订单详情/发货了吗(是否已发货)/金额/商品」时调用。"
+            "注意：仅查订单维度信息用本工具；已发货之后的运输过程"
+            "（快递到哪了/运输中/派送中/是否签收）请用 query_logistics。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {"order_id": {"type": "string", "description": "订单号"}},
@@ -39,7 +44,12 @@ _LOGISTICS_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "query_logistics",
-        "description": "查询指定订单的物流配送进度与最新节点。当用户询问快递到哪了、物流更新、配送进度、是否签收时调用。",
+        "description": (
+            "查询【已发货后的运输过程】：快递到哪了、运输中/派送中、最新物流节点、是否签收。"
+            "当用户询问「物流/快递/配送进度/货到没到」时调用。"
+            "注意：仅查运输过程用本工具；订单是否已发货、待付款、商品、金额等订单维度信息"
+            "请用 query_order。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {"order_id": {"type": "string", "description": "订单号"}},
@@ -51,7 +61,13 @@ _HANDOFF_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "create_handoff",
-        "description": "转接人工客服：创建人工服务单，并基于当前会话上下文继续处理。当用户明确要求人工客服、情绪激动/投诉升级，或多次澄清仍无法解决时调用。",
+        "description": (
+            "转接人工客服：创建人工服务单，由人工基于当前会话上下文继续处理。"
+            "仅当以下情况之一才调用：(1)用户明确要求人工客服/转人工；(2)投诉情绪升级、需人工介入；"
+            "(3)多次澄清仍无法解决（达到澄清上限）。"
+            "注意：不要因缺少订单号或信息不全而转人工——先用对应的业务工具"
+            "（query_order/query_logistics/request_refund），由工具提示用户补全信息。"
+        ),
         "parameters": {"type": "object", "properties": {}, "required": []},
     },
 }
@@ -60,8 +76,9 @@ _REFUND_SCHEMA: dict[str, Any] = {
     "function": {
         "name": "request_refund",
         "description": (
-            "发起售后退款/退货/换货/维修。当用户明确表示要退款、退货、换货、维修，"
-            "或系统识别出 after_sale_refund 类意图时调用。需提供订单号；"
+            "发起售后【实际办理】退款/退货/换货/维修。仅当用户明确表示要办理退款、退货、换货、维修"
+            "（即要真正发起售后操作）时调用；若用户只是咨询退款政策、七天无理由、退换货规则等"
+            "（并不要求实际办理），请用 rag_retrieve 检索知识库。需提供订单号；"
             "refund_type 可选 refund(退款)/return(无理由退货)/exchange(换货)/warranty(质量问题维修)。"
         ),
         "parameters": {
