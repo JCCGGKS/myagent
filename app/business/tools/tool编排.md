@@ -1,6 +1,6 @@
 # 工具编排与观测（Tool Orchestration & Observability）
 
-本文分两大块：**工具编排**（怎么把工具串起来）与 **观测**（怎么把它看得清）。
+本文分五大块：**工具编排**（怎么把工具串起来）、**工具观测**（怎么看得清）、**工具健壮**（怎么不出错）、**多工具并行**（一轮调多个怎么编排）、**Orchestrator**（多 Agent 调度扩展）。
 
 ---
 
@@ -34,15 +34,6 @@ LLM 自己决定「调哪个工具 → 看结果 → 再调/回答」。
 - 优点：plan 可人工确认、可回放、可并行调度
 - 缺点：plan 一旦错误，执行越走越偏；长任务中途变化难修正
 - 适用：多步、可分解、需要人工把关的任务
-
-## 4. 多 Agent 编排（Orchestrator + Workers）
-
-一个调度 agent 把子任务派给专精 agent，各自有自己的工具集。
-
-- 控制流：层级/对等协作
-- 优点：关注点分离，单 agent prompt 不膨胀，可独立迭代
-- 缺点：token 成本高、上下文传递易丢、编排 agent 是瓶颈
-- 适用：跨领域、复杂长任务
 
 ## 选型关键维度
 
@@ -125,7 +116,7 @@ LLM 自己决定「调哪个工具 → 看结果 → 再调/回答」。
 
 ---
 
-# 三、工具调用的健壮性（Robustness）
+# 三、工具健壮（Tool Robustness）
 
 工具调用链路按阶段出问题，处理方式完全不同。
 
@@ -170,42 +161,27 @@ LLM 自己决定「调哪个工具 → 看结果 → 再调/回答」。
 - **防循环误触发**：一旦触发进终态，避免重复调用
 - **兜底指向「人」**：误触发优先转人工 + 留痕 + 对账，不自动重试破坏性动作
 
-### 4.1 本项目风险工具落地清单（R1–R7）
+> R1–R7 各项的**落地状态与代码落点**（二次确认、幂等、失败隔离、参数校验等）详见 `template/评估调优/agent/06_工具调用.md`，本文不重复展开。
 
-> 风险工具在本项目 = `request_refund`（动钱）、`create_handoff`（拉真人）、`modify_address`/`apply_invoice`（写订单/开票）。对照上面的处理原则，逐条盘点代码现状：
+---
 
-| 编号 | 处理原则 | 状态 | 落点 |
-|---|---|---|---|
-| R1 | 二次确认（执行前需确认，否则发确认话术不执行） | ✅ 已实现 | `tool_executor._request_refund`：未 `confirm=true` 时返回 `kind="confirmation"` 提示且**不执行**；`request_refund` 工具 schema 新增 `confirm` 参数并写明两步协议；确认后写 `state.confirmed_slots` 留痕 |
-| R2 | 幂等（同订单+类型不重复退款/重复转人工） | ✅ 已实现 | `domain.RefundService._by_key[(order_id, refund_type)]`、`HandoffService._by_session[session_id]` 去重，重复请求返回原单号 |
-| R3 | 并行去重/并发闸门（风险工具禁止并行触发） | ⚠️ 部分 | 风险工具 `side_effect=True` 已隔离自动重试，但轮内并行调度尚未实现（见 §5.5），并行触发时二次确认/幂等各自独立生效即可兜底 |
-| R4 | 意图作用域工具集（只给当前意图可用工具） | ❌ 未实现 | `agent_node` 当前下发全量 `build_tool_schemas()`，未做意图过滤 |
-| R5 | 参数 schema 校验（缺必填/类型错提前拦截） | ⚠️ 部分 | 各 `_handler` 内部对已填字段做非空/存在性校验，但无统一 schema 校验层 |
-| R6 | 失败隔离（单工具异常 → error 结果，不中断整批） | ✅ 已实现 | `tool_executor._execute_with_retry` 异常转 error 型 `ToolExecutionResult` 回灌 |
-| R7 | 强审计（风险动作进 event_log + 日志 [tid] + 独立审计表） | ⚠️ 部分 | 已接 `observe_tool`/`observe_handoff` 指标 + `[tid]` 日志；独立审计表（原 `ToolCall`/`HandoffRecord`）已移除，尚未重建 |
-
-**已闭环的两环（R1+R2）如何协同**：
-1. 首次 `request_refund`（无 `confirm`）→ R1 拦下，返回确认提示，零副作用；
-2. 用户回复「确认」→ 模型下一轮以 `confirm=true` 再次调用 → 真正执行；
-3. 即便模型/重试在同一会话重复以 `confirm=true` 调用 → R2 幂等保证只生成一次受理单。
-
-## 5. 多工具调用（Multi-tool Calling）
+# 四、多工具并行（Multi-tool Parallel）
 
 多工具调用 = 一轮里要调多个工具才能回答（如「查订单状态 + 查物流 + 判断能否退款」）。本质是**把多个 `tool_result` 聚合成一个答案**，难点不在「调」而在「编排与整合」。
 
-### 5.1 编排模式
+## 1. 编排模式
 - **并行（independent）**：工具间无依赖 → 一次 LLM 输出多个 `tool_calls`，并发执行，省延迟（如同时查订单和物流）。
 - **串行（dependent）**：后一个入参依赖前一个出参 → 必须等前者返回再发下一次（如先查订单拿 order_id，再查物流）。
 - **依赖 DAG**：多工具构成有向图，按拓扑序执行，同一层可并行。
 - **动态（LLM 驱动）**：每轮根据上轮结果决定下一个工具，直到信息齐了再作答（ReAct 式，本项目 `agent_node` 即此）。
 
-### 5.2 原生多工具输出：`tool_calls` 是数组
+## 2. 原生多工具输出：`tool_calls` 是数组
 API Function Calling 原生支持一次返回多个工具调用——`message.tool_calls` 是**数组**（parallel function calling）。但要分清：
 1. **API 能输出多个** ✅ —— `ToolExecutor` 遍历列表天然承载多工具。
 2. **API 不表达依赖关系** ⚠️ —— 只把多个调用打包返回，**不标谁依赖谁、也不保证顺序有意义**。真·独立才并发（`asyncio.gather`），有依赖得自己串行化（跑完上游、结果喂回、再开下一轮）。
 3. 并非所有模型都支持并行 tool calls，部分一次只吐一个。
 
-### 5.3 典型问题与处理
+## 3. 典型问题与处理
 | 问题 | 处理 |
 |---|---|
 | 依赖顺序错（没拿到上游就调下游） | 串行化；下游入参缺失直接判 dependent，不并行 |
@@ -215,12 +191,12 @@ API Function Calling 原生支持一次返回多个工具调用——`message.to
 | 调用爆炸（LLM 无限开工具） | 设最大并发 + 最大总调用次数，超限强制进 `response_generator` |
 | 延迟堆叠 | 独立工具强制并行；慢工具设超时；可缓存的加缓存 |
 
-### 5.4 兜底
+## 4. 兜底
 - **依赖链断**：上游失败 → 下游短路不再执行，直接转「缺信息 / 转人工」。
 - **全失败**：所有工具都 `ok=false` → 降级转人工（优雅降级，不是空答）。
 - **聚合失败**：工具都成功但 LLM 整合不出 → 退回逐条展示原始结果 + 转人工。
 
-### 5.5 并行调度设计（落地）
+## 5. 并行调度设计（落地）
 核心思路：同一轮内的多个 `tool_calls` 之间没有数据依赖，用并发原语同时执行，收集全部结果后再回灌。
 
 - **线程池（同步接口，改动最小）**：把 `ToolExecutor.run` 的循环改成 `ThreadPoolExecutor` 并发 `map`（`query_order` 查库、`query_logistics` 调外部 API、`rag_retrieve` 向量检索都是 I/O 密集型，并发能显著压低总延迟）。`ToolExecutor.run` 现状为**串行**循环（`tool_executor.py:167`）：
@@ -233,7 +209,7 @@ API Function Calling 原生支持一次返回多个工具调用——`message.to
 
 - **异步（asyncio，配合异步工具客户端）**：若工具客户端本身是 `awaitable`（如 `httpx.AsyncClient`、`asyncpg`），用 `asyncio.gather` 并发——延迟最优，但要求工具层全部异步化（本仓库当前是同步 `OrderService`/`LogisticsService`，需改造）。
 
-### 5.6 依赖感知的「并行 + 串行」调度
+## 6. 依赖感知的「并行 + 串行」调度
 更真实的多轮场景里，工具之间存在依赖（B 需要 A 的结果）。调度策略：
 
 1. 第一轮：模型给出无依赖的多个 `tool_calls` → 全部并行执行；
@@ -242,19 +218,50 @@ API Function Calling 原生支持一次返回多个工具调用——`message.to
 
 > 关键约束：**只有同一轮内的 `tool_calls` 可安全并行**。跨轮必须串行，因为后一轮的推理依赖前一轮的观察。
 
-### 5.7 注意事项
+## 7. 注意事项
 - **结果顺序**：`tool_calls` 与 `role: "tool"` 消息靠 `tool_call_id` 一一对应，并行后仍需按 `tool_call_id` 回填，不能只靠列表顺序。
 - **失败隔离**：单个工具超时/报错不应阻塞同轮其他工具——用 `try/except` 包裹每个 `_execute_one`，错误也作为 `tool` 消息回灌，让模型自己决定降级。
 - **限流**：并发调用外部 API 要加信号量/`max_workers`，避免打爆下游。
-- **幂等**：并行工具最好是只读/幂等的（`query_order`/`query_logistics`/`rag_retrieve` 都是）；带副作用的工具（如 `create_handoff`）应**禁止并行**，且最好单轮只调一次（见 §4 风险工具）。
+- **幂等**：并行工具最好是只读/幂等的（`query_order`/`query_logistics`/`rag_retrieve` 都是）；带副作用的工具（如 `create_handoff`）应**禁止并行**，且最好单轮只调一次（见 三、风险工具）。
 - **最大轮次**：保留 `max_tool_rounds`（本仓库=3）防止无限循环。
 
-### 5.8 落地优先级
+## 8. 落地优先级
 1. 先把 `ToolExecutor.run` 的串行循环换成线程池并发（低风险、立竿见影）；
 2. 给 `create_handoff` 等副作用工具加「单轮去重 / 禁用并行」标记；
 3. 工具层异步化后，再升级到 `asyncio.gather` 方案。
 
-### 5.9 与项目落点的对应
+## 9. 与项目落点的对应
 - `ToolExecutor` 已支持一次执行多个 `tool_calls`（遍历列表），可承载并行/串行混合；当前 `agent_node` 是**动态串行**（ReAct 式逐轮），要真并行需把独立调用改 `asyncio.gather` 并发。
 - 每个 `tool_result` 已是结构化 `{name, args, ok, error, latency}`，多工具时逐个落 `event_log`，`trace_id` 串起整批。
-- 并行时更要防「风险工具被并行触发」——确认/闸门逻辑须对每个调用独立生效（见 §4）。
+- 并行时更要防「风险工具被并行触发」——确认/闸门逻辑须对每个调用独立生效（见 三、风险工具）。
+
+---
+
+# 五、Orchestrator
+
+## 1. 多 Agent 编排（Orchestrator + Workers）
+
+一个调度 agent 把子任务派给专精 agent，各自有自己的工具集。
+
+- 控制流：层级/对等协作
+- 优点：关注点分离，单 agent prompt 不膨胀，可独立迭代
+- 缺点：token 成本高、上下文传递易丢、编排 agent 是瓶颈
+- 适用：跨领域、复杂长任务
+
+选型维度见 一、工具编排的「选型关键维度」：任务跨度窄 → 单 agent；宽 → 多 agent。
+
+## 拓展知识
+
+**Orchestrator 是什么**：在 Multi-Agent 架构里，Orchestrator（编排器/调度者）是顶层「总指挥」——它**不直接干活**，而是负责「理解任务 → 拆解/路由 → 派发给专职 Worker 子 Agent → 汇总结果」。配套的 Workers 是各管一摊的专职 Agent（如订单 Agent / 退款 Agent / 物流 Agent）。类比：Orchestrator 是工头，Worker 是各工种师傅。
+
+**本项目目前用到了吗**：
+
+- **没有用真正的 Multi-Agent Orchestrator**。代码全库 grep，"orchestrator" 一词**只出现在文档**（`tool编排.md`、`tool_calling.md`、`06_工具调用.md`）与 `graph.py` 一句泛化报错文案（`LangGraph is required for agent orchestration`），**无任何 Orchestrator 类**。
+- 现在实际是 **单 Agent + 节点流水线**：`CustomerServiceAgent`（`graph.py`）用 LangGraph `StateGraph` 编排 `input_normalizer → intent_router → state_tracker → policy_layer →（条件分支）→ clarification / agent_node / handoff_node → response_generator → context_compressor`；`agent_node` 是**一个 ReAct 循环、握着全部 7 个工具**。这是「单 Agent」，不是「Orchestrator + Workers」。
+- **路由雏形已在单 Agent 内**：`policy_layer` → `route_after_policy` 按 `current_action` 分流到澄清/agent/转人工节点；`intent_router` 识别意图。但它们路由到**同一 Agent 内的节点**，不是派发给外部 Worker Agent。
+
+**何时引入（与 R4 的关系）**：
+
+- 当前工具少（7 个），按意图裁剪收益低，且有 R1–R6 兜底，故 R4 暂缓、不在单 Agent 内做工具过滤（见 三、风险工具 §4.1）。
+- 后续工具规模变大、误调/延迟明显时，升级为 **MULTIAGENT**：顶层 Orchestrator 按意图把请求派发给专职 Worker Agent，每个 Worker 只持自己领域的工具——**R4（意图作用域工具集）随之天然落地**，且 prompt/策略按意图隔离、职责更清晰。
+- 一句话总结：**现在只有「单 Agent 内的节点路由」，没有跨 Agent 的 Orchestrator；Orchestrator 是规划好的后续扩展方向，也是 R4 的归宿。**
