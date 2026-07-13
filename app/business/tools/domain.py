@@ -76,10 +76,16 @@ class LogisticsService:
 class HandoffService:
     def __init__(self) -> None:
         self._counter = 1000
+        # R2 幂等：同一会话已建过人工单则直接返回原单，避免重复建单。
+        self._by_session: dict[str, HandoffResult] = {}
 
     def create_handoff(self, session_id: str, summary: str) -> HandoffResult:
+        if session_id in self._by_session:
+            return self._by_session[session_id]
         self._counter += 1
-        return HandoffResult(ticket_id=f"H{self._counter}", summary=summary)
+        result = HandoffResult(ticket_id=f"H{self._counter}", summary=summary)
+        self._by_session[session_id] = result
+        return result
 
 
 def extract_order_id(text: str) -> str | None:
@@ -96,12 +102,20 @@ class RefundService:
 
     def __init__(self) -> None:
         self._counter = 2000
+        # R2 幂等：同一 (订单号, 退款类型) 只生成一次受理单，重复请求返回原单号，
+        # 防止重试/二次确认/并行调用导致重复退款。
+        self._by_key: dict[tuple[str, str], RefundResult] = {}
 
     def request_refund(self, order_id: str, refund_type: str = "refund", reason: str = "") -> RefundResult:
+        key = (order_id, refund_type)
+        if key in self._by_key:
+            return self._by_key[key]
         self._counter += 1
-        return RefundResult(
+        result = RefundResult(
             refund_id=f"R{self._counter}",
             order_id=order_id,
             refund_type=refund_type,
             status="已受理",
         )
+        self._by_key[key] = result
+        return result

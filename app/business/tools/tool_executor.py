@@ -81,7 +81,10 @@ _REFUND_SCHEMA: dict[str, Any] = {
             "发起售后【实际办理】退款/退货/换货/维修。仅当用户明确表示要办理退款、退货、换货、维修"
             "（即要真正发起售后操作）时调用；若用户只是咨询退款政策、七天无理由、退换货规则等"
             "（并不要求实际办理），请用 rag_retrieve 检索知识库。需提供订单号；"
-            "refund_type 可选 refund(退款)/return(无理由退货)/exchange(换货)/warranty(质量问题维修)。"
+            "refund_type 可选 refund(退款)/return(无理由退货)/exchange(换货)/warranty(质量问题维修)。\n"
+            "【二次确认（R1）】本工具涉及动钱，必须两步：①首次调用 confirm 默认为 false，"
+            "工具只返回确认提示、不真正办理；②用户明确回复“确认”后，由模型在下一轮以 confirm=true "
+            "再次调用，方可真正发起退款。切勿在未确认时直接以 confirm=true 调用。"
         ),
         "parameters": {
             "type": "object",
@@ -93,6 +96,14 @@ _REFUND_SCHEMA: dict[str, Any] = {
                     "enum": ["refund", "return", "exchange", "warranty"],
                 },
                 "reason": {"type": "string", "description": "退款/退货原因（可选）"},
+                "confirm": {
+                    "type": "boolean",
+                    "description": (
+                        "是否已在上一轮向用户确认。首次调用必须为 false（默认），"
+                        "工具仅返回确认提示；用户确认后，由模型在下一轮以 confirm=true 再次调用，"
+                        "方可真正发起退款。幂等保护下重复确认不会生成新受理单。"
+                    ),
+                },
             },
             "required": ["order_id"],
         },
@@ -382,13 +393,41 @@ class ToolExecutor:
             return ToolExecutionResult(kind="error", user_facing_summary=f"退款服务未配置，无法处理: {order_id}")
         refund_type = args.get("refund_type", "refund")
         reason = args.get("reason", "")
+        # R1 二次确认：未确认前绝不执行任何退款副作用，仅返回确认提示让用户拍板。
+        # 确认信号来自模型在用户确认后以 confirm=true 二次调用（幂等保护见 R2）。
+        confirmed = args.get("confirm") is True or self._refund_confirmed(state, order_id, refund_type)
+        if not confirmed:
+            prompt = (
+                f"⚠️ 即将为订单 {order_id} 发起【{refund_type}】申请"
+                + (f"（原因：{reason}）" if reason else "")
+                + "，该操作不可撤销。请确认是否继续？确认请直接回复「确认」。"
+            )
+            # 直接落地面向用户的最终回复，使 response_generator 命中早返回、
+            # 不再多调一次 LLM 把确认提示改写成话术（与 handoff 同思路，保证提示必达）。
+            state.reply = prompt
+            return ToolExecutionResult(
+                kind="confirmation",
+                raw_result={"order_id": order_id, "refund_type": refund_type, "confirmed": False},
+                sanitized_result={"order_id": order_id, "refund_type": refund_type, "confirmed": False},
+                user_facing_summary=prompt,
+            )
+        # 已确认 → 执行（R2 幂等兜底：重复确认不会生成新受理单）。
         result = self.refund_service.request_refund(order_id, refund_type=refund_type, reason=reason)
+        # 记录确认痕迹，便于审计与跨轮去重。
+        marker = f"refund:{order_id}:{refund_type}"
+        if marker not in state.confirmed_slots:
+            state.confirmed_slots.append(marker)
         return ToolExecutionResult(
             kind="aftersale_refund",
             raw_result=result.model_dump(),
             sanitized_result=result.model_dump(),
             user_facing_summary=f"已为订单 {order_id} 提交{refund_type}申请，受理单号 {result.refund_id}",
         )
+
+    @staticmethod
+    def _refund_confirmed(state: ConversationState, order_id: str, refund_type: str) -> bool:
+        """该 (订单, 类型) 是否已在历史轮次被确认过（审计/跨轮去重用）。"""
+        return f"refund:{order_id}:{refund_type}" in state.confirmed_slots
 
     def _modify_address(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         order_id = args.get("order_id") or state.slots.get("order_id")

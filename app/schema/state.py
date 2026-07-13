@@ -22,7 +22,7 @@ class ActionRecord(BaseModel):
 
 
 class ToolExecutionResult(BaseModel):
-    kind: Literal["knowledge", "order_query", "logistics", "aftersale_refund", "handoff", "error"]
+    kind: Literal["knowledge", "order_query", "logistics", "aftersale_refund", "handoff", "confirmation", "error"]
     raw_result: dict[str, Any] | None = None
     sanitized_result: dict[str, Any] | None = None
     user_facing_summary: str = ""
