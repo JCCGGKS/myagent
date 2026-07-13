@@ -70,17 +70,18 @@ class AgentNodeService:
                             "tool_calls": [tool_call],
                         }
                     )
-                tool_messages = self.tool_executor.run(response["tool_calls"], state)
+                tool_messages = await self.tool_executor.run(response["tool_calls"], state)
                 messages.extend(tool_messages)
                 # 继续循环，让 LLM 根据工具结果决定下一步
                 continue
 
-            # 无 tool_calls：仅当本轮循环从未调用过工具（即 LLM 直接作答）时，
-            # 才把内容当作最终回复；否则（调用过工具后的收尾旁白）留空，
-            # 由 response_generator 基于 tool_result 生成真正面向用户的回答。
+            # 无 tool_calls：调度节点只做决策/工具调用，其 content 输出是内部决策旁白，
+            # 绝不能当作面向用户的回复（否则会把「直接结束本节点、由回复节点…」这类
+            # 内部 monologue 漏给用户）。用户回复统一交给 response_generator 基于
+            # 上下文生成——即便本轮确实无需工具，也由下游产出干净话术，而非调度节点的自言自语。
             content = (response.get("content") or "").strip()
             if content and not tool_called:
-                state.reply = content
+                logger.debug("agent_node: scheduler emitted non-tool text, discarding as user reply: %r", content[:80])
             break
 
         # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_result 兜底生成

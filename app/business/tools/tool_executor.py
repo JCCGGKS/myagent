@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -128,14 +129,16 @@ _INVOICE_SCHEMA: dict[str, Any] = {
     },
 }
 
+# side_effect=True 的工具带不可逆副作用（动钱/转人工/改地址/开票），
+# 自动重试可能导致重复触发，故不参与自动重试（仅由模型软重试 + R2 幂等兜底）。
 TOOLS: dict[str, dict[str, Any]] = {
-    "rag_retrieve": {"schema": RagRetrieveTool().to_tool_schema(), "handler": "_rag_retrieve"},
-    "query_order": {"schema": _ORDER_SCHEMA, "handler": "_query_order"},
-    "query_logistics": {"schema": _LOGISTICS_SCHEMA, "handler": "_query_logistics"},
-    "create_handoff": {"schema": _HANDOFF_SCHEMA, "handler": "_handle_handoff"},
-    "request_refund": {"schema": _REFUND_SCHEMA, "handler": "_request_refund"},
-    "modify_address": {"schema": _MODIFY_ADDRESS_SCHEMA, "handler": "_modify_address"},
-    "apply_invoice": {"schema": _INVOICE_SCHEMA, "handler": "_apply_invoice"},
+    "rag_retrieve": {"schema": RagRetrieveTool().to_tool_schema(), "handler": "_rag_retrieve", "side_effect": False},
+    "query_order": {"schema": _ORDER_SCHEMA, "handler": "_query_order", "side_effect": False},
+    "query_logistics": {"schema": _LOGISTICS_SCHEMA, "handler": "_query_logistics", "side_effect": False},
+    "create_handoff": {"schema": _HANDOFF_SCHEMA, "handler": "_handle_handoff", "side_effect": True},
+    "request_refund": {"schema": _REFUND_SCHEMA, "handler": "_request_refund", "side_effect": True},
+    "modify_address": {"schema": _MODIFY_ADDRESS_SCHEMA, "handler": "_modify_address", "side_effect": True},
+    "apply_invoice": {"schema": _INVOICE_SCHEMA, "handler": "_apply_invoice", "side_effect": True},
 }
 # LLM 可能返回的历史别名，统一归并到规范名
 TOOL_ALIASES: dict[str, str] = {
@@ -168,16 +171,23 @@ class ToolExecutor:
         handoff_service: HandoffService | None = None,
         refund_service: RefundService | None = None,
         rag_tool: RagRetrieveTool | None = None,
+        max_retries: int = 2,
+        retry_base_delay: float = 0.1,
+        retry_max_delay: float = 1.0,
     ) -> None:
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
         self.refund_service = refund_service or RefundService()
         self.rag_tool = rag_tool or RagRetrieveTool()
+        # 失败重试：非副作用工具在基础设施故障（异常）时按退避重试；副作用工具不重试。
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self.retry_max_delay = retry_max_delay
         # 从单点注册表构建 名称 -> handler 方法 的映射
         self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
 
-    def run(
+    async def run(
         self, tool_calls: list[dict[str, Any]], state: ConversationState
     ) -> list[dict[str, Any]]:
         tool_messages: list[dict[str, Any]] = []
@@ -185,25 +195,12 @@ class ToolExecutor:
         for tc in tool_calls:
             name = tc["function"]["name"]
             canonical = TOOL_ALIASES.get(name, name)
+            spec = TOOLS.get(canonical, {})
+            side_effect = spec.get("side_effect", False)
             start = time.perf_counter()
-            status = "ok"
-            try:
-                try:
-                    args = json.loads(tc["function"].get("arguments") or "{}")
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning("[tool] invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
-                    result = ToolExecutionResult(
-                        kind="error",
-                        user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。",
-                    )
-                else:
-                    result = self._execute_one(name, args, state)
-                if isinstance(result, ToolExecutionResult) and result.kind == "error":
-                    status = "error"
-            except Exception:
-                # 处理器异常：保留原行为（向上抛出），但先记指标，避免该工具指标丢失。
-                observe_tool(canonical, "error", time.perf_counter() - start)
-                raise
+            # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
+            result = await self._execute_with_retry(name, tc, state, side_effect)
+            status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
             observe_tool(canonical, status, time.perf_counter() - start)
             tool_messages.append(
                 {
@@ -222,7 +219,52 @@ class ToolExecutor:
             state.tool_result = last_result
         return tool_messages
 
-    def _execute_one(
+    async def _execute_with_retry(
+        self, name: str, tc: dict[str, Any], state: ConversationState, side_effect: bool
+    ) -> ToolExecutionResult:
+        """执行单个工具：失败重试 + 失败隔离。
+
+        - 参数 JSON 非法 / handler 主动返回 error（业务/校验错误）→ **不重试**，直接返回 error。
+        - handler 抛异常（多为基础设施故障）→ 对**非副作用**工具按指数退避重试最多
+          ``max_retries`` 次；**副作用工具（退款/转人工/改地址/开票）不重试**，避免重复触发
+          不可逆动作（在 R2 幂等补齐前，这是更安全的默认）。
+        - 重试耗尽仍失败 → 转 error 型 ``ToolExecutionResult``（失败隔离），让 LLM 收到
+          observation 自行决定下一步，而非中止整批。
+        """
+        try:
+            args = json.loads(tc["function"].get("arguments") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("[tool] invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
+            return ToolExecutionResult(kind="error", user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。")
+
+        max_attempts = 1 if side_effect else self.max_retries + 1
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            try:
+                result = await self._execute_one(name, args, state)
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_attempts - 1:
+                    delay = min(self.retry_base_delay * (2 ** attempt), self.retry_max_delay)
+                    logger.warning(
+                        "[tool] %s failed (attempt %d/%d), retry after %.2fs: %r",
+                        name, attempt + 1, max_attempts, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                break  # 最后一次仍失败 → 下方转 error
+            # handler 主动返回 error = 业务/校验错误，不重试
+            if isinstance(result, ToolExecutionResult) and result.kind == "error":
+                return result
+            return result
+
+        logger.error("[tool] %s execution failed after %d attempt(s): %r", name, max_attempts, last_exc)
+        return ToolExecutionResult(
+            kind="error",
+            user_facing_summary=f"工具 {name} 执行出错，请稍后重试或联系人工客服。",
+        )
+
+    async def _execute_one(
         self, name: str, args: dict[str, Any], state: ConversationState
     ) -> ToolExecutionResult:
         logger.info("[tool] executing %s args=%s", name, args)
@@ -230,7 +272,8 @@ class ToolExecutor:
         handler = self._handlers.get(canonical)
         if handler is None:
             return ToolExecutionResult(kind="error", user_facing_summary=f"未知工具: {name}")
-        return handler(args, state)
+        # 业务处理器为同步实现（mock/同步 DAO），放到线程执行避免阻塞事件循环。
+        return await asyncio.to_thread(handler, args, state)
 
     def _rag_retrieve(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         docs = self.rag_tool.run(args.get("query", ""), user_id=state.user_id)
