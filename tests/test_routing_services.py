@@ -90,6 +90,30 @@ class TestRoutingServices:
         result = asyncio.run(router.route(state, "你好"))
         assert result.main_intent == "unrecognize"
 
+    def test_route_should_not_ask_order_id_when_inherited(self, router, state_tracker):
+        """上一轮已查 A1001、order_id 继承在 state.slots 后，用户只说
+        「查订单详情」而未复述单号时，不应再追问订单号。
+
+        回归：routing.py `_build_intent_from_rule` 计算 needs 时必须纳入继承的
+        order_id，否则 needs_clarification 残留为 True，LLM 澄清节点会再次发问。
+        """
+        state = ConversationState(
+            session_id="test-session",
+            user_id=1,
+            channel="web",
+            current_main_intent="order_query",
+            current_sub_intent="order_query.query_status",
+            slots={"order_id": "A1001"},
+        )
+        intent = asyncio.run(router.route(state, "查订单详情"))
+        assert intent.main_intent == "order_query"
+        # 意图识别正确，且未因为本轮没复述单号而误判需澄清（修复点）
+        assert intent.needs_clarification is False
+        # 经 StateTracker 落地后，继承的 order_id 仍在、且不进澄清
+        applied = state_tracker.apply(state, intent)
+        assert applied.slots.get("order_id") == "A1001"
+        assert applied.needs_clarification is False
+
     def test_policy_should_set_agent_process_for_order_query(self, policy):
         """测试订单查询意图的 policy 决策（需要工具调用）。"""
         state = ConversationState(session_id="test-session", user_id=1, channel="web", current_main_intent="order_query")

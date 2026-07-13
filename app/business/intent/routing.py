@@ -243,10 +243,14 @@ class IntentRouterService:
         else:
             conf = rule.get("confidence", 0.8)
 
+        # 槽位继承：若 state 已持有 order_id（上一轮继承），即使本轮消息未
+        # 复述，也不应再追问订单号——否则「澄清后未重置 need 字段」会让
+        # LLM 澄清节点再次向用户发问（见回归 test_route_should_not_ask_order_id_when_inherited）。
+        inherited_order = bool(state.slots.get("order_id"))
         if rule.get("needs_order"):
-            needs = order_id is None
+            needs = order_id is None and not inherited_order
         elif rule.get("needs_clarification_when_action_and_no_order"):
-            needs = action_hit and order_id is None
+            needs = action_hit and order_id is None and not inherited_order
         else:
             needs = False
 
