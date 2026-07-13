@@ -23,7 +23,7 @@ llm:
   # 默认 false（关闭）以避免单次对话 20s 的推理开销；需强推理时置 true。
   enable_thinking: false
   # 采样温度（0~2，越大越随机）；留空用模型默认。
-  temperature: 0.3
+  temperature: 0.1
   # 单次回复最大 token 数；留空用模型默认。
   # max_tokens: 1024
   # 核采样概率阈值（0~1）；留空用模型默认。
@@ -60,6 +60,15 @@ rag:
 
     # Rerank 模型名称（启用时必填）
     model: ""
+
+# 图态快照（checkpointer）配置：仅在使用 Redis saver 时生效
+# （REDIS_URL / AGENT_REDIS_URL 已配置；否则回退 MemorySaver，TTL 无意义）。
+checkpoint:
+  # 图态在 Redis 中的过期时间（秒）。0 表示不过期（禁用 TTL）。
+  # 建议按「最大可接受对话间隔」设置：活跃会话每轮落库会刷新过期时间，
+  # 仅长期空闲的会话才被回收，避免 Redis 无限增长。
+  # 也可用环境变量 CHECKPOINT_TTL_SECONDS 覆盖（键名前缀指明这是图态快照的 TTL）。
+  ttl_seconds: 604800  # 7 天
 
 # Redis 配置
 redis:

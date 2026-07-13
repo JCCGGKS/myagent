@@ -238,5 +238,11 @@ async def delete_session(
         )
         raise HTTPException(status_code=403, detail="无权访问该会话")
     await session_service.delete(session_id)
+    # 清理 checkpointer 中该会话的图态快照（Redis key），避免孤儿 key 堆积 /
+    # 同 session_id 复用时复活旧图态。失败仅记日志，不阻断删除主流程。
+    try:
+        await agent.clear_checkpoint(session_id)
+    except Exception as exc:
+        log_warning("api", "delete_session checkpoint clear failed session=%s err=%r", session_id, exc)
     log_info("api", "delete_session success session=%s user=%s", session_id, user_id)
     return {"session_id": session_id, "status": "deleted"}

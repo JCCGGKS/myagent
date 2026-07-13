@@ -203,7 +203,22 @@ else:
 - 你那套「图跑完、发 `final` 之前批量落库」的时序保证仍然成立——checkpointer 是图内部每步自动存，
   与边界批量落库是两条独立路径，互不冲突。
 
-### 7.5 退款授权示例（interrupt）
+### 7.5 TTL 与删除清理
+
+checkpointer 存的是短暂会话态，需防 Redis 无限增长 + 孤儿 key：
+
+- **TTL**：通过 `app/config/checkpoint_config.py` 的 `CheckpointConfig.ttl_seconds` 配置
+  （默认 7 天 = 604800）。`0` 表示不过期。优先级：`CHECKPOINT_TTL_SECONDS` 环境变量 >
+  `llm_config.{env}.yml` 的 `checkpoint.ttl_seconds` 段 > 默认值。
+  活跃会话每轮落库会刷新过期时间，仅长期空闲的会话被回收。
+  `graph.py:_build_checkpointer` 把该值传给 `AsyncRedisSaver(ttl=...)`（`0`/`None` 视为不过期）。
+- **删除清理**：`DELETE /chat/session/{id}` 在软删 MySQL 会话后，调用
+  `agent.clear_checkpoint(session_id)`（=`thread_id`）显式 `adelete_thread` 清掉 Redis key，
+  避免软删后 key 成孤儿、或同 `session_id` 复用时复活旧图态。清理失败仅记日志，不阻断删除。
+
+> Redis key 默认带 `checkpoint:` 前缀，可直接与 qdrant / 其他 Redis 用途区分。
+
+### 7.6 退款授权示例（interrupt）
 
 ```python
 # agent_node 内，提交退款工具前暂停

@@ -40,6 +40,7 @@ from app.business import (
 )
 from app.business.dialog import SessionService
 from app.config.context_config import get_context_config_service
+from app.config.checkpoint_config import get_checkpoint_config_service
 from app.utils import normalize_whitespace, observe_low_confidence
 
 try:
@@ -237,12 +238,16 @@ class CustomerServiceAgent:
         try:
             # 直接传 redis_url 字符串（让 AsyncRedisSaver 内部惰性建 client）；
             # 不要预先构造 redis.asyncio.Redis，否则其 __init__ 也会要求运行中的事件循环。
+            # TTL：0 / 不配置 → None（不过期）；>0 → 传给 saver，活跃会话每轮落库刷新过期时间。
+            ttl = get_checkpoint_config_service().get_config().ttl_seconds
+            redis_ttl = ttl if ttl and ttl > 0 else None
             return AsyncRedisSaver(
                 redis_url=redis_url,
+                ttl=redis_ttl,
                 connection_args={"socket_connect_timeout": 3, "socket_timeout": 3},
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Redis saver init failed, fallback MemorySaver: %r", exc)
+            logger.warning(_tag("infra", "Redis saver init failed, fallback MemorySaver: %r"), exc)
             return MemorySaver()
 
     async def _ensure_checkpointer(self) -> None:
@@ -266,14 +271,42 @@ class CustomerServiceAgent:
                 try:
                     await self.checkpointer.setup()
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("checkpointer setup failed, fallback MemorySaver: %r", exc)
+                    logger.warning(_tag("infra", "checkpointer setup failed, fallback MemorySaver: %r"), exc)
                     self.checkpointer = MemorySaver()
                     self.graph = self._build_graph()
             self._cp_ready = True
 
+    async def clear_checkpoint(self, thread_id: str) -> None:
+        """删除某会话在 checkpointer 中的图态快照（会话删除时清理 Redis key）。
+
+        - Redis（AsyncRedisSaver）：``adelete_thread`` 清掉该 ``thread_id`` 的全部 checkpoint，
+          避免软删会话后 Redis key 成为孤儿、或被复用同 ``session_id`` 时复活旧图态。
+        - MemorySaver：进程内 dict 删除；若 checkpointer 尚未惰性构建则先构建。
+        - 未配置 Redis（回退 MemorySaver）或清理失败：仅记日志，不阻断删除主流程。
+        """
+        await self._ensure_checkpointer()
+        checkpointer = self.checkpointer
+        if checkpointer is None:
+            return
+        delete_fn = getattr(checkpointer, "adelete_thread", None)
+        if delete_fn is not None and inspect.iscoroutinefunction(delete_fn):
+            try:
+                await delete_fn(thread_id)
+                logger.info(_tag("infra", "checkpoint cleared thread=%s"), thread_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(_tag("infra", "checkpoint clear failed thread=%s err=%r"), thread_id, exc)
+            return
+        sync_delete = getattr(checkpointer, "delete_thread", None)
+        if sync_delete is not None:
+            try:
+                sync_delete(thread_id)
+                logger.info(_tag("infra", "checkpoint cleared thread=%s"), thread_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(_tag("infra", "checkpoint clear failed thread=%s err=%r"), thread_id, exc)
+
     async def chat(self, request: ChatRequest, user_id: int, trace_id: str | None = None) -> ChatResponse:
         trace_id = trace_id or uuid.uuid4().hex
-        logger.info("chat start session=%s user=%s trace_id=%s message=%r", request.session_id, user_id, trace_id, request.message[:80])
+        logger.info(_tag("agent", "chat start session=%s user=%s trace_id=%s message=%r"), request.session_id, user_id, trace_id, request.message[:80])
         state = await self._execute_request(request, user_id)
         # 边界落库：图运行期间只收集数据，结束后批量写入会话存储。
         # 落库失败绝不影响回复返回——避免「LLM 已生成答案但用户收不到」的 UX 事故。
