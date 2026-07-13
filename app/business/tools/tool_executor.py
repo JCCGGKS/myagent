@@ -248,6 +248,13 @@ class ToolExecutor:
             logger.warning("[tool] invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
             return ToolExecutionResult(kind="error", user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。")
 
+        # R5 统一参数 schema 校验：缺必填 / 类型错 / 枚举非法 提前拦截，
+        # 返回干净 error 且不进 handler、不重试（属调用方错误，非基础设施故障）。
+        validation_err = self._validate_tool_args(name, args, state)
+        if validation_err:
+            logger.warning("[tool] validation failed for %s: %s", name, validation_err)
+            return ToolExecutionResult(kind="error", user_facing_summary=validation_err)
+
         max_attempts = 1 if side_effect else self.max_retries + 1
         last_exc: Exception | None = None
         for attempt in range(max_attempts):
@@ -285,6 +292,61 @@ class ToolExecutor:
             return ToolExecutionResult(kind="error", user_facing_summary=f"未知工具: {name}")
         # 业务处理器为同步实现（mock/同步 DAO），放到线程执行避免阻塞事件循环。
         return await asyncio.to_thread(handler, args, state)
+
+    def _validate_tool_args(
+        self, name: str, args: dict[str, Any], state: ConversationState
+    ) -> str | None:
+        """按工具 schema 统一校验参数（R5）。
+
+        校验项：① 必填字段存在且非空（缺省时回退 ``state.slots``，与 handler 取值逻辑一致）；
+        ② 显式传入参数的类型 / 枚举合法。返回 error 摘要串表示校验失败，``None`` 表示通过。
+
+        设计要点：
+        - 仅校验「显式传入的参数」的类型/枚举，``state.slots`` 为可信内部状态、不再重复校验；
+        - 未知工具（无 schema）返回 ``None``，交由 ``_execute_one`` 统一报「未知工具」；
+        - 校验失败属于调用方错误，调用方（``_execute_with_retry``）直接返回 error、**不重试**。
+        """
+        canonical = TOOL_ALIASES.get(name, name)
+        spec = TOOLS.get(canonical)
+        if spec is None:
+            return None  # 未知工具由 _execute_one 处理
+        params = spec["schema"]["function"].get("parameters", {})
+        properties = params.get("properties", {})
+        required = params.get("required", [])
+
+        # 有效取值 = 显式参数优先，缺失时回退 state.slots（与 handler 内的 or state.slots.get 一致）
+        def _value(field: str) -> Any:
+            v = args.get(field, None)
+            if v in (None, ""):
+                v = state.slots.get(field)
+            return v
+
+        # ① 必填校验（含 slots 回退）
+        missing = [f for f in required if _value(f) in (None, "")]
+        if missing:
+            return f"缺少必填参数：{', '.join(missing)}，请补充后再试。"
+
+        # ② 类型 / 枚举校验（仅对显式传入、非 None 的参数）
+        for field, value in args.items():
+            if value is None or field not in properties:
+                continue
+            prop = properties[field]
+            expected = prop.get("type")
+            if expected == "string" and not isinstance(value, str):
+                return f"参数「{field}」应为文本。"
+            if expected == "boolean" and not isinstance(value, bool):
+                return f"参数「{field}」应为布尔值（true/false）。"
+            if expected in ("integer", "number") and not isinstance(value, (int, float)):
+                return f"参数「{field}」应为数字。"
+            if expected == "array" and not isinstance(value, list):
+                return f"参数「{field}」应为列表。"
+            if expected == "object" and not isinstance(value, dict):
+                return f"参数「{field}」应为对象。"
+            enum = prop.get("enum")
+            if enum is not None and value not in enum:
+                return f"参数「{field}」取值无效：{value}；可选值为 {enum}。"
+
+        return None
 
     def _rag_retrieve(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         docs = self.rag_tool.run(args.get("query", ""), user_id=state.user_id)

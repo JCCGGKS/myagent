@@ -508,3 +508,74 @@ class TestToolExecutor:
         asyncio.run(executor.run([call], state))
         second_id = state.tool_result.sanitized_result["refund_id"]
         assert first_id == second_id
+
+    # ---- R5 统一参数 schema 校验 ----
+
+    def test_validate_tool_args_passes_valid(self):
+        """R5：合法参数通过校验，返回 None。"""
+        executor = ToolExecutor(refund_service=RefundService())
+        err = executor._validate_tool_args(
+            "request_refund", {"order_id": "A1001", "refund_type": "refund", "confirm": True}, _state()
+        )
+        assert err is None
+
+    def test_validate_tool_args_missing_required(self):
+        """R5：缺必填参数（order_id）被提前拦截。"""
+        executor = ToolExecutor(refund_service=RefundService())
+        err = executor._validate_tool_args("request_refund", {}, _state())
+        assert err is not None
+        assert "order_id" in err
+
+    def test_validate_tool_args_wrong_type(self):
+        """R5：类型错误（order_id 应为文本却传数字）被拦截。"""
+        executor = ToolExecutor(refund_service=RefundService())
+        err = executor._validate_tool_args("request_refund", {"order_id": 12345}, _state())
+        assert err is not None
+        assert "文本" in err
+
+    def test_validate_tool_args_invalid_enum(self):
+        """R5：枚举非法（refund_type=foo）被拦截。"""
+        executor = ToolExecutor(refund_service=RefundService())
+        err = executor._validate_tool_args(
+            "request_refund", {"order_id": "A1001", "refund_type": "foo"}, _state()
+        )
+        assert err is not None
+        assert "refund_type" in err
+
+    def test_validate_tool_args_falls_back_to_slots(self):
+        """R5：必填参数缺省时回退 state.slots 视为齐全（与 handler 取值一致）。"""
+        executor = ToolExecutor(refund_service=RefundService())
+        state = _state()
+        state.slots = {"order_id": "A1001"}
+        # 仅传 refund_type，order_id 由 slots 补
+        err = executor._validate_tool_args("request_refund", {"refund_type": "refund"}, state)
+        assert err is None
+
+    def test_run_validation_error_blocks_handler_and_not_retried(self):
+        """R5：参数非法时 run() 直接返回 error，handler 根本不被执行（自然也不重试）。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        boom = MagicMock(side_effect=RuntimeError("不应被调用"))
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        executor._handlers["request_refund"] = boom  # 即便换成会炸的 handler，也不应被调用
+        # refund_type 非法枚举 → 校验失败
+        tool_calls = [
+            {
+                "id": "call_v",
+                "type": "function",
+                "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "foo"}'},
+            }
+        ]
+        state = _state()
+        messages = asyncio.run(executor.run(tool_calls, state))
+        # handler 未执行（校验在 handler 前拦截）
+        assert boom.call_count == 0
+        # 返回干净 error，而非「执行出错」那种基础设施兜底
+        assert json.loads(messages[0]["content"])["kind"] == "error"
+        assert "refund_type" in state.tool_result.user_facing_summary
