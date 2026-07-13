@@ -263,8 +263,15 @@ class CustomerServiceAgent:
     async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
         logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
         state = await self._execute_request(request, user_id)
-        # 边界落库：图运行期间只收集数据，结束后批量写入会话存储
-        state = await self.message_service.persist(state, request)
+        # 边界落库：图运行期间只收集数据，结束后批量写入会话存储。
+        # 落库失败绝不影响回复返回——避免「LLM 已生成答案但用户收不到」的 UX 事故。
+        try:
+            state = await self.message_service.persist(state, request)
+        except Exception as exc:
+            logger.error(
+                "persist_failed session=%s user=%s err=%r",
+                request.session_id, user_id, exc,
+            )
         logger.info(
             "chat done session=%s user=%s intent=%s.%s action=%s",
             request.session_id, user_id,
@@ -283,6 +290,11 @@ class CustomerServiceAgent:
         状态快照）再 yield ``final``，避免「客户端已收到回复但 DB 尚未落库」的
         窗口（进程在二者间崩溃会导致上下文丢失）。若图未走到 response_generator
         （如澄清分支）则不产生 final 事件，落库仍照常进行。
+
+        落库与回复解耦：``persist`` 用 ``try/except`` 隔离，**失败仅记服务端日志，
+        绝不阻塞 ``final`` 下发**。客服场景下「LLM 已答出但用户收不到」比
+        「回复展示了但没存进库」严重得多，故存储故障只应造成审计/上下文丢失，
+        不应阻断回复。
         """
         payload = await self._build_payload(request, user_id)
         config = {"configurable": {"thread_id": request.session_id}}
@@ -299,8 +311,15 @@ class CustomerServiceAgent:
                             continue
                         yield ev
         # 边界落库：先持久化（用户消息 + 助手回复 + 状态快照），再下发 final 事件。
+        # 落库失败绝不影响回复下发——异常被隔离，final 始终必达（见方法 docstring）。
         if final_state is not None:
-            await self.message_service.persist(final_state, request)
+            try:
+                await self.message_service.persist(final_state, request)
+            except Exception as exc:  # 落库异常隔离，保证 final 必达
+                logger.error(
+                    "persist_failed session=%s user=%s err=%r",
+                    request.session_id, user_id, exc,
+                )
             yield {"type": "final", "response": self._build_chat_response(final_state).model_dump()}
 
     def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
