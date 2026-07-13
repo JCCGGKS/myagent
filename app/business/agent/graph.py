@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 import os
+import uuid
 from collections.abc import AsyncGenerator, Awaitable
 from typing import Any, Callable
 
@@ -105,6 +106,7 @@ class CustomerServiceAgent:
         llm_client: Any | None = None,
         llm_model: str | None = None,
         llm_config: Any | None = None,
+        event_store: Any | None = None,
     ) -> None:
         self.store = store
         self.order_service = order_service
@@ -131,7 +133,7 @@ class CustomerServiceAgent:
             llm_model=llm_model,
             llm_config=llm_config,
         )
-        self.message_service = MessageService(store)
+        self.message_service = MessageService(store, event_store=event_store)
         # 统一工具执行服务（覆盖 LLM 函数调用工具与业务工具）
         self.tool_executor = ToolExecutor(
             order_service=order_service,
@@ -260,8 +262,9 @@ class CustomerServiceAgent:
                     self.graph = self._build_graph()
             self._cp_ready = True
 
-    async def chat(self, request: ChatRequest, user_id: int) -> ChatResponse:
-        logger.info("chat start session=%s user=%s message=%r", request.session_id, user_id, request.message[:80])
+    async def chat(self, request: ChatRequest, user_id: int, trace_id: str | None = None) -> ChatResponse:
+        trace_id = trace_id or uuid.uuid4().hex
+        logger.info("chat start session=%s user=%s trace_id=%s message=%r", request.session_id, user_id, trace_id, request.message[:80])
         state = await self._execute_request(request, user_id)
         # 边界落库：图运行期间只收集数据，结束后批量写入会话存储。
         # 落库失败绝不影响回复返回——避免「LLM 已生成答案但用户收不到」的 UX 事故。
@@ -272,14 +275,19 @@ class CustomerServiceAgent:
                 "persist_failed session=%s user=%s err=%r",
                 request.session_id, user_id, exc,
             )
+        # 事件流落库（best-effort）：非流式仅落 final 事件；完整决策链由 SSE 路径记录。
+        final_event = {"type": "final", "trace_id": trace_id, "response": self._build_chat_response(state).model_dump()}
+        await self.message_service.persist_events(request.session_id, trace_id, [final_event])
         logger.info(
-            "chat done session=%s user=%s intent=%s.%s action=%s",
-            request.session_id, user_id,
+            "chat done session=%s user=%s trace_id=%s intent=%s.%s action=%s",
+            request.session_id, user_id, trace_id,
             state.current_main_intent, state.current_sub_intent, state.current_action,
         )
         return self._build_chat_response(state)
 
-    async def chat_events(self, request: ChatRequest, user_id: int) -> "AsyncGenerator[dict[str, Any], None]":
+    async def chat_events(
+        self, request: ChatRequest, user_id: int, trace_id: str | None = None
+    ) -> "AsyncGenerator[dict[str, Any], None]":
         """LangGraph 图驱动的事件生成（与 chat() 行为一致，异步生成器）。
 
         使用 ``graph.astream`` 按节点分块产出事件，I/O 等待时让出事件循环，
@@ -295,24 +303,35 @@ class CustomerServiceAgent:
         绝不阻塞 ``final`` 下发**。客服场景下「LLM 已答出但用户收不到」比
         「回复展示了但没存进库」严重得多，故存储故障只应造成审计/上下文丢失，
         不应阻断回复。
+
+        事件流（event_log）落库：本轮所有事件收集后随 final 一起批量落库，
+        best-effort，失败仅记日志，不阻断回复。回放时按 trace_id 还原决策链。
         """
+        trace_id = trace_id or uuid.uuid4().hex
         payload = await self._build_payload(request, user_id)
         config = {"configurable": {"thread_id": request.session_id}}
         final_state: ConversationState | None = None
+        collected: list[dict[str, Any]] = []
         async for chunk in self.graph.astream(payload, config=config):
             for node_name, node_payload in chunk.items():
                 # node_payload is the full payload dict: {"state": ..., "request": ...}
                 state = node_payload.get("state") if isinstance(node_payload, dict) else node_payload
                 if state:
                     final_state = state
-                    for ev in self._node_state_to_events(node_name, state):
+                    for ev in self._node_state_to_events(node_name, state, trace_id):
                         # final 需先落库再下发，故此处暂不下发，留待落库后统一 yield
                         if ev.get("type") == "final":
                             continue
+                        collected.append(ev)
                         yield ev
         # 边界落库：先持久化（用户消息 + 助手回复 + 状态快照），再下发 final 事件。
         # 落库失败绝不影响回复下发——异常被隔离，final 始终必达（见方法 docstring）。
         if final_state is not None:
+            final_event = {
+                "type": "final",
+                "trace_id": trace_id,
+                "response": self._build_chat_response(final_state).model_dump(),
+            }
             try:
                 await self.message_service.persist(final_state, request)
             except Exception as exc:  # 落库异常隔离，保证 final 必达
@@ -320,9 +339,13 @@ class CustomerServiceAgent:
                     "persist_failed session=%s user=%s err=%r",
                     request.session_id, user_id, exc,
                 )
-            yield {"type": "final", "response": self._build_chat_response(final_state).model_dump()}
+            # 事件流落库（best-effort）：含已下发的 intent/state/tool_result + final
+            await self.message_service.persist_events(request.session_id, trace_id, collected + [final_event])
+            yield final_event
 
-    def _node_state_to_events(self, node_name: str, state: ConversationState) -> list[dict[str, Any]]:
+    def _node_state_to_events(
+        self, node_name: str, state: ConversationState, trace_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """将节点执行后的状态转为事件列表（供 chat_events 和 graph.stream 共用）。"""
         events: list[dict[str, Any]] = []
         if node_name == "intent_router":
@@ -336,6 +359,7 @@ class CustomerServiceAgent:
             events.append(
                 {
                     "type": "intent",
+                    "trace_id": trace_id,
                     "main_intent": main_intent,
                     "sub_intent": intent.sub_intent if intent else "unrecognize.unknown",
                     "confidence": confidence,
@@ -347,6 +371,7 @@ class CustomerServiceAgent:
             events.append(
                 {
                     "type": "state",
+                    "trace_id": trace_id,
                     "stage": state.stage,
                     "current_main_intent": state.current_main_intent,
                     "current_sub_intent": state.current_sub_intent,
@@ -357,9 +382,11 @@ class CustomerServiceAgent:
             )
         elif node_name in {"handoff_node", "agent_node"}:
             if state.tool_result:
-                events.append({"type": "tool_result", "tool_result": self._serialize_tool_result(state)})
+                events.append(
+                    {"type": "tool_result", "trace_id": trace_id, "tool_result": self._serialize_tool_result(state)}
+                )
         elif node_name == "response_generator":
-            events.append({"type": "final", "response": self._build_chat_response(state).model_dump()})
+            events.append({"type": "final", "trace_id": trace_id, "response": self._build_chat_response(state).model_dump()})
         # 其他节点不推事件（或推通用 trace）
         return events
 

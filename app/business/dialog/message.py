@@ -1,15 +1,28 @@
 from __future__ import annotations
 
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
 from app.schema import ChatRequest, ConversationState
 
 from app.business.dialog.session import SessionService
+from app.dao.event_log import EventLogStore, get_event_log_store
 
 
 class MessageService:
     """对话消息持久化：把用户消息、助手回复写入会话存储。"""
 
-    def __init__(self, store: SessionService) -> None:
+    def __init__(
+        self,
+        store: SessionService,
+        event_store: EventLogStore | None = None,
+    ) -> None:
         self.store = store
+        # 事件流落库（可观测回放）。未注入则用工厂取一个（内存/SQL 按配置），
+        # 单 agent 实例共享同一 store，保证回放读写一致。
+        self.event_store = event_store or get_event_log_store()
 
     async def persist(self, state: ConversationState, request: ChatRequest) -> ConversationState:
         # SessionService / SessionStore 在 M2 已为原生异步（AsyncSession），
@@ -25,3 +38,22 @@ class MessageService:
         # （user_id / channel / status），不再把整个 state 写回内存字典。
         await self.store.save_metadata(state)
         return state
+
+    async def persist_events(
+        self, session_id: str, trace_id: str, events: list[dict[str, Any]]
+    ) -> None:
+        """把本轮 SSE 事件批量落入 event_log（best-effort，失败仅记日志不阻断回复）。
+
+        回放时按 trace_id 即可还原完整决策链（intent → state → tool → final）。
+        """
+        for ev in events:
+            try:
+                await self.event_store.append_event(
+                    session_id=session_id,
+                    trace_id=trace_id,
+                    event_type=ev.get("type", "unknown"),
+                    node=ev.get("node"),
+                    payload=ev,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("persist_events failed session=%s type=%s err=%r", session_id, ev.get("type"), exc)
