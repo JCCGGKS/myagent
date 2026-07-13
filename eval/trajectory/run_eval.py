@@ -303,16 +303,21 @@ def _aggregate(results: list[dict]) -> dict:
             b["lat"].append(r["latency_s"])
 
     per_cat = {}
+
+    def cpct(n: int, denom: int) -> float:
+        # 按类别内准确率：除以该类别样本数，而非全局 total（修复原 pct 用全局分母的 bug）。
+        return round(n / denom, 4) if denom else 0.0
+
     for cat, b in sorted(by_cat.items()):
         per_cat[cat] = {
             "total": b["total"],
-            "route": pct(b["route"]),
-            "intent": pct(b["it"]),
-            "action": pct(b["ac"]),
-            "slot_extraction": pct(b["slot"]),
-            "missing_slot": pct(b["miss"]),
-            "clarification": pct(b["clar"]),
-            "trajectory_overall": pct(b["ov"]),
+            "route": cpct(b["route"], b["total"]),
+            "intent": cpct(b["it"], b["total"]),
+            "action": cpct(b["ac"], b["total"]),
+            "slot_extraction": cpct(b["slot"], b["total"]),
+            "missing_slot": cpct(b["miss"], b["total"]),
+            "clarification": cpct(b["clar"], b["total"]),
+            "trajectory_overall": cpct(b["ov"], b["total"]),
             "avg_latency_s": round(sum(b["lat"]) / len(b["lat"]), 3) if b["lat"] else 0.0,
         }
 

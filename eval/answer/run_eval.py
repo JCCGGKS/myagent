@@ -283,6 +283,9 @@ def _aggregate(results: list[dict], use_judge: bool) -> dict:
     def pct(n: int) -> float:
         return round(n / total, 4) if total else 0.0
 
+    def cpct(n: int, denom: int) -> float:
+        return round(n / denom, 4) if denom else 0.0
+
     # 按类别拆解
     by_cat: dict[str, dict[str, int]] = {}
     for r in results:
@@ -305,10 +308,10 @@ def _aggregate(results: list[dict], use_judge: bool) -> dict:
     for cat, b in sorted(by_cat.items()):
         per_cat[cat] = {
             "total": b["total"],
-            "key_facts": pct(b["kf"]),
-            "intent": pct(b["it"]),
-            "action": pct(b["ac"]),
-            "judge": pct(b["jc"]) if b["jc_n"] else None,
+            "key_facts": cpct(b["kf"], b["total"]),
+            "intent": cpct(b["it"], b["total"]),
+            "action": cpct(b["ac"], b["total"]),
+            "judge": cpct(b["jc"], b["jc_n"]) if b["jc_n"] else None,
             "avg_latency_s": round(sum(b["lat"]) / len(b["lat"]), 3) if b["lat"] else 0.0,
         }
 
