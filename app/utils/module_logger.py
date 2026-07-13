@@ -1,99 +1,51 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-from app.config.logging_config import DEFAULT_LOG_DIR
-
-# 各模块的日志前缀。模块 → 文件前缀的映射。
-# 增加模块时在此追加即可，应用启动时统一注册目录。
-MODULE_LOG_PREFIXES: dict[str, str] = {
-    "app": "app",
-    "api": "api",
-    "auth": "auth",
-    "rag": "rag",
-    "tool": "tool",
-}
-
-# 默认保留 14 天日志。
-BACKUP_COUNT = 14
-
-# 已创建的 logger 缓存，避免重复挂 handler。
-_loggers: dict[str, logging.Logger] = {}
-# 当前生效的日志目录（由 setup_logging 同步）。
-_log_dir: Path = DEFAULT_LOG_DIR
+# 统一日志系统：所有模块共用一个 logger（name="myagent"），propagate=True 冒泡到
+# root，由 logging_config 配置的单文件 logs/app-*.log 落盘 + 控制台输出。
+#
+# 刻意不再按模块拆分文件：单条请求会跨 api / auth / rag / agent / tool 多个模块，
+# 拆分会让「一次请求」散落在多个文件里，无法顺序 grep 还原。统一落一个文件后，
+# 再用消息里的 [tag]（[api] / [auth] / [rag] / [intent] / [tool] …）做分段检索。
+_SHARED_LOGGER = logging.getLogger("myagent")
+_SHARED_LOGGER.propagate = True
 
 
-def configure_module_log_dir(dir_path: str | Path) -> None:
-    """切换所有模块日志目录；一般由 setup_logging 调用一次。"""
-    global _log_dir
-    _log_dir = Path(dir_path)
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    # 清掉所有已建 logger 的 handler，让下次 get_module_logger 重建到新目录。
-    for logger in _loggers.values():
-        logger.handlers.clear()
-    _loggers.clear()
-
-
-def _daily_filename(prefix: str) -> str:
-    return f"{prefix}-{datetime.now().strftime('%Y-%m-%d')}.log"
-
-
-def _build_handler(prefix: str) -> TimedRotatingFileHandler:
-    handler = TimedRotatingFileHandler(
-        filename=_log_dir / _daily_filename(prefix),
-        when="midnight",
-        interval=1,
-        backupCount=BACKUP_COUNT,
-        encoding="utf-8",
-        utc=False,
-    )
-    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s"))
-    return handler
+def _tagged(module: str, message: str) -> str:
+    """把模块名折成消息前缀，形成 [tag] 分段，便于 grep。"""
+    return f"[{module}] {message}"
 
 
 def get_module_logger(module: str) -> logging.Logger:
-    """获取（或创建）一个模块专用 logger。
+    """兼容旧 API：返回共享 logger（忽略 module 的文件拆分语义）。"""
+    return _SHARED_LOGGER
 
-    同一个模块名多次调用只创建一次；handler 列表不会重复挂。
-    """
-    if module in _loggers:
-        return _loggers[module]
 
-    prefix = MODULE_LOG_PREFIXES.get(module, module)
-    logger_name = f"myagent.{module}"
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False  # 避免冒泡到 root 重复打印
-
-    if not logger.handlers:
-        _log_dir.mkdir(parents=True, exist_ok=True)
-        logger.addHandler(_build_handler(prefix))
-
-    _loggers[module] = logger
-    return logger
+def configure_module_log_dir(dir_path: str | Path) -> None:  # noqa: D401
+    """兼容旧 API：统一日志后不再需要按目录注册模块 logger，这里为无操作。"""
+    return
 
 
 # ---- 通用接口：自由文本 ----
 
 def log_event(module: str, level: int, message: str, *args: Any) -> None:
-    """以指定级别在指定模块日志里输出自由文本。"""
-    get_module_logger(module).log(level, message, *args)
+    """以指定级别在共享日志里输出自由文本（带 [module] 前缀）。"""
+    _SHARED_LOGGER.log(level, _tagged(module, message), *args)
 
 
 def log_info(module: str, message: str, *args: Any) -> None:
-    get_module_logger(module).info(message, *args)
+    _SHARED_LOGGER.info(_tagged(module, message), *args)
 
 
 def log_warning(module: str, message: str, *args: Any) -> None:
-    get_module_logger(module).warning(message, *args)
+    _SHARED_LOGGER.warning(_tagged(module, message), *args)
 
 
 def log_error(module: str, message: str, *args: Any) -> None:
-    get_module_logger(module).error(message, *args)
+    _SHARED_LOGGER.error(_tagged(module, message), *args)
 
 
 # ---- 兼容旧 API（tool_logger）----
