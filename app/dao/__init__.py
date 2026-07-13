@@ -8,6 +8,12 @@ from app.dao.knowledge_file import (
 )
 from app.dao.session import MemorySessionStore, SessionStore, SqlSessionStore
 from app.dao.user import MemoryUserDAO, SqlUserDAO, UserDAO
+from app.dao.event_log import (
+    EventLogStore,
+    MemoryEventLogStore,
+    SqlEventLogStore,
+    get_event_log_store,
+)
 from app.model import AsyncSessionLocal
 
 
@@ -40,6 +46,10 @@ __all__ = [
     "SessionStore",
     "MemorySessionStore",
     "SqlSessionStore",
+    "EventLogStore",
+    "MemoryEventLogStore",
+    "SqlEventLogStore",
+    "get_event_log_store",
     "UserDAO",
     "MemoryUserDAO",
     "SqlUserDAO",
