@@ -43,6 +43,7 @@ agent = CustomerServiceAgent(
     llm_client=llm_client,
     llm_model=llm_config.model if llm_client is not None else None,
     llm_config=llm_config,
+    event_store=event_log_store,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -122,6 +123,34 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/session/{session_id}/events")
+async def get_session_events(
+    session_id: str,
+    http_request: Request,
+    trace_id: str | None = Query(default=None, description="按 trace_id 回放单轮决策链；省略则返回该会话全部事件"),
+) -> list[dict[str, Any]]:
+    """回放某会话的可观测事件流（intent/state/tool_result/final），供排障定位。
+
+    须归属当前 token 用户（防越权读取他人会话事件）。
+    """
+    user_id = http_request.state.user.id
+    await session_service.ensure_session(session_id, user_id)
+    owner_id = await session_service.get_owner(session_id)
+    if owner_id is None:
+        log_warning("api", "get_session_events not_found session=%s user=%s", session_id, user_id)
+        raise HTTPException(status_code=404, detail="Session not found")
+    if owner_id != user_id:
+        log_warning(
+            "api",
+            "get_session_events forbidden session=%s owner=%s requester=%s",
+            session_id,
+            owner_id,
+            user_id,
+        )
+        raise HTTPException(status_code=403, detail="无权访问该会话")
+    return await event_log_store.get_events(session_id, trace_id)
 
 
 @router.get("/sessions")
