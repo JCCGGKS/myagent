@@ -22,6 +22,12 @@ from app.utils.metrics import (
 )
 from app.utils.state import build_action_record
 from app.utils.text import normalize_whitespace
+from app.utils.trace import (
+    TraceIdFilter,
+    get_trace_id,
+    set_trace_id,
+    trace_span,
+)
 
 __all__ = [
     "build_action_record",
@@ -45,4 +51,8 @@ __all__ = [
     "observe_request",
     "observe_tool",
     "render_metrics",
+    "TraceIdFilter",
+    "get_trace_id",
+    "set_trace_id",
+    "trace_span",
 ]

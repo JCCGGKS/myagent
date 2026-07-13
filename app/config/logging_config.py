@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from app.utils.trace import TraceIdFilter
+
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_LOG_DIR = ROOT_DIR / "logs"
 
@@ -40,9 +42,14 @@ def setup_logging(config: LoggingConfig | None = None) -> None:
 
     handlers: list[logging.Handler] = []
 
+    # trace_id 注入到每条日志：无请求上下文时为 '-'。挂在 handler 上，
+    # 子 logger（graph / tool / api / auth / rag）冒泡上来的记录同样带上。
+    trace_filter = TraceIdFilter()
+
     if config.console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(_make_formatter())
+        console_handler.addFilter(trace_filter)
         handlers.append(console_handler)
 
     if config.file:
@@ -58,6 +65,7 @@ def setup_logging(config: LoggingConfig | None = None) -> None:
             utc=False,
         )
         file_handler.setFormatter(_make_formatter())
+        file_handler.addFilter(trace_filter)
         handlers.append(file_handler)
 
     logging.basicConfig(
@@ -66,18 +74,9 @@ def setup_logging(config: LoggingConfig | None = None) -> None:
         force=True,
     )
 
-    # 让各模块日志与 app 日志共用同一目录（按 yyyy-MM-dd 切分）。
-    try:
-        from app.utils.module_logger import configure_module_log_dir
-
-        configure_module_log_dir(config.log_dir)
-    except ImportError:
-        # module_logger 尚未初始化（极端顺序问题），不阻断主流程。
-        pass
-
 
 def _make_formatter() -> logging.Formatter:
     return logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        fmt="%(asctime)s [%(levelname)s] %(name)s [tid=%(trace_id)s] - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )

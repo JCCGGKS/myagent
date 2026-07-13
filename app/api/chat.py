@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import StreamingResponse
 
 from app.business import (
@@ -18,15 +19,18 @@ from app.business import (
 )
 from app.config import load_llm_config
 from app.business.dialog import SessionService, get_session_service
+from app.dao.event_log import get_event_log_store
 from app.pkgs.llm import build_async_openai_client
 from app.schema import (
     ChatRequest,
     ChatResponse,
     SessionRenameRequest,
 )
-from app.utils import log_error, log_info, log_warning, observe_request
+from app.utils import get_trace_id, log_error, log_info, log_warning, observe_request
 
 session_service: SessionService = get_session_service()
+# 事件流存储（可观测回放）。单例，确保读写同一实例（内存模式下尤甚）。
+event_log_store = get_event_log_store()
 llm_config = load_llm_config()
 llm_client = build_async_openai_client(llm_config)
 agent = CustomerServiceAgent(
@@ -53,8 +57,11 @@ async def chat(
     # 先登记会话归属：即使本次 agent 执行失败未落库，会话也已存在，
     # 后续 rename / get_messages / delete 不会因找不到会话而 404。
     await session_service.ensure_session(request.session_id, user_id, request.channel)
+    # trace_id 由 TraceIdMiddleware 在请求入口统一分配（可沿用上游 X-Trace-Id），
+    # 这里直接取用，保证日志 / SSE 事件 / event_log 落库共用同一链路 id。
+    trace_id = get_trace_id() or uuid.uuid4().hex
     start = time.perf_counter()
-    response = await agent.chat(request, user_id=user_id)
+    response = await agent.chat(request, user_id=user_id, trace_id=trace_id)
     observe_request(
         intent=response.session_state.get("current_main_intent", "unknown"),
         channel=request.channel,
@@ -67,26 +74,27 @@ def _event_to_sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGenerator[str, None]:
+async def _chat_stream_generator(request: ChatRequest, user_id: int, trace_id: str) -> AsyncGenerator[str, None]:
     # 先登记会话归属：即使后续 agent 执行失败未落库，会话也已存在，
     # 前端仍可正常 rename / get_messages / delete。
     await session_service.ensure_session(request.session_id, user_id, request.channel)
     start = time.perf_counter()
     intent = "unknown"
     try:
-        async for event in agent.chat_events(request, user_id=user_id):
+        async for event in agent.chat_events(request, user_id=user_id, trace_id=trace_id):
             if event.get("type") == "intent":
                 intent = event.get("main_intent", "unknown")
             yield _event_to_sse(event)
     except Exception as exc:
         log_error(
             "api",
-            "chat_stream crashed session=%s user=%s err=%r",
+            "chat_stream crashed session=%s user=%s trace_id=%s err=%r",
             request.session_id,
             user_id,
+            trace_id,
             exc,
         )
-        yield _event_to_sse({"type": "error", "message": str(exc)})
+        yield _event_to_sse({"type": "error", "trace_id": trace_id, "message": str(exc)})
         yield "event: done\ndata: {}\n\n"
     finally:
         # 端到端延迟 + 请求量（无论成功/异常都记，意图取已识别到的）
@@ -103,8 +111,10 @@ async def chat_stream(
     request: ChatRequest,
 ) -> StreamingResponse:
     user_id = http_request.state.user.id
+    # 与 chat 端点一致：沿用请求级 trace_id（中间件已分配），保证链路可追溯。
+    trace_id = get_trace_id() or uuid.uuid4().hex
     return StreamingResponse(
-        _chat_stream_generator(request, user_id),
+        _chat_stream_generator(request, user_id, trace_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
