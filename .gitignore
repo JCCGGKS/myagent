@@ -224,6 +224,7 @@ config/llm_config.local.yml
 logs/
 plans/
 .codex
+.codebuddy
 .agents
 .claude
 eval/intent/intent_single_step_cases.json.bak
