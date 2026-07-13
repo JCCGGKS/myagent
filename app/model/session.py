@@ -39,3 +39,22 @@ class Message(Base):
     sanitized_content: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_no: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class EventLog(Base):
+    """可观测事件流落库：每一轮对话的决策链（intent/state/tool_result/final/error）。
+
+    与 messages 解耦——messages 给前端渲染，event_log 给排障回放（按 trace_id 还原
+    完整决策链）。详见 plans/observability-trace-plan.md。
+    """
+
+    __tablename__ = "event_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    trace_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    turn: Mapped[int] = mapped_column(Integer, default=0)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)  # intent/state/tool_result/final/error/policy
+    node: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)  # 完整事件 JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
