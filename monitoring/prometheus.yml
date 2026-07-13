@@ -1,0 +1,14 @@
+# Prometheus 抓取配置（自托管，免费）
+# 后端在宿主机以 uvicorn 运行（127.0.0.1:8000）时，prometheus 容器通过
+# host.docker.internal（compose 已配 extra_hosts: host-gateway）访问宿主端口。
+# 若后端也跑在 compose 内（放开 app 服务），把 target 改为 ['app:8000']。
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'myagent-backend'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:8000']

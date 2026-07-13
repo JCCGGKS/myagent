@@ -1,0 +1,10 @@
+# Grafana 数据源自动配置（provisioning）：启动即连接同 compose 的 Prometheus
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

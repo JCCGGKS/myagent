@@ -1,5 +1,6 @@
 fastapi>=0.111.0,<1.0.0
 uvicorn>=0.30.0,<1.0.0
+prometheus-client>=0.20.0,<1.0.0
 pydantic>=2.7.0,<3.0.0
 langgraph>=0.2.0,<1.0.0
 # 图态持久化（checkpointer）依赖；须与 langgraph 主版本兼容：
