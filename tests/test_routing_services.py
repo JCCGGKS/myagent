@@ -57,7 +57,7 @@ def state_tracker():
     return StateTrackerService(schema_registry=schema_registry)
 
 
-class RoutingServicesTestCase:
+class TestRoutingServices:
     """测试路由服务的核心功能。"""
 
     def test_intent_router_should_recognize_order_query(self, router):
@@ -113,6 +113,69 @@ class RoutingServicesTestCase:
         state = ConversationState(session_id="test-session", user_id=1, channel="web", current_main_intent="unrecognize")
         result = policy.decide(state)
         assert result.current_action == "answer_directly"
+
+    def test_policy_should_not_handoff_when_self_serviceable(self, policy):
+        """槽位齐全且工具可用的自助意图，即便历史澄清计数偏高也不强制转人工。
+
+        直接命中 logs/01_test.md 的 Turn 4 症状：已知 A1001 的订单详情完全可答，
+        不应因累计澄清计数被升级到人工。
+        """
+        state = ConversationState(
+            session_id="test-session",
+            user_id=1,
+            channel="web",
+            current_main_intent="order_query",
+            missing_slots=[],
+            needs_clarification=False,
+            intent_clarification_count=10,
+        )
+        result = policy.decide(state)
+        assert result.current_action == "agent_process"
+        assert result.handoff is False
+
+    def test_policy_should_handoff_after_consecutive_intent_clarification(self, policy):
+        """连续 3 次真·听不懂（unrecognize 澄清失败）应强制转人工，兜底保留。"""
+        state = ConversationState(
+            session_id="test-session",
+            user_id=1,
+            channel="web",
+            current_main_intent="unrecognize",
+            needs_clarification=True,
+        )
+        # 前两次未达阈值
+        for _ in range(2):
+            result = policy.decide(state)
+            assert result.current_action == "ask_intent_clarification"
+            assert result.handoff is False
+        # 第三次达阈值
+        result = policy.decide(state)
+        assert result.current_action == "handoff_human"
+        assert result.handoff is True
+
+    def test_policy_should_reset_counts_on_resolved_turn(self, policy):
+        """解析成功的一轮应清零澄清计数，避免历史包袱滚雪球。"""
+        # 先累计一次 intent 澄清失败
+        stuck = ConversationState(
+            session_id="test-session",
+            user_id=1,
+            channel="web",
+            current_main_intent="unrecognize",
+            needs_clarification=True,
+        )
+        policy.decide(stuck)
+        assert stuck.intent_clarification_count == 1
+        # 下一轮成功解析（order_query，槽位齐全）→ 计数归零
+        resolved = ConversationState(
+            session_id="test-session",
+            user_id=1,
+            channel="web",
+            current_main_intent="order_query",
+            missing_slots=[],
+            needs_clarification=False,
+        )
+        result = policy.decide(resolved)
+        assert resolved.intent_clarification_count == 0
+        assert result.current_action == "agent_process"
 
     def test_state_tracker_should_update_state(self, state_tracker):
         """测试状态跟踪器能够更新状态。"""

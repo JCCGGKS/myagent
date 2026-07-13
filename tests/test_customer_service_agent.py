@@ -50,7 +50,6 @@ class TestCustomerServiceAgent:
             channel="web",
         )
         state.intent_clarification_count = 0
-        state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
         response = asyncio.run(agent.chat(request, user_id=1))
@@ -73,7 +72,6 @@ class TestCustomerServiceAgent:
             channel="web",
         )
         state.intent_clarification_count = 0
-        state.slot_clarification_count = 0
         agent.store.get.return_value = state
 
         response = asyncio.run(agent.chat(request, user_id=1))
