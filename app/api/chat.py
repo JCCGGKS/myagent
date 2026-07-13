@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -23,7 +24,7 @@ from app.schema import (
     ChatResponse,
     SessionRenameRequest,
 )
-from app.utils import log_error, log_info, log_warning
+from app.utils import log_error, log_info, log_warning, observe_request
 
 session_service: SessionService = get_session_service()
 llm_config = load_llm_config()
@@ -52,7 +53,14 @@ async def chat(
     # 先登记会话归属：即使本次 agent 执行失败未落库，会话也已存在，
     # 后续 rename / get_messages / delete 不会因找不到会话而 404。
     await session_service.ensure_session(request.session_id, user_id, request.channel)
-    return await agent.chat(request, user_id=user_id)
+    start = time.perf_counter()
+    response = await agent.chat(request, user_id=user_id)
+    observe_request(
+        intent=response.session_state.get("current_main_intent", "unknown"),
+        channel=request.channel,
+        latency_seconds=time.perf_counter() - start,
+    )
+    return response
 
 
 def _event_to_sse(event: dict[str, Any]) -> str:
@@ -63,8 +71,12 @@ async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGen
     # 先登记会话归属：即使后续 agent 执行失败未落库，会话也已存在，
     # 前端仍可正常 rename / get_messages / delete。
     await session_service.ensure_session(request.session_id, user_id, request.channel)
+    start = time.perf_counter()
+    intent = "unknown"
     try:
         async for event in agent.chat_events(request, user_id=user_id):
+            if event.get("type") == "intent":
+                intent = event.get("main_intent", "unknown")
             yield _event_to_sse(event)
     except Exception as exc:
         log_error(
@@ -76,6 +88,13 @@ async def _chat_stream_generator(request: ChatRequest, user_id: int) -> AsyncGen
         )
         yield _event_to_sse({"type": "error", "message": str(exc)})
         yield "event: done\ndata: {}\n\n"
+    finally:
+        # 端到端延迟 + 请求量（无论成功/异常都记，意图取已识别到的）
+        observe_request(
+            intent=intent,
+            channel=request.channel,
+            latency_seconds=time.perf_counter() - start,
+        )
 
 
 @router.post("/stream")

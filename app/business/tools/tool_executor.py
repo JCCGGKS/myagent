@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from app.schema import ConversationState, ToolExecutionResult
@@ -12,7 +13,7 @@ from app.business.tools.domain import (
     RefundService,
 )
 from app.business.tools.rag_tool import RagRetrieveTool
-from app.utils import build_action_record
+from app.utils import build_action_record, observe_handoff, observe_tool
 
 logger = logging.getLogger(__name__)
 
@@ -183,16 +184,27 @@ class ToolExecutor:
         last_result: ToolExecutionResult | None = None
         for tc in tool_calls:
             name = tc["function"]["name"]
+            canonical = TOOL_ALIASES.get(name, name)
+            start = time.perf_counter()
+            status = "ok"
             try:
-                args = json.loads(tc["function"].get("arguments") or "{}")
-            except (json.JSONDecodeError, ValueError):
-                logger.warning("ToolExecutor: invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
-                result = ToolExecutionResult(
-                    kind="error",
-                    user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。",
-                )
-            else:
-                result = self._execute_one(name, args, state)
+                try:
+                    args = json.loads(tc["function"].get("arguments") or "{}")
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning("ToolExecutor: invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
+                    result = ToolExecutionResult(
+                        kind="error",
+                        user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。",
+                    )
+                else:
+                    result = self._execute_one(name, args, state)
+                if isinstance(result, ToolExecutionResult) and result.kind == "error":
+                    status = "error"
+            except Exception:
+                # 处理器异常：保留原行为（向上抛出），但先记指标，避免该工具指标丢失。
+                observe_tool(canonical, "error", time.perf_counter() - start)
+                raise
+            observe_tool(canonical, status, time.perf_counter() - start)
             tool_messages.append(
                 {
                     "role": "tool",
@@ -291,6 +303,7 @@ class ToolExecutor:
         return state.tool_result
 
     def create_handoff(self, state: ConversationState) -> ConversationState:
+        observe_handoff()  # 业务 KPI：转人工率
         if self.handoff_service is None:
             state.tool_result = ToolExecutionResult(
                 kind="error",

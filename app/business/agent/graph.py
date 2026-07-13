@@ -30,7 +30,7 @@ from app.business import (
 )
 from app.business.dialog import SessionService
 from app.config.context_config import get_context_config_service
-from app.utils import normalize_whitespace
+from app.utils import normalize_whitespace, observe_low_confidence
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -327,14 +327,20 @@ class CustomerServiceAgent:
         events: list[dict[str, Any]] = []
         if node_name == "intent_router":
             intent = state.intent_result
+            main_intent = intent.main_intent if intent else "unrecognize"
+            confidence = intent.confidence if intent else 0.0
+            needs_clarification = intent.needs_clarification if intent else False
+            # 业务 KPI：低置信度 / 需澄清计数
+            if needs_clarification or confidence < 0.5:
+                observe_low_confidence()
             events.append(
                 {
                     "type": "intent",
-                    "main_intent": intent.main_intent if intent else "unrecognize",
+                    "main_intent": main_intent,
                     "sub_intent": intent.sub_intent if intent else "unrecognize.unknown",
-                    "confidence": intent.confidence if intent else 0.0,
+                    "confidence": confidence,
                     "slots": intent.slots if intent else {},
-                    "needs_clarification": intent.needs_clarification if intent else False,
+                    "needs_clarification": needs_clarification,
                 }
             )
         elif node_name == "state_tracker":
