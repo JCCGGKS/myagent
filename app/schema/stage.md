@@ -23,8 +23,7 @@
 
 - `emotion: EmotionState` — 情绪与置信度。`routing.py` 读取参与置信度决策（`state.emotion.primary == "negative"` 时下调 confidence）。
 - `needs_clarification: bool` — 是否需澄清。控制进入 clarification 节点；前端 snapshot 展示；`routing.py` 多意图守卫判断。
-- `slot_clarification_count: int` — 槽位澄清轮次计数。达 `handoff_threshold` 转人工（`routing.py` 阈值判断）。
-- `intent_clarification_count: int` — 意图澄清轮次计数。同上阈值判断。
+- `intent_clarification_count: int` — 意图澄清轮次计数（仅「真·听不懂」的 unrecognize 澄清计入）。达 `handoff_threshold` 且非自助意图时转人工（`routing.py` 阈值判断）；解析成功的一轮清零，语义为「连续澄清失败次数」。
 
 ## 执行流
 

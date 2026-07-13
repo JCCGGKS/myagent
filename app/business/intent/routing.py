@@ -361,6 +361,13 @@ class StateTrackerService:
 
 
 class HandoffClarificationPolicy:
+    # 槽位齐全且存在可用工具的意图：可直接自助，永不被「澄清失败」强制转人工。
+    _SELF_SERVICE_INTENTS = {
+        "order_query",
+        "logistics",
+        "after_sale_refund",
+    }
+
     def __init__(self, handoff_threshold: int = 3) -> None:
         self.handoff_threshold = handoff_threshold
 
@@ -378,12 +385,11 @@ class HandoffClarificationPolicy:
                 )
             else:
                 state.current_action = "ask_slot_clarification"
-                state.slot_clarification_count += 1
                 logger.info(
-                    "Policy: ask_slot_clarification count=%d missing=%s session=%s",
-                    state.slot_clarification_count, state.missing_slots, state.session_id,
+                    "Policy: ask_slot_clarification missing=%s session=%s",
+                    state.missing_slots, state.session_id,
                 )
-        elif state.current_main_intent in {"order_query", "logistics", "after_sale_refund", "complaint"}:
+        elif state.current_main_intent in self._SELF_SERVICE_INTENTS | {"complaint"}:
             # 这些意图可能需要工具调用（订单查询、物流查询、RAG 检索等）
             state.current_action = "agent_process"
             logger.debug("Policy: agent_process session=%s", state.session_id)
@@ -391,9 +397,24 @@ class HandoffClarificationPolicy:
             state.current_action = "answer_directly"
             logger.debug("Policy: answer_directly session=%s", state.session_id)
 
+        # 本轮已成功解析/补齐槽位 → 清零澄清计数，避免历史包袱滚雪球。
+        # 阈值因此变为「连续澄清失败次数」而非「会话累计」，更贴合
+        # 「真卡住才升级」语义。
+        if not state.needs_clarification:
+            state.intent_clarification_count = 0
+
+        # 兜底出口（防死循环）：仅在「本轮仍需澄清」且为真正听不懂
+        # （intent 澄清失败，缺单号等槽位澄清不计入）且达阈值时强制转人工。
+        # 槽位已齐、工具可用的自助意图（如已知 A1001 的订单详情）绝不强制升级。
+        stuck = state.needs_clarification
+        self_service = (
+            not state.missing_slots
+            and state.current_main_intent in self._SELF_SERVICE_INTENTS
+        )
         if (
-            state.intent_clarification_count >= self.handoff_threshold
-            or state.slot_clarification_count >= self.handoff_threshold
+            stuck
+            and not self_service
+            and state.intent_clarification_count >= self.handoff_threshold
         ):
             state.current_action = "handoff_human"
             state.handoff = True

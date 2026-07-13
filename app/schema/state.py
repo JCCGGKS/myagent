@@ -64,6 +64,5 @@ class ConversationState(BaseModel):
     handoff: bool = False
     handoff_reason: str = ""
     pending_intents: list[PendingIntent] = Field(default_factory=list)
-    slot_clarification_count: int = 0
     intent_clarification_count: int = 0
     reply: str = ""
