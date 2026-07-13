@@ -218,7 +218,9 @@ class IntentRouterService:
         emotion_hit = bool(emotion_required) and emotion_required == emotion.primary
         action_keywords = rule.get("action_keywords")
         action_hit = bool(action_keywords) and self._contains_any(lowered, action_keywords)
-        matched = keyword_hit or emotion_hit
+        # action_keywords 也是合法的意图触发词（如「退掉」「我要退款」这类强动作表述可能
+        # 不含基础关键词），必须能独立命中规则，否则会漏匹配、退化到兜底、错失 needs_clarification。
+        matched = keyword_hit or emotion_hit or action_hit
         return matched, keyword_hit, action_hit
 
     def _build_intent_from_rule(

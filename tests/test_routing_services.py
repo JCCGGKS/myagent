@@ -33,7 +33,7 @@ def router():
              "keywords": ["订单", "下单"], "confidence_with_order": 0.9, "confidence_without_order": 0.76, "needs_order": True},
             {"intent": "after_sale_refund", "sub_intent": "after_sale_refund.consult_policy",
              "action_sub_intent": "after_sale_refund.request_refund",
-             "keywords": ["退款", "退货"], "action_keywords": ["申请退款", "办理退货"],
+             "keywords": ["退款", "退货"], "action_keywords": ["申请退款", "办理退货", "退掉"],
              "confidence_with_order": 0.88, "confidence_without_order": 0.8, "needs_clarification_when_action_and_no_order": True},
         ],
     }
@@ -83,6 +83,17 @@ class TestRoutingServices:
         state = ConversationState(session_id="test-session", user_id=1, channel="web")
         result = asyncio.run(router.route(state, "转人工"))
         assert result.main_intent == "handoff_service"
+
+    def test_route_should_match_standalone_action_keyword(self, router):
+        """强动作词「退掉」只出现在 action_keywords、不含任何基础关键词，也必须能命中
+        退款规则并设置 needs_clarification（缺订单号）；否则会漏匹配、退化兜底、
+        错过澄清直接进 agent_node 把内部 monologue 漏给用户（见回归 06_工具调用）。"""
+        state = ConversationState(session_id="test-session", user_id=1, channel="web")
+        result = asyncio.run(router.route(state, "退掉"))
+        assert result.main_intent == "after_sale_refund"
+        assert result.needs_clarification is True
+        # 缺订单号 → 缺失槽位，下游澄清节点据此向用户索要订单号
+        assert result.slots.get("order_id") is None
 
     def test_intent_router_should_route_greeting_to_unrecognize(self, router):
         """问候不再单独成意图，无业务关键词时落 unrecognize。"""
