@@ -23,7 +23,6 @@ routing_rules:
       - 真人
       - 客服
     confidence: 0.99
-    risk_level: medium
     handoff_reason: user_request
 
   # —— 细分子意图规则（放在通用规则前拦截，确定性产出，避免 LLM 塌缩到默认子意图）——
@@ -49,7 +48,9 @@ routing_rules:
     needs_order: true
   - intent: after_sale_refund
     sub_intent: after_sale_refund.no_reason_return
-    keywords: [无理由, 七天无理由, 不想要了想退]
+    # 注意：仅匹配「实际办理无理由退货」的强动作表述（无理由退+货），避免抢走
+    # 「七天无理由怎么退」这类咨询（金标归 consult_policy）。
+    keywords: [无理由退货, 无理由退]
     confidence: 0.88
   - intent: after_sale_refund
     sub_intent: after_sale_refund.wrong_goods
@@ -63,7 +64,6 @@ routing_rules:
     sub_intent: complaint.compensate
     keywords: [赔偿, 赔付]
     confidence: 0.92
-    risk_level: high
     handoff_reason: complaint
 
   - intent: complaint
@@ -77,12 +77,14 @@ routing_rules:
       - 不处理
       - 没用
       - 气死
+      - 气死我了
+      - 越想越气
+      - 态度
       - 受不了
       - "12315"
       - 消费者协会
     emotion: negative
     confidence: 0.95
-    risk_level: high
     handoff_reason: complaint
     handoff_reason_emotion: emotion_escalation
 
@@ -122,6 +124,36 @@ routing_rules:
     confidence_without_order: 0.76
     needs_order: true
 
+  # 退款咨询优先规则：含「规则/政策/流程/条件/怎么退/吗」等探索性表述，
+  # 即使嵌入「我要退款/帮我退款」也归 consult_policy（与金标一致）。
+  # 必须置于下方通用 consult_policy 规则之前（routing 为 first-match-wins）。
+  # 仅覆盖咨询型话术，不抢走「我要退款/申请退款/退货退款」等强动作表述。
+  - intent: after_sale_refund
+    sub_intent: after_sale_refund.consult_policy
+    keywords:
+      - 退款规则
+      - 退货规则
+      - 退款政策
+      - 退货政策
+      - 怎么退
+      - 怎么退款
+      - 怎么退货
+      - 如何退
+      - 如何退款
+      - 退款流程
+      - 退货流程
+      - 退换流程
+      - 退款条件
+      - 退货条件
+      - 能不能退
+      - 能不能退款
+      - 退款吗
+      - 退货吗
+      - 七天无理由怎么退
+      - 七天无理由如何退
+    confidence_with_order: 0.92
+    confidence_without_order: 0.85
+
   - intent: after_sale_refund
     sub_intent: after_sale_refund.consult_policy
     action_sub_intent: after_sale_refund.request_refund
@@ -147,6 +179,11 @@ routing_rules:
       - 退掉
       - 后悔了
       - 申请退
+      - 退货退款
+      - 这单不想要了退了吧
+      - 不想要了退了吧
+      - 我要退货
+      - 申请退货
     confidence_with_order: 0.88
     confidence_without_order: 0.8
     needs_clarification_when_action_and_no_order: true
