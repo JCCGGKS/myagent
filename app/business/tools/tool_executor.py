@@ -191,7 +191,7 @@ class ToolExecutor:
                 try:
                     args = json.loads(tc["function"].get("arguments") or "{}")
                 except (json.JSONDecodeError, ValueError):
-                    logger.warning("ToolExecutor: invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
+                    logger.warning("[tool] invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
                     result = ToolExecutionResult(
                         kind="error",
                         user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。",
@@ -225,7 +225,7 @@ class ToolExecutor:
     def _execute_one(
         self, name: str, args: dict[str, Any], state: ConversationState
     ) -> ToolExecutionResult:
-        logger.info("ToolExecutor: executing %s args=%s", name, args)
+        logger.info("[tool] executing %s args=%s", name, args)
         canonical = TOOL_ALIASES.get(name, name)
         handler = self._handlers.get(canonical)
         if handler is None:
