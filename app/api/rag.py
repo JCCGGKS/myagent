@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from app.config.rag_config import RagConfig, get_rag_config_service
 from app.dao import get_knowledge_file_dao
+from app.dao.knowledge_file import DuplicateKnowledgeFileError
 from app.model.knowledge import (
     KNOWLEDGE_FILE_STATUS_ERROR,
     KNOWLEDGE_FILE_STATUS_PROCESSING,
@@ -37,6 +39,14 @@ def _serialize_knowledge_file(record: dict[str, Any]) -> dict[str, Any]:
         "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
     }
+
+
+class _IdempotentHit(Exception):
+    """幂等命中（同内容已 SUCCESS）：携带已有记录，由调用方直接返回。"""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__("idempotent hit")
+        self.result = result
 
 
 def _build_ingestion_service() -> KnowledgeIngestionService:
@@ -92,16 +102,58 @@ async def knowledge_upload(
         )
         raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
 
-    # 先落文件元信息记录（处理中），id 作为 doc_id 透传入库，便于按文档删向量
+    # 幂等键：user_id + 文件内容（严格按内容去重，doc_type 不入哈希）。
+    # 同用户上传相同内容 → 命中已有记录，跳过向量化，避免重复向量与冗余记录。
+    content_hash = hashlib.sha256(
+        f"{current_user.id}:{content}".encode("utf-8")
+    ).hexdigest()
+
     file_dao = get_knowledge_file_dao()
-    record = await file_dao.create(
-        user_id=current_user.id,
-        filename=file.filename,
-        file_size=file_size,
-        doc_type=doc_type,
-        status=KNOWLEDGE_FILE_STATUS_PROCESSING,
-    )
-    doc_id = record["id"]
+
+    async def _acquire_from_existing(existing: dict[str, Any]) -> int:
+        """按幂等状态机复用已有记录，返回本次要处理的 doc_id。
+
+        - SUCCESS：已处理完成，抛出 _IdempotentHit 由调用方直接返回（跳过向量化）；
+        - PROCESSING：同内容正在处理，抛 409 防并发重复；
+        - ERROR：复用该记录重试，先清掉可能残留的向量。
+        """
+        if existing["status"] == KNOWLEDGE_FILE_STATUS_SUCCESS:
+            result = _serialize_knowledge_file(existing)
+            result["duplicated"] = True
+            raise _IdempotentHit(result)
+        if existing["status"] == KNOWLEDGE_FILE_STATUS_PROCESSING:
+            raise HTTPException(status_code=409, detail="相同文件正在处理中，请勿重复上传")
+        doc_id = existing["id"]
+        get_qdrant_client().delete_by_doc_id(doc_id)  # 清除可能残留的向量
+        await file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_PROCESSING)
+        return doc_id
+
+    existing = await file_dao.find_by_content_hash(current_user.id, content_hash)
+    if existing is not None:
+        try:
+            doc_id = await _acquire_from_existing(existing)
+        except _IdempotentHit as hit:
+            return hit.result
+    else:
+        try:
+            record = await file_dao.create(
+                user_id=current_user.id,
+                filename=file.filename,
+                file_size=file_size,
+                doc_type=doc_type,
+                status=KNOWLEDGE_FILE_STATUS_PROCESSING,
+                content_hash=content_hash,
+            )
+            doc_id = record["id"]
+        except DuplicateKnowledgeFileError:
+            # 并发同内容上传：唯一约束兜底，回退到已有记录按状态机分流
+            existing = await file_dao.find_by_content_hash(current_user.id, content_hash)
+            if existing is None:
+                raise
+            try:
+                doc_id = await _acquire_from_existing(existing)
+            except _IdempotentHit as hit:
+                return hit.result
 
     ingestion = _build_ingestion_service()
 
@@ -167,7 +219,9 @@ async def knowledge_upload(
         doc_type,
         chunk_count,
     )
-    return _serialize_knowledge_file(await file_dao.get_by_id(doc_id))
+    result = _serialize_knowledge_file(await file_dao.get_by_id(doc_id))
+    result["duplicated"] = False
+    return result
 
 
 @router.get("/knowledge/files")

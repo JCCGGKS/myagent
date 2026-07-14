@@ -5,6 +5,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+
+
+class DuplicateKnowledgeFileError(Exception):
+    """同一 (user_id, content_hash) 已存在未删除记录时抛出（幂等硬关卡）。
+
+    由 (user_id, content_hash) 唯一约束触发，调用方据此回退到「查已有记录 → 状态机分流」，
+    避免在并发上传同一文件时插出第二条记录、重复向量化。
+    """
 
 
 class KnowledgeFileDAO(ABC):
@@ -24,8 +33,15 @@ class KnowledgeFileDAO(ABC):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
+        content_hash: str | None = None,
     ) -> dict[str, Any]:
         ...
+
+    @abstractmethod
+    async def find_by_content_hash(
+        self, user_id: int, content_hash: str
+    ) -> dict[str, Any] | None:
+        """按 (user_id, content_hash) 查未软删除的最新一条（任意状态），查不到返回 None。"""
 
     @abstractmethod
     async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
@@ -66,7 +82,19 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
+        content_hash: str | None = None,
     ) -> dict[str, Any]:
+        # 内存实现下同步校验唯一约束（事件循环单线程，await 间隙仍可能被其他协程插入）
+        if content_hash is not None:
+            for rec in self._by_id.values():
+                if (
+                    rec.get("deleted_at") is None
+                    and rec["user_id"] == user_id
+                    and rec.get("content_hash") == content_hash
+                ):
+                    raise DuplicateKnowledgeFileError(
+                        f"duplicate content_hash {content_hash} for user {user_id}"
+                    )
         self._seq += 1
         record = {
             "id": self._seq,
@@ -74,6 +102,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
             "filename": filename,
             "file_size": file_size,
             "doc_type": doc_type,
+            "content_hash": content_hash,
             "chunk_count": chunk_count,
             "status": status,
             "error_message": error_message,
@@ -83,6 +112,21 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         }
         self._by_id[self._seq] = record
         return dict(record)
+
+    async def find_by_content_hash(
+        self, user_id: int, content_hash: str
+    ) -> dict[str, Any] | None:
+        matched = [
+            dict(r)
+            for r in self._by_id.values()
+            if r["user_id"] == user_id
+            and r.get("content_hash") == content_hash
+            and r.get("deleted_at") is None
+        ]
+        if not matched:
+            return None
+        matched.sort(key=lambda r: r["id"], reverse=True)
+        return matched[0]
 
     async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
         result = [
@@ -119,6 +163,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
     async def delete(self, file_id: int) -> None:
         rec = self._by_id.get(file_id)
         if rec is not None:
+            rec["content_hash"] = None  # 释放唯一约束槽位，允许删除后重新上传相同内容
             rec["deleted_at"] = datetime.now(UTC)
 
 
@@ -139,6 +184,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
             "filename": row.filename,
             "file_size": row.file_size,
             "doc_type": row.doc_type,
+            "content_hash": row.content_hash,
             "chunk_count": row.chunk_count,
             "status": row.status,
             "error_message": row.error_message,
@@ -156,6 +202,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
+        content_hash: str | None = None,
     ) -> dict[str, Any]:
         async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
@@ -165,14 +212,37 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                 filename=filename,
                 file_size=file_size,
                 doc_type=doc_type,
+                content_hash=content_hash,
                 chunk_count=chunk_count,
                 status=status,
                 error_message=error_message,
             )
             db.add(row)
-            await db.commit()
+            try:
+                await db.commit()
+            except IntegrityError as exc:
+                # (user_id, content_hash) 唯一约束冲突：并发上传同一文件
+                await db.rollback()
+                raise DuplicateKnowledgeFileError(str(exc)) from exc
             await db.refresh(row)
             return self._to_dict(row)
+
+    async def find_by_content_hash(
+        self, user_id: int, content_hash: str
+    ) -> dict[str, Any] | None:
+        async with self._db() as db:
+            from app.model.knowledge import KnowledgeFile
+
+            rows = (
+                await db.execute(
+                    select(KnowledgeFile)
+                    .where(KnowledgeFile.user_id == user_id)
+                    .where(KnowledgeFile.content_hash == content_hash)
+                    .where(KnowledgeFile.deleted_at.is_(None))
+                    .order_by(KnowledgeFile.id.desc())
+                )
+            ).scalars().all()
+            return self._to_dict(rows[0]) if rows else None
 
     async def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
         async with self._db() as db:
@@ -221,9 +291,11 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
+            # 同时清空 content_hash：释放 (user_id, content_hash) 唯一约束槽位，
+            # 使删除后重新上传相同内容不再被唯一约束拦截。
             await db.execute(
                 update(KnowledgeFile)
                 .where(KnowledgeFile.id == file_id)
-                .values(deleted_at=datetime.now(UTC))
+                .values(deleted_at=datetime.now(UTC), content_hash=None)
             )
             await db.commit()

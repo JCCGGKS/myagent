@@ -11,6 +11,13 @@ const dragOver = ref(false);
 const docType = ref<"markdown" | "json">("markdown");
 const showConfigModal = ref(false);
 const errorModal = ref({ visible: false, title: "", message: "" });
+// 信息弹窗：用于上传成功 / 幂等跳过等中性提示（type 控制配色）
+const infoModal = ref<{ visible: boolean; title: string; message: string; type: "info" | "success" }>({
+  visible: false,
+  title: "",
+  message: "",
+  type: "info",
+});
 
 function showError(title: string, message: string) {
   errorModal.value = { visible: true, title, message };
@@ -18,6 +25,14 @@ function showError(title: string, message: string) {
 
 function closeError() {
   errorModal.value.visible = false;
+}
+
+function showInfo(title: string, message: string, type: "info" | "success" = "info") {
+  infoModal.value = { visible: true, title, message, type };
+}
+
+function closeInfo() {
+  infoModal.value.visible = false;
 }
 
 function isValidExtension(fileName: string): boolean {
@@ -173,23 +188,34 @@ function triggerUpload() {
   fileInput.value?.click();
 }
 
-// 统一的上传入口：上传完成后若失败，弹出具体的错误提示
+// 统一的上传入口：上传完成后根据结果弹出对应提示
 async function runUpload(fileList: FileList, selectedDocType: "markdown" | "json") {
   uploading.value = true;
   try {
     const result = await store.uploadKnowledgeFiles(fileList, selectedDocType);
+    const parts: string[] = [];
+    if (result.invalidNames.length) {
+      const typeLabel = selectedDocType === "json" ? "JSON" : "Markdown";
+      parts.push(
+        `以下文件后缀与所选「${typeLabel}」类型不一致，已跳过：\n${result.invalidNames.join(", ")}`,
+      );
+    }
+    if (result.serverErrors.length) {
+      parts.push(`服务端处理失败：\n${result.serverErrors.join("\n")}`);
+    }
+    if (result.duplicatedNames.length) {
+      parts.push(`以下文件内容已存在，已跳过重复入库：\n${result.duplicatedNames.join(", ")}`);
+    }
+
     if (result.failedCount > 0) {
-      const parts: string[] = [];
-      if (result.invalidNames.length) {
-        const typeLabel = selectedDocType === "json" ? "JSON" : "Markdown";
-        parts.push(
-          `以下文件后缀与所选「${typeLabel}」类型不一致，已跳过：\n${result.invalidNames.join(", ")}`,
-        );
-      }
-      if (result.serverErrors.length) {
-        parts.push(`服务端处理失败：\n${result.serverErrors.join("\n")}`);
-      }
+      // 有失败（格式不符 / 服务端错误）：用错误弹窗汇总
       showError("部分文件上传失败", parts.join("\n\n"));
+    } else if (result.duplicatedNames.length) {
+      // 全部幂等跳过：中性提示
+      showInfo("已跳过重复文件", parts.join("\n\n"), "info");
+    } else if (result.okCount > 0) {
+      // 全部新入库成功
+      showInfo("上传成功", `已成功入库 ${result.okCount} 个文件。`, "success");
     }
   } finally {
     uploading.value = false;
@@ -451,6 +477,25 @@ async function onRemove(id: number) {
         <p class="kb-error-message">{{ errorModal.message }}</p>
         <div class="kb-modal-actions">
           <button class="kb-btn kb-btn-primary" type="button" @click="closeError">知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 信息提示弹窗（上传成功 / 幂等跳过重复） -->
+    <div v-if="infoModal.visible" class="kb-modal-mask" @click.self="closeInfo">
+      <div class="kb-modal" style="max-width: 420px;">
+        <div class="kb-modal-head">
+          <h3>
+            <span class="kb-info-icon" :class="`is-${infoModal.type}`">
+              {{ infoModal.type === "success" ? "✓" : "i" }}
+            </span>
+            {{ infoModal.title }}
+          </h3>
+          <button class="kb-modal-close" type="button" @click="closeInfo">✕</button>
+        </div>
+        <p class="kb-error-message">{{ infoModal.message }}</p>
+        <div class="kb-modal-actions">
+          <button class="kb-btn kb-btn-primary" type="button" @click="closeInfo">知道了</button>
         </div>
       </div>
     </div>
@@ -804,6 +849,23 @@ async function onRemove(id: number) {
 .kb-error-message + .kb-modal-actions {
   margin-top: 16px;
 }
+
+.kb-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  margin-right: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  vertical-align: middle;
+}
+
+.kb-info-icon.is-info { background: #2563eb; }
+.kb-info-icon.is-success { background: #16a34a; }
 
 .kb-uploading-tip {
   margin-top: 16px;

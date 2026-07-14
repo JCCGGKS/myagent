@@ -205,12 +205,17 @@ export const useChatStore = defineStore("chat", () => {
   }
 
   interface UploadSummary {
+    // 新入库成功的文件数（服务端新建并向量化）
     okCount: number;
+    // 幂等命中（同一内容已存在）而跳过向量化的文件数
+    duplicatedCount: number;
     failedCount: number;
     // 后缀不支持或与所选文档类型不一致而被本地跳过的文件名
     invalidNames: string[];
     // 服务端拒绝 / 网络错误的可读信息
     serverErrors: string[];
+    // 幂等命中（内容已存在）被跳过的文件名
+    duplicatedNames: string[];
   }
 
   async function uploadKnowledgeFiles(
@@ -219,9 +224,11 @@ export const useChatStore = defineStore("chat", () => {
   ): Promise<UploadSummary> {
     const summary: UploadSummary = {
       okCount: 0,
+      duplicatedCount: 0,
       failedCount: 0,
       invalidNames: [],
       serverErrors: [],
+      duplicatedNames: [],
     };
     if (!fileList?.length) {
       return summary;
@@ -250,7 +257,13 @@ export const useChatStore = defineStore("chat", () => {
     );
     for (const r of results) {
       if (r.status === "fulfilled") {
-        summary.okCount += 1;
+        // 依据后端返回的 duplicated 字段判定：幂等命中则跳过计数单列
+        if (r.value.duplicated) {
+          summary.duplicatedCount += 1;
+          summary.duplicatedNames.push(r.value.filename);
+        } else {
+          summary.okCount += 1;
+        }
       } else {
         summary.serverErrors.push(
           r.reason instanceof Error ? r.reason.message : String(r.reason),
@@ -258,8 +271,11 @@ export const useChatStore = defineStore("chat", () => {
       }
     }
     summary.failedCount = summary.invalidNames.length + summary.serverErrors.length;
+    const parts: string[] = [];
+    if (summary.okCount) parts.push(`新入库 ${summary.okCount} 个`);
+    if (summary.duplicatedCount) parts.push(`跳过重复 ${summary.duplicatedCount} 个`);
     statusText.value =
-      `已上传 ${summary.okCount} 个文件` +
+      (parts.join("，") || "未上传文件") +
       (summary.failedCount ? `，${summary.failedCount} 个失败` : "");
     await fetchKnowledgeFiles();
     return summary;
