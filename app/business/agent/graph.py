@@ -438,9 +438,10 @@ class CustomerServiceAgent:
                 }
             )
         elif node_name in {"handoff_node", "agent_node"}:
-            if state.tool_result:
+            # 每个工具结果发一条 tool_result 事件（前端单对象消费不变，且一工具一 trace 更清晰）。
+            for tr in state.tool_results:
                 events.append(
-                    {"type": "tool_result", "trace_id": trace_id, "tool_result": self._serialize_tool_result(state)}
+                    {"type": "tool_result", "trace_id": trace_id, "tool_result": tr.model_dump()}
                 )
         elif node_name == "response_generator":
             events.append({"type": "final", "trace_id": trace_id, "response": self._build_chat_response(state).model_dump()})
@@ -499,7 +500,7 @@ class CustomerServiceAgent:
 
         state.reply = ""
         state.intent_result = None
-        state.tool_result = None
+        state.tool_results = []
         state.handoff = False
         state.handoff_reason = ""
         state.current_action = ""
@@ -559,7 +560,7 @@ class CustomerServiceAgent:
 
     def route_after_confirmation_guard(self, payload: dict[str, Any]) -> str:
         state: ConversationState = payload["state"]
-        if state.reply or state.tool_result is not None:
+        if state.reply or state.tool_results:
             return "handled"
         return "normal"
 
@@ -677,6 +678,3 @@ class CustomerServiceAgent:
             ],
             "summary": state.summary,
         }
-
-    def _serialize_tool_result(self, state: ConversationState) -> dict[str, Any] | None:
-        return state.tool_result.model_dump() if state.tool_result else None

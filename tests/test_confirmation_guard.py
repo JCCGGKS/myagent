@@ -48,10 +48,10 @@ class TestConfirmationGuard:
         asyncio.run(agent.confirmation_guard(payload))
 
         assert state.pending_confirmation is None
-        assert state.tool_result is not None
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["order_id"] == "A1002"
-        assert state.tool_result.sanitized_result["refund_id"].startswith("R")
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["order_id"] == "A1002"
+        assert state.tool_results[-1].sanitized_result["refund_id"].startswith("R")
 
     def test_cancel_clears_pending_and_replies(self):
         """用户回「取消」→ 清空挂起态并直接给取消话术，不再发起退款。"""
@@ -61,7 +61,7 @@ class TestConfirmationGuard:
         asyncio.run(agent.confirmation_guard(payload))
 
         assert state.pending_confirmation is None
-        assert state.tool_result is None
+        assert state.tool_results == []
         assert state.reply  # 取消话术非空
 
     def test_no_pending_passes_through(self):
@@ -74,4 +74,4 @@ class TestConfirmationGuard:
 
         assert state.pending_confirmation is None
         assert state.reply == ""
-        assert state.tool_result is None
+        assert state.tool_results == []

@@ -127,10 +127,10 @@ async def run_target(case: dict, agent, session_service) -> dict:
                 intent_main = state.intent_result.main_intent
                 intent_sub = state.intent_result.sub_intent
 
-    # 终态：从 checkpointer 取回（含 current_action / slots / missing / tool_result / reply）
+    # 终态：从 checkpointer 取回（含 current_action / slots / missing / tool_results / reply）
     final = await _get_final_state(agent, sid)
     action = final.current_action if final else None
-    tool_kind = final.tool_result.kind if (final and final.tool_result) else None
+    tool_kind = final.tool_results[-1].kind if (final and final.tool_results) else None
     slots = dict(final.slots) if final else {}
     missing = list(final.missing_slots) if final else []
     needs_clar = bool(final.needs_clarification) if final else False

@@ -194,11 +194,11 @@ class TestDialogServices:
         service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
-            tool_result=ToolExecutionResult(
+            tool_results=[ToolExecutionResult(
                 tool="query_order", kind="success",
                 raw_result={"order_id": "A1001", "status": "已发货", "product_name": "键盘", "amount": 199.0},
                 sanitized_result={"order_id": "A1001", "status": "已发货", "product_name": "键盘", "amount": 199.0},
-            ),
+            )],
         )
         result = asyncio.run(service.generate(state))
         assert result.reply == "订单 A1001 当前状态为 已发货，金额 199.0 元。"
@@ -217,7 +217,7 @@ class TestDialogServices:
         service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
-            tool_result=ToolExecutionResult(tool="unknown_tool", kind="success", raw_result={"x": 1}),
+            tool_results=[ToolExecutionResult(tool="unknown_tool", kind="success", raw_result={"x": 1})],
         )
         result = asyncio.run(service.generate(state))
         assert result.reply == "LLM 兜底回复。"
@@ -236,15 +236,47 @@ class TestDialogServices:
         service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
-            tool_result=ToolExecutionResult(
+            tool_results=[ToolExecutionResult(
                 tool="rag_retrieve", kind="success",
                 raw_result={"retrieved_docs": [], "count": 0},
                 sanitized_result={"retrieved_docs": [], "count": 0},
-            ),
+            )],
         )
         result = asyncio.run(service.generate(state))
         assert result.reply == "LLM 兜底回复。"
         llm_client.chat.completions.create.assert_called()
+
+    def test_response_generator_aggregates_multiple_tool_results(self):
+        """多工具结果聚合：``tool_results`` 含多个可模板化的结果时，按序拼接、互不覆盖。"""
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.side_effect = (
+            lambda tool, kind: "订单 {order_id} 状态：{status}。"
+            if tool == "query_order"
+            else "物流：{tracking_status}。"
+        )
+        llm_client = AsyncMock()
+        service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            tool_results=[
+                ToolExecutionResult(
+                    tool="query_order", kind="success",
+                    raw_result={"order_id": "A1001", "status": "已发货"},
+                    sanitized_result={"order_id": "A1001", "status": "已发货"},
+                ),
+                ToolExecutionResult(
+                    tool="query_logistics", kind="success",
+                    raw_result={"order_id": "A1001", "tracking_status": "运输中"},
+                    sanitized_result={"order_id": "A1001", "tracking_status": "运输中"},
+                ),
+            ],
+        )
+        result = asyncio.run(service.generate(state))
+        assert "订单 A1001 状态：已发货。" in result.reply
+        assert "物流：运输中。" in result.reply
+        # 命中模板聚合 → 不调 LLM
+        llm_client.chat.completions.create.assert_not_called()
 
     def test_sanitize_masks_sensitive_fields(self):
         """sanitize_tool_result 对手机号/身份证/地址/姓名/邮箱做掩码，其余原样。"""

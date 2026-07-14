@@ -121,9 +121,9 @@ def build_response_system_prompt(
     """回复生成节点的系统提示（含工具结果，要求生成友好响应）。"""
     ctx = build_prompt_context(state, RESPONSE_FIELDS)
     prompt = _render_base_context(ctx)
-    # tool_result 是执行产物、供回复引用，仅在回复节点显式透传（其余节点不透传）。
-    if state.tool_result:
-        prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
+    # tool_results 是执行产物、供回复引用，仅在回复节点显式透传（其余节点不透传）。
+    for tr in state.tool_results:
+        prompt += f"\n工具调用结果：{tr.model_dump()}"
         prompt += (
             "\n【严格遵循工具结果】工具调用结果是回答的唯一事实来源：你必须严格依据其中的"
             "字段与数值作答，不得擅自编造、篡改或遗漏状态/金额/时间/订单号等任何数据；"

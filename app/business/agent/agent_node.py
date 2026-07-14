@@ -16,8 +16,8 @@ logger = get_module_logger("agent")
 class AgentNodeService:
     """Agent 节点服务（ReAct 循环，决策与工具编排）。
 
-    本节点只做**决策与工具编排**：判断调哪个工具、把工具结果（``state.tool_result``，
-    结构化数据）与状态标志写回，由下游 ``response_generator`` 基于 ``state.tool_result``
+    本节点只做**决策与工具编排**：判断调哪个工具、把工具结果（``state.tool_results``，
+    结构化数据列表）与状态标志写回，由下游 ``response_generator`` 基于 ``state.tool_results``
     + ``response_prompts.yml`` 模板统一生成面向用户的回复。工具结果产生的回复**绝不**在本
     节点产出（避免硬编码话术外泄，且保证文案单一来源）。
 
@@ -53,8 +53,8 @@ class AgentNodeService:
 
         一旦调用过工具，收尾轮的 ``content`` 往往只是模型的「已有足够信息、无需再调
         工具」之类的**决策旁白**，并非面向用户的答案。此时**不**写入 ``state.reply``，
-        且工具 handler 也只回填 ``state.tool_result``（结构化），绝不写回复文案——
-        留空交由 ``response_generator`` 基于 ``tool_result`` + yml 模板生成友好回答
+        且工具 handler 也只回填 ``state.tool_results``（结构化列表），绝不写回复文案——
+        留空交由 ``response_generator`` 基于 ``tool_results`` + yml 模板生成友好回答
         （其本职就是根据工具结果措辞）。否则用户会收到模型内部决策文本（见评估发现）。
         """
         messages = self._build_messages(state)
@@ -90,7 +90,7 @@ class AgentNodeService:
                 logger.debug(_tagged("agent", "scheduler emitted non-tool text, discarding as user reply: %r"), content[:80])
             break
 
-        # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_result 兜底生成
+        # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_results 兜底生成
         logger.info(_tagged("agent", "run end session=%s tool_called=%s"), state.session_id, tool_called)
         return state
 

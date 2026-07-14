@@ -114,13 +114,13 @@ async def run_target(case: dict, agent, session_service) -> dict:
         "main_intent": state.current_main_intent if state else None,
         "sub_intent": state.current_sub_intent if state else None,
         "action": state.current_action if state else None,
-        "tool_kind": state.tool_result.kind if (state and state.tool_result) else None,
+        "tool_kind": state.tool_results[-1].kind if (state and state.tool_results) else None,
         "session_state": resp.session_state,
     }
 
 
 async def _get_final_state(agent, sid):
-    """从 checkpointer 取回最终状态（含 current_action / tool_result）。"""
+    """从 checkpointer 取回最终状态（含 current_action / tool_results）。"""
     config = {"configurable": {"thread_id": sid}}
     if agent.checkpointer is not None and hasattr(agent.checkpointer, "aget_tuple"):
         snap = await agent.graph.aget_state(config)

@@ -186,8 +186,8 @@ class ToolExecutor:
 
     业务工具（订单/物流/转人工）由 domain 服务直接驱动；知识检索
     （``rag_retrieve``）由 ``rag_tool`` 驱动。``agent_node`` 调用 ``run``
-    执行一批 tool_calls，返回 tool 结果消息（追加到 ReAct 线程），并把
-    最后一次结果写入 ``state.tool_result``。
+    执行一批 tool_calls，返回 tool 结果消息（追加到 ReAct 线程），并把全部
+    结果累积进 ``state.tool_results``（多工具/多轮 ReAct 跨轮累加，不覆盖）。
     """
 
     def __init__(
@@ -220,8 +220,10 @@ class ToolExecutor:
         self, tool_calls: list[dict[str, Any]], state: ConversationState
     ) -> list[dict[str, Any]]:
         tool_messages: list[dict[str, Any]] = []
-        last_result: ToolExecutionResult | None = None
         logger.info("[tool] run start session=%s calls=%d", state.session_id, len(tool_calls))
+        # 累积进列表（不在每轮重置，重置由 input_normalizer 完成），
+        # 保证多工具 + 多轮 ReAct 跨轮累加、互不覆盖。
+        state.tool_results = state.tool_results or []
         for tc in tool_calls:
             name = tc["function"]["name"]
             canonical = TOOL_ALIASES.get(name, name)
@@ -249,10 +251,8 @@ class ToolExecutor:
                 }
             )
             if isinstance(result, ToolExecutionResult):
-                last_result = result
-        if last_result is not None:
-            state.tool_result = last_result
-        logger.info("[tool] run end session=%s last_tool=%s", state.session_id, last_result.tool if last_result else None)
+                state.tool_results.append(result)
+        logger.info("[tool] run end session=%s count=%d", state.session_id, len(state.tool_results))
         return tool_messages
 
     async def _execute_with_retry(
@@ -420,33 +420,39 @@ class ToolExecutor:
         )
 
     def _handle_handoff(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
-        # create_handoff 会就地把 tool_result 写入 state，并返回 state；
-        # 作为工具处理器需返回 ToolExecutionResult 供 run() 序列化 tool 消息，
-        # 否则会把整个 ConversationState 交给 json.dumps 而报
-        # "Object of type ConversationState is not JSON serializable"。
-        self.create_handoff(state)
-        return state.tool_result
+        # 仅返回结果对象，由 run() 统一 append 到 state.tool_results，避免双重写入。
+        return self._build_handoff_result(state)
 
-    def create_handoff(self, state: ConversationState) -> ConversationState:
+    def _build_handoff_result(self, state: ConversationState) -> ToolExecutionResult:
+        """纯构建器：构造转人工结果（不碰 ``state.tool_results``）。
+
+        由 ``create_handoff``（handoff_node 直调，需自己 append 列表）与
+        ``_handle_handoff``（run() 统一 append）共用，避免重复写列表。
+        """
         observe_handoff()  # 业务 KPI：转人工率
         if self.handoff_service is None:
-            state.tool_result = ToolExecutionResult(
+            return ToolExecutionResult(
                 kind="error",
                 raw_result={"message": "转人工服务未配置，无法创建服务单。"},
             )
-            # 决策层不写面向用户的回复（去冗余的早返回改为生成节点按 yml 模板产出），
-            # 故此处不再落 state.reply，交由 response_generator 统一生成。
-            return state
         handoff = self.handoff_service.create_handoff(state.session_id, state.summary)
-        state.tool_result = ToolExecutionResult(
-            kind="handoff",
-            raw_result=handoff.model_dump(),
-        )
         # 决策层只设结构化结果与状态标志，绝不写 state.reply（话术由生成节点按 yml 模板产出）。
         state.handoff = True
         state.action_history.append(
             build_action_record("handoff_node", f"已创建人工服务单 {handoff.ticket_id}")
         )
+        return ToolExecutionResult(
+            kind="handoff",
+            raw_result=handoff.model_dump(),
+        )
+
+    def create_handoff(self, state: ConversationState) -> ConversationState:
+        """handoff_node 直接调用：构造结果并追加到 ``state.tool_results``。"""
+        result = self._build_handoff_result(state)
+        # 决策层不写面向用户的回复（去冗余的早返回改为生成节点按 yml 模板产出），
+        # 故此处不再落 state.reply，交由 response_generator 统一生成。
+        state.tool_results = state.tool_results or []
+        state.tool_results.append(result)
         return state
 
     def _request_refund(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:

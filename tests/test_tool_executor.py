@@ -74,10 +74,10 @@ class TestToolExecutor:
         assert messages[0]["role"] == "tool"
         assert messages[0]["tool_call_id"] == "call_1"
         assert messages[0]["name"] == "query_order"
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "query_order"
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["order_id"] == "A1001"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "query_order"
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["order_id"] == "A1001"
 
     def test_run_logistics_sets_logistics_result(self):
         rag_tool = MagicMock()
@@ -99,10 +99,10 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "query_logistics"
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["tracking_status"] == "运输中"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "query_logistics"
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["tracking_status"] == "运输中"
 
     def test_run_rag_retrieve_uses_rag_tool(self):
         rag_tool = MagicMock()
@@ -125,8 +125,8 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         rag_tool.run.assert_called_once_with("退货政策", user_id=1)
-        assert state.tool_result.tool == "rag_retrieve"
-        assert state.tool_result.kind == "success"
+        assert state.tool_results[-1].tool == "rag_retrieve"
+        assert state.tool_results[-1].kind == "success"
 
     def test_run_unknown_tool_returns_error_result(self):
         rag_tool = MagicMock()
@@ -146,8 +146,8 @@ class TestToolExecutor:
         ]
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
-        assert state.tool_result is not None
-        assert state.tool_result.kind == "error"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].kind == "error"
 
     def test_run_create_handoff_serializes_without_state_error(self):
         """回归：create_handoff 经 run() 调用时，工具消息内容必须是可 JSON 序列化的
@@ -179,9 +179,40 @@ class TestToolExecutor:
         parsed = json.loads(messages[0]["content"])
         assert parsed["tool"] == "create_handoff"
         assert parsed["kind"] == "handoff"
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "create_handoff"
-        assert state.tool_result.kind == "handoff"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "create_handoff"
+        assert state.tool_results[-1].kind == "handoff"
+
+    def test_run_multiple_tool_calls_accumulate_all_results(self):
+        """数组化回归：一次 run 传入多个 tool_calls 时，全部结果累积进
+        ``state.tool_results``，互不覆盖（修复「多工具只保留最后一个」的 bug）。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_o",
+                "type": "function",
+                "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'},
+            },
+            {
+                "id": "call_l",
+                "type": "function",
+                "function": {"name": "query_logistics", "arguments": '{"order_id": "A1001"}'},
+            },
+        ]
+        state = _state()
+        messages = asyncio.run(executor.run(tool_calls, state))
+
+        assert len(messages) == 2
+        assert len(state.tool_results) == 2
+        tools = {r.tool for r in state.tool_results}
+        assert tools == {"query_order", "query_logistics"}
 
     def test_create_handoff_sets_handoff_state(self):
         rag_tool = MagicMock()
@@ -202,10 +233,10 @@ class TestToolExecutor:
         state = _state(summary="需要人工处理")
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result.tool == "create_handoff"
-        assert state.tool_result.kind == "handoff"
+        assert state.tool_results[-1].tool == "create_handoff"
+        assert state.tool_results[-1].kind == "handoff"
         assert state.handoff is True
-        assert state.tool_result.sanitized_result["ticket_id"] == "T-001"
+        assert state.tool_results[-1].sanitized_result["ticket_id"] == "T-001"
 
     def test_create_handoff_does_not_write_reply_decision_only(self):
         """决策层（create_handoff）只产 tool_result + 状态标志，绝不直接写 state.reply；
@@ -228,10 +259,10 @@ class TestToolExecutor:
         state = _state(summary="需要人工处理")
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result.tool == "create_handoff"
-        assert state.tool_result.kind == "handoff"
+        assert state.tool_results[-1].tool == "create_handoff"
+        assert state.tool_results[-1].kind == "handoff"
         assert state.handoff is True
-        assert state.tool_result.sanitized_result["ticket_id"] == "T-001"
+        assert state.tool_results[-1].sanitized_result["ticket_id"] == "T-001"
         # 决策层不写回复 → 交由生成节点按 yml 模板产出
         assert state.reply == ""
 
@@ -263,12 +294,12 @@ class TestToolExecutor:
         messages = asyncio.run(executor.run(tool_calls, state))
 
         # 返回 confirmation 型结果，且未真正办理（计数器未动，受理单未生成）
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "request_refund"
-        assert state.tool_result.kind == "confirmation"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "request_refund"
+        assert state.tool_results[-1].kind == "confirmation"
         # 决策层不写回复，确认话术由生成节点按 yml 模板产出（数据在 raw_result 中）
         assert state.reply == ""
-        assert state.tool_result.raw_result["order_id"] == "A1001"
+        assert state.tool_results[-1].raw_result["order_id"] == "A1001"
         # R1 挂起态：发出确认时记录待确认负载，供下一轮「确认」信号确定性拦截
         assert state.pending_confirmation == {
             "tool": "request_refund",
@@ -302,7 +333,7 @@ class TestToolExecutor:
              "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'}},
         ]
         asyncio.run(executor.run(first, state))
-        assert state.tool_result.kind == "confirmation"
+        assert state.tool_results[-1].kind == "confirmation"
         assert state.pending_confirmation is not None
         assert refund_service._by_key == {}
 
@@ -313,8 +344,8 @@ class TestToolExecutor:
                           "arguments": json.dumps({"order_id": "A1001", "refund_type": "refund", "confirm": True}, ensure_ascii=False)}},
         ]
         asyncio.run(executor.run(replay, state))
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["refund_id"].startswith("R")
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["refund_id"].startswith("R")
         # 确认后挂起态清空，避免 stale
         assert state.pending_confirmation is None
         assert "refund:A1001:refund" in state.confirmed_slots
@@ -337,7 +368,7 @@ class TestToolExecutor:
              "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'}},
         ]
         asyncio.run(executor.run(calls, state))
-        assert state.tool_result.raw_result["refund_type_label"] == "退款"
+        assert state.tool_results[-1].raw_result["refund_type_label"] == "退款"
         # 成功分支同样带中文标签
         calls2 = [
             {"id": "c2", "type": "function",
@@ -345,7 +376,7 @@ class TestToolExecutor:
                           "arguments": json.dumps({"order_id": "A1001", "refund_type": "refund", "confirm": True}, ensure_ascii=False)}},
         ]
         asyncio.run(executor.run(calls2, state))
-        assert state.tool_result.raw_result["refund_type_label"] == "退款"
+        assert state.tool_results[-1].raw_result["refund_type_label"] == "退款"
 
     def test_run_request_refund_with_confirm_executes(self):
         """R1 二次确认：用户确认后模型以 confirm=true 二次调用，才真正发起退款。
@@ -372,11 +403,11 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "request_refund"
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["order_id"] == "A1001"
-        assert state.tool_result.sanitized_result["refund_id"].startswith("R")
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "request_refund"
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["order_id"] == "A1001"
+        assert state.tool_results[-1].sanitized_result["refund_id"].startswith("R")
         # 确认痕迹写入审计字段
         assert "refund:A1001:refund" in state.confirmed_slots
 
@@ -400,8 +431,8 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result is not None
-        assert state.tool_result.kind == "error"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].kind == "error"
 
     def test_run_modify_address_uses_order_service(self):
         rag_tool = MagicMock()
@@ -423,12 +454,12 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "modify_address"
-        assert state.tool_result.kind == "success"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "modify_address"
+        assert state.tool_results[-1].kind == "success"
         # raw_result 含完整地址（未经脱敏）；sanitized_result 中地址字段按策略掩码
-        assert state.tool_result.raw_result["new_address"] == "北京市朝阳区"
-        assert "****" in state.tool_result.sanitized_result["new_address"]
+        assert state.tool_results[-1].raw_result["new_address"] == "北京市朝阳区"
+        assert "****" in state.tool_results[-1].sanitized_result["new_address"]
 
     def test_run_apply_invoice_uses_order_service(self):
         rag_tool = MagicMock()
@@ -450,10 +481,10 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result is not None
-        assert state.tool_result.tool == "apply_invoice"
-        assert state.tool_result.kind == "success"
-        assert state.tool_result.sanitized_result["invoice_title"] == "XX公司"
+        assert state.tool_results[-1] is not None
+        assert state.tool_results[-1].tool == "apply_invoice"
+        assert state.tool_results[-1].kind == "success"
+        assert state.tool_results[-1].sanitized_result["invoice_title"] == "XX公司"
 
     def test_run_failure_isolation_continues_batch(self):
         """R6 失败隔离：某个工具处理器抛异常时，run() 不应向上抛出、也不应中断整批。
@@ -507,7 +538,7 @@ class TestToolExecutor:
         ok = [m for m in messages if m["tool_call_id"] == "call_b"][0]
         assert json.loads(ok["content"])["kind"] == "success"
         # 指标未崩溃（last_result 落为 error，因为异常工具在最后被处理？此处批末是 rag，故 last 为 knowledge）
-        assert state.tool_result is not None
+        assert state.tool_results[-1] is not None
 
     def test_run_retries_transient_failure_then_succeeds(self):
         """失败重试：非副作用工具基础设施故障，重试后成功则不返回 error。"""
@@ -542,8 +573,8 @@ class TestToolExecutor:
         assert flaky.call_count == 3
         assert json.loads(messages[0]["content"])["tool"] == "query_order"
         assert json.loads(messages[0]["content"])["kind"] == "success"
-        assert state.tool_result.tool == "query_order"
-        assert state.tool_result.kind == "success"
+        assert state.tool_results[-1].tool == "query_order"
+        assert state.tool_results[-1].kind == "success"
 
     def test_run_side_effect_tool_not_retried(self):
         """副作用工具（request_refund）失败不自动重试，避免重复触发不可逆动作。"""
@@ -574,7 +605,7 @@ class TestToolExecutor:
         # 只调用 1 次（不重试）
         assert boom.call_count == 1
         assert json.loads(messages[0]["content"])["kind"] == "error"
-        assert state.tool_result.kind == "error"
+        assert state.tool_results[-1].kind == "error"
 
     def test_refund_idempotent_same_order_and_type(self):
         """R2 幂等：同一 (订单号, 退款类型) 重复请求返回同一受理单，不会生成新单号。"""
@@ -618,10 +649,10 @@ class TestToolExecutor:
         }
         state = _state()
         asyncio.run(executor.run([call], state))
-        first_id = state.tool_result.sanitized_result["refund_id"]
+        first_id = state.tool_results[-1].sanitized_result["refund_id"]
         # 同一 state（已带 confirmed_slots）下再次确认调用
         asyncio.run(executor.run([call], state))
-        second_id = state.tool_result.sanitized_result["refund_id"]
+        second_id = state.tool_results[-1].sanitized_result["refund_id"]
         assert first_id == second_id
 
     def test_request_refund_in_transit_creates_handoff(self):
@@ -649,15 +680,15 @@ class TestToolExecutor:
         state = _state()
         asyncio.run(executor.run(tool_calls, state))
 
-        assert state.tool_result.tool == "request_refund"
-        assert state.tool_result.kind == "handoff"
+        assert state.tool_results[-1].tool == "request_refund"
+        assert state.tool_results[-1].kind == "handoff"
         # 决策层不写回复，话术由生成节点按 yml 模板产出
         assert state.reply == ""
         assert state.handoff is True
         handoff_service.create_handoff.assert_called_once()
-        assert "handoff_ticket_id" in state.tool_result.sanitized_result
+        assert "handoff_ticket_id" in state.tool_results[-1].sanitized_result
         # 结果对象无 user_facing_summary 字段（已删除）
-        assert not hasattr(state.tool_result, "user_facing_summary")
+        assert not hasattr(state.tool_results[-1], "user_facing_summary")
 
     def test_request_refund_handoff_idempotent_same_session(self):
         """同会话重复「退掉」→ 同一服务单号（handoff 按 session_id 去重）。"""
@@ -678,9 +709,9 @@ class TestToolExecutor:
         }
         state = _state()
         asyncio.run(executor.run([call], state))
-        first_ticket = state.tool_result.sanitized_result["handoff_ticket_id"]
+        first_ticket = state.tool_results[-1].sanitized_result["handoff_ticket_id"]
         asyncio.run(executor.run([call], state))
-        second_ticket = state.tool_result.sanitized_result["handoff_ticket_id"]
+        second_ticket = state.tool_results[-1].sanitized_result["handoff_ticket_id"]
         assert first_ticket == second_ticket
 
     def test_request_refund_unknown_order_errors(self):
@@ -710,9 +741,9 @@ class TestToolExecutor:
         }
         state = _state()
         asyncio.run(executor.run([call], state))
-        assert state.tool_result.tool == "request_refund"
-        assert state.tool_result.kind == "error"
-        assert "NOPE" in state.tool_result.raw_result["message"]
+        assert state.tool_results[-1].tool == "request_refund"
+        assert state.tool_results[-1].kind == "error"
+        assert "NOPE" in state.tool_results[-1].raw_result["message"]
 
     # ---- R5 统一参数 schema 校验 ----
 
@@ -783,4 +814,4 @@ class TestToolExecutor:
         assert boom.call_count == 0
         # 返回干净 error，而非「执行出错」那种基础设施兜底
         assert json.loads(messages[0]["content"])["kind"] == "error"
-        assert "refund_type" in state.tool_result.raw_result["message"]
+        assert "refund_type" in state.tool_results[-1].raw_result["message"]

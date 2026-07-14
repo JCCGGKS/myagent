@@ -68,30 +68,45 @@ class ResponseService:
 
         职责：成为 ``state.reply`` 的唯一写入方。
         - 已有 reply（agent_node 直答 / 澄清节点产出）→ 早返回（去冗余，不调 LLM）；
-        - 决策层产出的 ``tool_result`` → 按 yml 模板填值产出回复（不调 LLM，保留去冗余收益）；
+        - 决策层产出的 ``tool_results`` → 按 yml 模板填值产出回复（不调 LLM，保留去冗余收益）；
+          单结果等价原逻辑；多结果做聚合（模板拼接 / RAG 文档走 LLM 综述）；
         - 无匹配模板（新工具/开放问答）→ LLM 兜底生成。
         """
         # 其他节点（澄清/直答）已设回复则尊重，直接返回（去冗余）。
-        logger.info(_tagged("response", "generate start session=%s has_reply=%s has_tool=%s"), state.session_id, bool(state.reply), state.tool_result is not None)
+        logger.info(_tagged("response", "generate start session=%s has_reply=%s n_tool=%s"), state.session_id, bool(state.reply), len(state.tool_results))
         if state.reply:
             return state
 
-        # 决策层只产 tool_result（结构化），不写 reply；本节点按 yml 模板填值产出 reply。
-        if state.tool_result is not None:
-            tpl = self.prompt_registry.get_tool_template(state.tool_result.tool, state.tool_result.kind)
-            if tpl:
-                data = state.tool_result.sanitized_result or {}
-                # RAG 检索为空（count 为 0/缺失）时，「检索到 0 条相关文档」不是有效的最终
-                # 回复，跳过模板、降级到下方 LLM 生成（用通用知识作答或向用户澄清），避免把
-                # 空检索结果当作答案呈现给用户（见回归 06_工具调用）。
-                if state.tool_result.tool == "rag_retrieve" and not data.get("count"):
-                    pass
-                else:
-                    state.reply = _safe_format(tpl, data)
+        # 决策层只产 tool_results（结构化列表），不写 reply；本节点按 yml 模板填值产出 reply。
+        results = state.tool_results or []
+        if results:
+            if len(results) == 1:
+                piece = self._try_template(results[0])
+                if piece is not None:
+                    state.reply = piece
+                    if not state.action_history or state.action_history[-1].action_name != "response_generator":
+                        state.action_history.append(build_action_record("response_generator", piece))
+                    logger.info(_tagged("response", "generate end session=%s source=template tool=%s kind=%s"), state.session_id, results[0].tool, results[0].kind)
+                    return state
+                # 模板取不到 → 落到下方 LLM 兜底
+            elif len(results) > 1:
+                parts: list[str] = []
+                has_rag_docs = False
+                for r in results:
+                    # RAG 检索有文档时走下方 LLM 综述（_build_messages 已汇聚文档），不在此拼接。
+                    if r.tool == "rag_retrieve" and (r.sanitized_result or {}).get("count"):
+                        has_rag_docs = True
+                        continue
+                    piece = self._try_template(r)
+                    if piece:
+                        parts.append(piece)
+                if not has_rag_docs and parts:
+                    state.reply = "\n".join(parts)
                     if not state.action_history or state.action_history[-1].action_name != "response_generator":
                         state.action_history.append(build_action_record("response_generator", state.reply))
-                    logger.info(_tagged("response", "generate end session=%s source=template tool=%s kind=%s"), state.session_id, state.tool_result.tool, state.tool_result.kind)
+                    logger.info(_tagged("response", "generate end session=%s source=template_multi n=%d"), state.session_id, len(parts))
                     return state
+                # 含 RAG 文档 或 全部模板缺失 → 落到下方 LLM 兜底（综述/生成）
 
         # 构造 LLM 输入
         examples = self._build_response_examples(state)
@@ -109,11 +124,35 @@ class ResponseService:
         logger.info(_tagged("response", "generate end session=%s source=llm"), state.session_id)
         return state
 
+    def _try_template(self, result: "ToolExecutionResult | None") -> str | None:
+        """对单条工具结果试取话术模板；取不到（新工具/开放问答）返回 None 走 LLM 兜底。
+
+        - error 优先用 ``raw_result.message`` 模板；
+        - ``rag_retrieve`` 空检索（count 为 0/缺失）→ 返回 None 降级 LLM，不把空结果当答案；
+        - 其余按 ``tool + kind`` 取模板填值；取不到 → None。
+        """
+        if result is None:
+            return None
+        tpl = self.prompt_registry.get_tool_template(result.tool, result.kind)
+        if not tpl:
+            return None
+        data = result.sanitized_result or {}
+        # RAG 检索为空（count 为 0/缺失）时，「检索到 0 条相关文档」不是有效的最终
+        # 回复，返回 None 降级到下方 LLM 生成（用通用知识作答或向用户澄清），避免把
+        # 空检索结果当作答案呈现给用户（见回归 06_工具调用）。
+        if result.tool == "rag_retrieve" and not data.get("count"):
+            return None
+        return _safe_format(tpl, data)
+
     def _build_messages(self, state: ConversationState) -> list[dict]:
         """构造 messages（包含历史消息）。
 
         上下文来自摘要缓冲：running_summary（窗口外已压缩内容）+ recent_messages
         （活动窗口内的近期消息），与 agent_node 保持一致。
+
+        RAG 文档注入：汇聚本轮全部 ``tool_results`` 中 ``rag_retrieve`` 命中的
+        ``retrieved_docs``，作为一个瞬时 system 消息（不写入 ``state.recent_messages``），
+        支持多 RAG + 其他工具混合场景。
         """
         messages: list[dict] = []
         if state.running_summary:
@@ -124,6 +163,21 @@ class ResponseService:
                 }
             )
         messages.extend(state.recent_messages)
+        # 汇聚全部 RAG 检索结果，统一注入（多 RAG 调用时合并）。
+        rag_docs: list[dict] = []
+        for r in state.tool_results or []:
+            if r.tool == "rag_retrieve" and (r.sanitized_result or {}).get("count"):
+                rag_docs.extend((r.sanitized_result or {}).get("retrieved_docs") or [])
+        if rag_docs:
+            formatted = "\n\n".join(
+                f"【参考文档 {i+1}】\n{doc.get('content', '')}" for i, doc in enumerate(rag_docs)
+            )
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"以下是检索到的知识库文档，请基于其生成回复：\n{formatted}",
+                }
+            )
         return messages
 
     def _build_response_examples(self, state: ConversationState) -> str | None:

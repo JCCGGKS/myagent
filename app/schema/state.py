@@ -60,7 +60,7 @@ class ConversationState(BaseModel):
     running_summary: str = ""
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
     intent_result: IntentResult | None = None
-    tool_result: ToolExecutionResult | None = None
+    tool_results: list[ToolExecutionResult] = Field(default_factory=list)
     handoff: bool = False
     handoff_reason: str = ""
     pending_intents: list[PendingIntent] = Field(default_factory=list)
