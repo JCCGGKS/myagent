@@ -269,10 +269,83 @@ class TestToolExecutor:
         # 决策层不写回复，确认话术由生成节点按 yml 模板产出（数据在 raw_result 中）
         assert state.reply == ""
         assert state.tool_result.raw_result["order_id"] == "A1001"
+        # R1 挂起态：发出确认时记录待确认负载，供下一轮「确认」信号确定性拦截
+        assert state.pending_confirmation == {
+            "tool": "request_refund",
+            "order_id": "A1001",
+            "refund_type": "refund",
+            "reason": "",
+        }
         # 同时作为 tool 消息回灌 LLM
         assert json.loads(messages[0]["content"])["kind"] == "confirmation"
         # 服务层未发起任何退款
         assert refund_service._by_key == {}
+
+    def test_request_refund_auto_pending_lifecycle(self):
+        """R1 挂起态生命周期：首次（无 confirm）→ 挂起；用户「确认」后以 confirm=true
+        重放 → 真正退款且挂起态清空。模拟 confirmation_guard 的确认分支。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        refund_service = RefundService()
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=refund_service,
+            rag_tool=rag_tool,
+            refund_auto_states={"已发货"},
+        )
+        state = _state()
+        # 首次：无 confirm → confirmation + 挂起
+        first = [
+            {"id": "c1", "type": "function",
+             "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'}},
+        ]
+        asyncio.run(executor.run(first, state))
+        assert state.tool_result.kind == "confirmation"
+        assert state.pending_confirmation is not None
+        assert refund_service._by_key == {}
+
+        # 用户回「确认」→ guard 以 confirm=true 重放挂起负载
+        replay = [
+            {"id": "c2", "type": "function",
+             "function": {"name": "request_refund",
+                          "arguments": json.dumps({"order_id": "A1001", "refund_type": "refund", "confirm": True}, ensure_ascii=False)}},
+        ]
+        asyncio.run(executor.run(replay, state))
+        assert state.tool_result.kind == "success"
+        assert state.tool_result.sanitized_result["refund_id"].startswith("R")
+        # 确认后挂起态清空，避免 stale
+        assert state.pending_confirmation is None
+        assert "refund:A1001:refund" in state.confirmed_slots
+
+    def test_request_refund_auto_label_is_chinese(self):
+        """refund_type 内部枚举（refund）在模板数据里应映射为中文标签，而非原样外泄。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+            refund_auto_states={"已发货"},
+        )
+        state = _state()
+        calls = [
+            {"id": "c", "type": "function",
+             "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'}},
+        ]
+        asyncio.run(executor.run(calls, state))
+        assert state.tool_result.raw_result["refund_type_label"] == "退款"
+        # 成功分支同样带中文标签
+        calls2 = [
+            {"id": "c2", "type": "function",
+             "function": {"name": "request_refund",
+                          "arguments": json.dumps({"order_id": "A1001", "refund_type": "refund", "confirm": True}, ensure_ascii=False)}},
+        ]
+        asyncio.run(executor.run(calls2, state))
+        assert state.tool_result.raw_result["refund_type_label"] == "退款"
 
     def test_run_request_refund_with_confirm_executes(self):
         """R1 二次确认：用户确认后模型以 confirm=true 二次调用，才真正发起退款。

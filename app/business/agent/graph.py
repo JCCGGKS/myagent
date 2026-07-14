@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 import os
 import uuid
@@ -23,6 +24,7 @@ def _tag(stage: str, msg: str) -> str:
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas
+from app.business.tools.confirmation import classify_confirm_signal
 from app.business import (
     ClarificationService,
     ContextService,
@@ -184,6 +186,7 @@ class CustomerServiceAgent:
 
         builder = StateGraph(dict)
         builder.add_node("input_normalizer", self.input_normalizer)
+        builder.add_node("confirmation_guard", self.confirmation_guard)
         builder.add_node("intent_router", self.intent_router)
         builder.add_node("state_tracker", self.state_tracker)
         builder.add_node("policy_layer", self.policy_layer)
@@ -194,7 +197,17 @@ class CustomerServiceAgent:
         builder.add_node("context_compressor", self.context_compressor)
 
         builder.add_edge(START, "input_normalizer")
-        builder.add_edge("input_normalizer", "intent_router")
+        # confirmation_guard 优先于意图路由：若上一轮挂起了 R1 二次确认，
+        # 本轮「确认/取消」需被确定性拦截，不能当新意图交 LLM 自由函数调用（见 06_工具调用）。
+        builder.add_edge("input_normalizer", "confirmation_guard")
+        builder.add_conditional_edges(
+            "confirmation_guard",
+            self.route_after_confirmation_guard,
+            {
+                "normal": "intent_router",
+                "handled": "response_generator",
+            },
+        )
         builder.add_edge("intent_router", "state_tracker")
         builder.add_edge("state_tracker", "policy_layer")
         builder.add_conditional_edges(
@@ -494,6 +507,63 @@ class CustomerServiceAgent:
         state.recent_messages.append({"role": "user", "content": message})
         payload["state"] = state
         return payload
+
+    async def confirmation_guard(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """R1 二次确认确定性拦截（位于意图路由之前）。
+
+        上一轮若挂起了待确认操作（``state.pending_confirmation`` 非空），本轮用户回复需被
+        **确定性**判定为确认/取消，而不是当新意图重新走 LLM 函数调用——后者会丢失「上轮
+        问过确认」的上下文而失效（见 06_工具调用 回归）。
+
+        - 取消信号：清空挂起态，直接给取消话术（``response_generator`` 早返回）。
+        - 确认信号：用挂起负载以 ``confirm=true`` 重放对应工具（绕过 LLM），执行真退款。
+        - 既非确认也非取消：视为用户转移话题，清空挂起态，走正常路由。
+        """
+        state: ConversationState = payload["state"]
+        pending = state.pending_confirmation
+        if not pending:
+            return payload
+
+        message = state.recent_messages[-1]["content"] if state.recent_messages else ""
+        signal = classify_confirm_signal(message)
+
+        if signal == "cancel":
+            state.pending_confirmation = None
+            state.reply = self._cancel_template()
+            logger.info(_tag("confirm", "user cancelled pending refund session=%s"), state.session_id)
+            return payload
+
+        if signal == "confirm":
+            state.pending_confirmation = None
+            # 用挂起负载重放工具调用（confirm=true），绕过 LLM 自由函数调用，
+            # 保证 R1 闭环确定性：用户回「确认」即执行，绝不依赖模型回忆。
+            replay_args = {k: v for k, v in pending.items() if k != "tool"}
+            replay_args["confirm"] = True
+            tool_call = {
+                "id": "confirm_replay",
+                "function": {
+                    "name": pending.get("tool", "request_refund"),
+                    "arguments": json.dumps(replay_args, ensure_ascii=False),
+                },
+            }
+            await self.tool_executor.run([tool_call], state)
+            logger.info(_tag("confirm", "user confirmed pending refund session=%s"), state.session_id)
+            return payload
+
+        # 既非确认也非取消：用户已转移话题，清空挂起态避免 stale（如隔轮才回「确认」）。
+        state.pending_confirmation = None
+        logger.info(_tag("confirm", "pending confirmation cleared (topic shift) session=%s"), state.session_id)
+        return payload
+
+    def route_after_confirmation_guard(self, payload: dict[str, Any]) -> str:
+        state: ConversationState = payload["state"]
+        if state.reply or state.tool_result is not None:
+            return "handled"
+        return "normal"
+
+    def _cancel_template(self) -> str:
+        tpl = self.response_service.prompt_registry.get_tool_template("request_refund", "cancelled")
+        return tpl or "已取消本次操作。"
 
     async def intent_router(self, payload: dict[str, Any]) -> dict[str, Any]:
         state: ConversationState = payload["state"]

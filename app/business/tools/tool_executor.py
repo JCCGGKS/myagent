@@ -172,6 +172,14 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {name: spec["schema"] for name, spec i
 # 执行框架（_request_refund 分流逻辑）无需改动。
 AUTO_REFUNDABLE_STATUSES: frozenset[str] = frozenset({"待付款", "待发货"})
 
+# 退款类型枚举 → 面向用户的展示文案。LLM 常漏传 refund_type（默认 "refund"），
+# 模板必须展示中文而非内部枚举值（否则出现「【refund】申请」这类错误话术）。
+REFUND_TYPE_LABELS: dict[str, str] = {
+    "refund": "退款",
+    "return": "退货退款",
+    "exchange": "换货",
+}
+
 
 class ToolExecutor:
     """统一的工具执行服务：覆盖 LLM 函数调用工具与业务工具。
@@ -464,17 +472,34 @@ class ToolExecutor:
         """自动退款路径（未来启用）：R1 二次确认 → R2 幂等执行真实退款。
 
         未确认前绝不执行任何退款副作用，仅返回 confirmation 让用户拍板；
-        确认信号来自模型在用户确认后以 confirm=true 二次调用（幂等保护见 R2）。
+        确认信号来自**确定性 guard 节点**以 confirm=true 重放工具调用（不再依赖 LLM
+        回忆），或历史轮次已确认（``confirmed_slots`` 去重）。
         决策层不写 state.reply，确认提示由生成节点按 yml 模板产出。
         """
         confirmed = args.get("confirm") is True or self._refund_confirmed(state, order_id, refund_type)
         reason_block = f"（原因：{reason}）" if reason else ""
+        label = self._refund_type_label(refund_type)
         if not confirmed:
+            # 挂起待确认态：记录负载，供下一轮「确认/取消」信号被 guard 节点确定性拦截。
+            # 这是 R1 能真正闭环的关键——否则「用户回确认」会被当新意图而失效。
+            state.pending_confirmation = {
+                "tool": "request_refund",
+                "order_id": order_id,
+                "refund_type": refund_type,
+                "reason": reason,
+            }
             return ToolExecutionResult(
                 kind="confirmation",
-                raw_result={"order_id": order_id, "refund_type": refund_type, "reason_block": reason_block, "confirmed": False},
+                raw_result={
+                    "order_id": order_id,
+                    "refund_type": refund_type,
+                    "refund_type_label": label,
+                    "reason_block": reason_block,
+                    "confirmed": False,
+                },
             )
         # 已确认 → 执行（R2 幂等兜底：重复确认不会生成新受理单）。
+        state.pending_confirmation = None
         result = self.refund_service.request_refund(order_id, refund_type=refund_type, reason=reason)
         # 记录确认痕迹，便于审计与跨轮去重。
         marker = f"refund:{order_id}:{refund_type}"
@@ -482,7 +507,7 @@ class ToolExecutor:
             state.confirmed_slots.append(marker)
         return ToolExecutionResult(
             kind="success",
-            raw_result=result.model_dump(),
+            raw_result={**result.model_dump(), "refund_type_label": label},
         )
 
     def _request_refund_handoff(self, order_id, order_status, refund_type, reason, state) -> ToolExecutionResult:
@@ -511,6 +536,11 @@ class ToolExecutor:
     def _refund_confirmed(state: ConversationState, order_id: str, refund_type: str) -> bool:
         """该 (订单, 类型) 是否已在历史轮次被确认过（审计/跨轮去重用）。"""
         return f"refund:{order_id}:{refund_type}" in state.confirmed_slots
+
+    @staticmethod
+    def _refund_type_label(refund_type: str) -> str:
+        """退款类型枚举 → 中文展示文案；未知/已为中文值原样透传。"""
+        return REFUND_TYPE_LABELS.get(refund_type, refund_type)
 
     def _modify_address(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         order_id = args.get("order_id") or state.slots.get("order_id")

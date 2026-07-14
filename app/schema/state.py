@@ -65,4 +65,9 @@ class ConversationState(BaseModel):
     handoff_reason: str = ""
     pending_intents: list[PendingIntent] = Field(default_factory=list)
     intent_clarification_count: int = 0
+    # R1 二次确认挂起态：发出 confirmation 后、用户确认前，记录待确认操作的负载，
+    # 供下一轮「确认/取消」信号确定性拦截（不依赖 LLM 回忆）。结构示例：
+    # {"tool": "request_refund", "order_id": "A1002", "refund_type": "refund", "reason": ""}
+    # 确认执行 / 取消 / 用户转移话题时清空。
+    pending_confirmation: dict[str, Any] | None = None
     reply: str = ""

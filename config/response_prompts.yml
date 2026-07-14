@@ -21,9 +21,10 @@ tool_response_templates:
     handoff: "已为你转人工客服，服务单号 {ticket_id}。人工客服会基于当前会话上下文继续处理。"
     error: "转人工服务暂不可用，请稍后重试或拨打官方客服热线。"
   request_refund:
-    confirmation: "⚠️ 即将为订单 {order_id} 发起【{refund_type}】申请{reason_block}，该操作不可撤销。请确认是否继续？确认请直接回复「确认」。"
-    success: "已为订单 {order_id} 提交{refund_type}申请，受理单号 {refund_id}。"
+    confirmation: "⚠️ 即将为订单 {order_id} 发起【{refund_type_label}】申请{reason_block}，该操作不可撤销。请确认是否继续？确认请直接回复「确认」。"
+    success: "已为订单 {order_id} 提交{refund_type_label}申请，受理单号 {refund_id}。"
     handoff: "已为您创建退款申请（订单 {order_id}，当前状态：{order_status}），并转交人工客服处理，服务单号 {handoff_ticket_id}。"
+    cancelled: "已取消本次退款申请，如需办理可随时告诉我。"
     error: "请提供订单号，以便为您发起退款。"
   modify_address:
     success: "地址修改申请已提交，新地址：{new_address}。"
