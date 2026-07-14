@@ -166,10 +166,11 @@ TOOL_ALIASES: dict[str, str] = {
 # 供 registry.build_tool_schemas() 读取
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {name: spec["schema"] for name, spec in TOOLS.items()}
 
-# 退款状态策略：命中的状态走「自动退款」路径（未来启用）。
-# 阶段一集合为空 → 所有状态的退款请求一律建申请单 + 转人工（不自动执行真退款）。
-# 后续把明确可退的状态（如 待付款 / 待发货）加入此集合，即可收窄人工介入。
-AUTO_REFUNDABLE_STATUSES: frozenset[str] = frozenset()
+# 退款状态策略：命中的状态走「自动退款」路径（R1 二次确认 → R2 幂等执行真退款）；
+# 其余状态（已发货 / 派送中 / 已签收 / 已完成 / 待付款之外的存疑状态）一律建申请单 + 转人工。
+# 这是收窄人工介入的单一数据源——后续只需把更多明确可退的状态加入此集合，
+# 执行框架（_request_refund 分流逻辑）无需改动。
+AUTO_REFUNDABLE_STATUSES: frozenset[str] = frozenset({"待付款", "待发货"})
 
 
 class ToolExecutor:
