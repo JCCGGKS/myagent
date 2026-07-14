@@ -16,7 +16,6 @@ from app.model.knowledge import (
 )
 from app.pkgs.vector import get_qdrant_client
 from app.business.rag import (
-    Chunker,
     KnowledgeIngestionService,
     build_embedding_client,
 )
@@ -62,14 +61,12 @@ def _build_ingestion_service() -> KnowledgeIngestionService:
     embedding_client = build_embedding_client()
     return KnowledgeIngestionService(
         qdrant_client=qdrant_client,
-        chunker=Chunker(
-            chunk_size=rag_config.chunk_size,
-            chunk_overlap=rag_config.chunk_overlap,
-            min_chunk_size=rag_config.min_chunk_size,
-        ),
         embedding_client=embedding_client,
         collection_name=qdrant_client.collection_name,
         vector_size=qdrant_client.vector_size,
+        chunk_size=rag_config.chunk_size,
+        chunk_overlap=rag_config.chunk_overlap,
+        min_chunk_size=rag_config.min_chunk_size,
     )
 
 

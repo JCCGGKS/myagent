@@ -242,34 +242,6 @@ class QdrantClient:
         )
         return [_hit_to_dict(h) for h in result.points]
 
-    def search_hybrid(
-        self,
-        query: str,
-        query_vector: list[float],
-        limit: int = 10,
-        fusion_method: str = "rrf",
-        user_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """混合检索：Qdrant 原生 prefetch + RRF 融合（稠密 + BM25 稀疏）。"""
-        self._ensure_collection()
-        from app.business.rag.sparse_bm25 import build_sparse_vector
-        from qdrant_client.models import Fusion, FusionQuery, Prefetch
-
-        fusion = Fusion.RRF if fusion_method == "rrf" else Fusion.DBSF
-        sparse = build_sparse_vector(query)
-        result = self._client.query_points(
-            collection_name=self.collection_name,
-            prefetch=[
-                Prefetch(query=sparse, using=SPARSE_VECTOR_NAME, limit=limit),
-                Prefetch(query=query_vector, using=DENSE_VECTOR_NAME, limit=limit),
-            ],
-            query=FusionQuery(fusion=fusion),
-            limit=limit,
-            query_filter=self._user_filter(user_id),
-            with_payload=True,
-        )
-        return [_hit_to_dict(h) for h in result.points]
-
 
 def _hit_to_dict(hit: Any) -> dict[str, Any]:
     """将 Qdrant ScoredPoint 转为统一检索结果字典。"""

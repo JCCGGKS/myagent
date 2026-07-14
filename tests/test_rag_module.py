@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from app.business.rag import BM25Strategy, SemanticStrategy, HybridStrategy
-from app.business.rag.retrieval_strategy import Document
+from app.business.rag.retrieval.models import Document
 from app.business.tools.rag_tool import RagRetrieveTool
 from app.pkgs.vector import QdrantClient
 
@@ -91,7 +91,7 @@ class TestRagRetrieveTool:
     """测试 RAG 检索工具。"""
 
     def _fake_tool(self) -> RagRetrieveTool:
-        from app.business.rag.retrieval_strategy import Document
+        from app.business.rag.retrieval.models import Document
 
         fake_strategy = MagicMock()
         fake_strategy.retrieve.return_value = [
@@ -132,7 +132,7 @@ class TestRerankClient:
     """测试 DashScope Rerank 客户端（mock HTTP）。"""
 
     def test_build_disabled_returns_none(self, monkeypatch):
-        from app.business.rag.rerank import build_rerank_client
+        from app.business.rag.retrieval.rerank import build_rerank_client
         # 无配置 -> 返回 None
         monkeypatch.setattr(
             "app.config.rag_config.load_rag_config_raw",
@@ -142,7 +142,7 @@ class TestRerankClient:
 
     def test_rerank_reorders_by_score(self, monkeypatch):
         import json
-        from app.business.rag.rerank import RerankClient
+        from app.business.rag.retrieval.rerank import RerankClient
 
         def fake_post(url, json=None, headers=None, timeout=None):
             class R:
@@ -154,28 +154,28 @@ class TestRerankClient:
                     ]}}
             return R()
 
-        monkeypatch.setattr("app.business.rag.rerank.requests.post", fake_post)
+        monkeypatch.setattr("app.business.rag.retrieval.rerank.requests.post", fake_post)
         client = RerankClient(api_key="test-key")
         scored = client.rerank("q", ["docA", "docB"])
         assert [i for i, _ in scored] == [1, 0]  # 降序：docB 在前
 
     def test_rerank_failure_falls_back(self, monkeypatch):
-        from app.business.rag.rerank import RerankClient
+        from app.business.rag.retrieval.rerank import RerankClient
 
         def fake_post(*a, **k):
             raise RuntimeError("network down")
 
-        monkeypatch.setattr("app.business.rag.rerank.requests.post", fake_post)
+        monkeypatch.setattr("app.business.rag.retrieval.rerank.requests.post", fake_post)
         client = RerankClient(api_key="test-key")
         scored = client.rerank("q", ["a", "b", "c"])
         assert [i for i, _ in scored] == [0, 1, 2]  # 降级保持原序
 
 
-class TestRagToolDedupCredibility:
-    """测试去重与可信度排序（设计 §7.3）。"""
+class TestRagToolDedup:
+    """测试去重（设计 §7.3）。融合后直接结束，不额外调序。"""
 
     def _tool(self, **kw) -> RagRetrieveTool:
-        from app.business.rag.retrieval_strategy import Document
+        from app.business.rag.retrieval.models import Document
         fake = MagicMock()
         fake.retrieve.return_value = [
             Document(id="1", content="退款政策A", metadata={"doc_type": "faq"}, score=0.9),
@@ -191,14 +191,3 @@ class TestRagToolDedupCredibility:
         assert contents.count("退款政策A") == 1  # 去重
         kept = [r for r in res if r["content"] == "退款政策A"][0]
         assert kept["metadata"]["doc_type"] == "faq"  # 保留高分那份
-
-    def test_credibility_breaks_tie(self):
-        # faq(0.03) vs help(0.01)：同分时应优先 faq
-        tool = self._tool()
-        docs = [
-            Document(id="h", content="X", metadata={"doc_type": "help"}, score=0.5),
-            Document(id="f", content="Y", metadata={"doc_type": "faq"}, score=0.5),
-        ]
-        tool.strategy.retrieve.return_value = docs
-        res = tool.run(query="q")
-        assert res[0]["metadata"]["doc_type"] == "faq"

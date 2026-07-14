@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.business.rag.chunker import Chunker
+from app.business.rag.chunking.registry import get_chunking_strategy
 from app.pkgs.vector import QdrantClient
 from app.utils.module_logger import _tagged, get_module_logger
 
@@ -80,14 +80,19 @@ class KnowledgeIngestionService:
     def __init__(
         self,
         qdrant_client: QdrantClient,
-        chunker: Chunker | None = None,
         embedding_client: EmbeddingClient | None = None,
         collection_name: str = "customer_service_knowledge",
         vector_size: int = 1024,
+        chunk_size: int = 800,
+        chunk_overlap: int = 100,
+        min_chunk_size: int = 50,
     ) -> None:
         self.qdrant_client = qdrant_client
-        self.chunker = chunker or Chunker()
         self.embedding_client = embedding_client
+        # 切块参数（来自 rag 段，前端可控）：下发给各分块策略。
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.min_chunk_size = min_chunk_size
         self.collection_name = collection_name
         self.vector_size = vector_size
         # 同步集合名与向量维度，便于首次 upsert 时建表
@@ -118,8 +123,16 @@ class KnowledgeIngestionService:
         user_id: int | None = None,
         doc_id: int | None = None,
     ) -> int:
-        """入库 Markdown 文本。"""
-        chunks = self.chunker.chunk_markdown(text, doc_type=doc_type, source=source)
+        """入库 Markdown 文本：按 doc_type / markdown 格式取策略切块。"""
+        strategy = get_chunking_strategy(doc_type, "markdown")
+        chunks = strategy.chunk(
+            text,
+            doc_type=doc_type,
+            source=source,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            min_chunk_size=self.min_chunk_size,
+        )
         return self._ingest_chunks(chunks, user_id=user_id, doc_id=doc_id)
 
     def ingest_json_records(
@@ -130,14 +143,22 @@ class KnowledgeIngestionService:
         user_id: int | None = None,
         doc_id: int | None = None,
     ) -> int:
-        """入库 JSON 记录列表（如 FAQ 数据）。"""
+        """入库 JSON 记录列表（如 FAQ 数据）：按 doc_type / json 格式取策略切块。"""
+        strategy = get_chunking_strategy(doc_type, "json")
         total = 0
         for rec in records:
             content = rec.get(text_field, "")
             if not content:
                 continue
             meta = {k: v for k, v in rec.items() if k != text_field}
-            chunks = self.chunker.chunk_text(content, doc_type=doc_type, source=json.dumps(meta, ensure_ascii=False))
+            chunks = strategy.chunk(
+                content,
+                doc_type=doc_type,
+                source=json.dumps(meta, ensure_ascii=False),
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                min_chunk_size=self.min_chunk_size,
+            )
             total += self._ingest_chunks(chunks, user_id=user_id, doc_id=doc_id)
         return total
 
@@ -157,6 +178,7 @@ class KnowledgeIngestionService:
                 payload: dict[str, Any] = {
                     "content": chunk.content,
                     "doc_type": chunk.doc_type,
+                    "chunk_type": chunk.chunk_type,
                     "heading_path": chunk.heading_path,
                     "metadata": chunk.metadata,
                 }
@@ -189,6 +211,7 @@ class KnowledgeIngestionService:
             payload: dict[str, Any] = {
                 "content": chunk.content,
                 "doc_type": chunk.doc_type,
+                "chunk_type": chunk.chunk_type,
                 "heading_path": chunk.heading_path,
                 "metadata": chunk.metadata,
             }

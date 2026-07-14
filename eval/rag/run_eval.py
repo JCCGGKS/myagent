@@ -37,8 +37,8 @@ sys.path.insert(0, str(ROOT))
 
 from qdrant_client.models import Modifier, SparseVectorParams
 
-from app.business.rag.chunker import Chunker
-from app.business.rag.retrieval_strategy import BM25Strategy
+from app.business.rag.chunking.registry import get_chunking_strategy
+from app.business.rag.retrieval.bm25 import BM25Strategy
 from app.business.rag.sparse_bm25 import build_sparse_vector
 from app.config.rag_config import get_rag_config_service
 from app.pkgs.vector import get_qdrant_client
@@ -123,8 +123,11 @@ CASES: list[dict] = [
 # --------------------------------------------------------------------------- #
 # 入库
 # --------------------------------------------------------------------------- #
-def ingest_knowledge(client, chunker: Chunker, collection: str) -> int:
-    """分块 + 构建稀疏向量，写入 Qdrant（仅 bm25 腿，无需 embedding）。"""
+def ingest_knowledge(client, collection: str) -> int:
+    """分块 + 构建稀疏向量，写入 Qdrant（仅 bm25 腿，无需 embedding）。
+
+    分块改用策略模式：按 doc_type / markdown 取 MarkdownChunkingStrategy。
+    """
     # 重建稀疏专用集合（与生产集合 schema 解耦）
     real = client._client
     if real.collection_exists(collection):
@@ -144,7 +147,8 @@ def ingest_knowledge(client, chunker: Chunker, collection: str) -> int:
             print(f"[warn] 知识文档缺失: {path}")
             continue
         text = path.read_text(encoding="utf-8")
-        chunks = chunker.chunk_markdown(text, doc_type=doc_type, source=fname)
+        strategy = get_chunking_strategy(doc_type, "markdown")
+        chunks = strategy.chunk(text, doc_type=doc_type, source=fname)
         points = []
         for ch in chunks:
             points.append(
@@ -279,18 +283,13 @@ def main() -> None:
     min_score = cfg.min_score_threshold
 
     client = get_qdrant_client()
-    chunker = Chunker(
-        chunk_size=cfg.chunk_size,
-        chunk_overlap=cfg.chunk_overlap,
-        min_chunk_size=cfg.min_chunk_size,
-    )
 
     if args.no_ingest:
         client.collection_name = EVAL_COLLECTION
         chunks = -1
         print(f"[skip] 复用集合 {EVAL_COLLECTION}")
     else:
-        chunks = ingest_knowledge(client, chunker, EVAL_COLLECTION)
+        chunks = ingest_knowledge(client, EVAL_COLLECTION)
         print(f"[ingest] 共入库 {chunks} 块 -> {EVAL_COLLECTION}")
 
     result = run_eval(client, top_k=top_k, min_score=min_score)
