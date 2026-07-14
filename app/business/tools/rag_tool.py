@@ -42,7 +42,10 @@ class RagRetrieveTool:
         rerank_model: str = "",
         credibility_weights: dict[str, float] | None = None,
     ) -> None:
-        self.strategy = strategy or get_strategy_from_config()
+        # 策略延迟到首次 run() 再构建：避免模块导入时（如 tool_executor 顶层构造）
+        # 因未配置向量模型而直接抛错，使 bm25 等无需向量的检索策略在无 embedding
+        # 配置时也能正常导入与启动。语义/混合检索真正调用时若仍缺向量模型会再报错。
+        self._strategy = strategy
         # top_k 未显式传入时，从环境相关的 RagConfig 读取（不再写死为 5）
         self.top_k = top_k if top_k is not None else _config_top_k()
         # None 表示运行时由 RagConfig 决定（支持 /rag/config 动态开关）
@@ -50,6 +53,13 @@ class RagRetrieveTool:
         # 未指定模型时使用后端默认重排模型
         self.rerank_model = rerank_model or DEFAULT_RERANK_MODEL
         self.credibility_weights = credibility_weights if credibility_weights is not None else DOC_TYPE_CREDIBILITY
+
+    @property
+    def strategy(self) -> RetrievalStrategy:
+        """懒加载检索策略：首次访问时按配置构建（需要时才校验向量模型）。"""
+        if self._strategy is None:
+            self._strategy = get_strategy_from_config()
+        return self._strategy
 
     def _is_rerank_enabled(self) -> bool:
         if self._rerank_enabled_override is not None:
@@ -66,7 +76,7 @@ class RagRetrieveTool:
         Returns:
             包含 `content`、`metadata`、`score` 的文档列表。
         """
-        # 1. 执行检索
+        # 1. 执行检索（访问 strategy 触发懒加载，缺向量模型时在此才报错）
         logger.info(_tagged("tool", "rag_retrieve start query=%r user_id=%s top_k=%d"), query, user_id, self.top_k)
         docs = self.strategy.retrieve(query, user_id=user_id)
 

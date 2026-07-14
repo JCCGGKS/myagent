@@ -147,8 +147,36 @@ class KnowledgeIngestionService:
         if not chunks:
             return 0
         if self.embedding_client is None:
-            logger.warning(_tagged("rag", "未配置 embedding_client，跳过向量化（仅记录分块数=%d）"), len(chunks))
-            return 0
+            # BM25 仅依赖本地稀疏向量，无需 embedding：写入稀疏向量即可（前端选 bm25
+            # 且未配向量模型时的合法路径）。semantic/hybrid 已在 /knowledge/upload 预检拦截。
+            from app.business.rag.sparse_bm25 import build_sparse_vector
+
+            points = []
+            for chunk in chunks:
+                pid = str(uuid.uuid4())
+                payload: dict[str, Any] = {
+                    "content": chunk.content,
+                    "doc_type": chunk.doc_type,
+                    "heading_path": chunk.heading_path,
+                    "metadata": chunk.metadata,
+                }
+                if user_id is not None:
+                    payload["user_id"] = user_id
+                if doc_id is not None:
+                    payload["doc_id"] = doc_id
+                points.append(
+                    {
+                        "id": pid,
+                        "vector": {"bm25": build_sparse_vector(chunk.content)},
+                        "payload": payload,
+                    }
+                )
+            self.qdrant_client.upsert(points)
+            logger.info(
+                _tagged("rag", "已入库 %d 个块（仅 BM25 稀疏向量，未配 embedding） user_id=%s doc_id=%s"),
+                len(points), user_id, doc_id,
+            )
+            return len(points)
 
         from app.business.rag.sparse_bm25 import build_sparse_vector
 

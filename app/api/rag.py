@@ -105,16 +105,22 @@ async def knowledge_upload(
 
     ingestion = _build_ingestion_service()
 
-    # 向量化未启用（缺 embedding 配置）时直接判失败，避免显示“成功但 0 向量”的误导状态
-    if ingestion.embedding_client is None:
+    # 检索策略感知的向量模型预检：
+    # - 相似度检索（semantic）/ 混合检索（hybrid）依赖稠密向量，必须配置向量模型；
+    # - BM25 仅用本地稀疏向量，无需向量模型，可正常入库。
+    # 未配置且策略需要向量时，提前拦截并给出与策略相关的明确提示，避免底层报错。
+    if (
+        get_rag_config_service().get_config().retrieval_strategy in ("semantic", "hybrid")
+        and ingestion.embedding_client is None
+    ):
         await file_dao.update_status(
             doc_id,
             KNOWLEDGE_FILE_STATUS_ERROR,
-            error_message="向量化未启用：缺少 embedding.api_key 配置，未写入任何向量",
+            error_message="选择的检索策略需要配置向量模型",
         )
         raise HTTPException(
             status_code=400,
-            detail="向量化未启用：请在配置中填写 embedding.api_key（及可达的 qdrant 地址）",
+            detail="选择的检索策略需要配置向量模型",
         )
 
     try:
