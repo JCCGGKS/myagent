@@ -112,7 +112,6 @@ export interface ToolResult {
     | HandoffToolData
     | KnowledgeToolData
     | null;
-  user_facing_summary?: string;
 }
 
 export interface MessageItem {
