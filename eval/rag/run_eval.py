@@ -48,7 +48,7 @@ from app.pkgs.vector.qdrant import SPARSE_VECTOR_NAME
 # 评估集合（eval 专用，避免污染生产 customer_service_knowledge）
 # --------------------------------------------------------------------------- #
 EVAL_COLLECTION = "eval_kb_bm25"
-KNOWLEDGE_DIR = ROOT / "template" / "knowledge"
+KNOWLEDGE_DIR = ROOT / "template" / "knowledge" / "md"
 
 # 知识文档 → doc_type（仅作元数据，BM25 检索不使用；与生产入库口径一致）
 DOC_TYPE_MAP: dict[str, str] = {
