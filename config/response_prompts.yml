@@ -5,8 +5,31 @@ response_prompts:
   logistics_not_found: "没有查到该订单的物流信息，请确认订单号是否正确。"
   greeting: "你好，我可以帮你查询订单、物流、退款售后问题，也可以为你转人工客服。"
   unknown_fallback: "这个问题我暂时无法准确处理。你可以换一种说法，或者我可以帮你转人工。"
-  handoff_template: "已为你转人工客服，服务单号 {ticket_id}。人工客服会基于当前会话上下文继续处理。"
-  order_template: "订单 {order_id} 当前状态为 {status}，商品是 {product_name}，金额 {amount} 元。"
-  logistics_template: "订单 {order_id} 当前物流状态为 {tracking_status}，最近一条记录是 {latest_time} {latest_status}。"
   complaint_ack: "非常抱歉给你带来不好的体验，我会尽快为你处理这个问题。"
   unsupported_biz: "这个问题超出了我的服务范围，建议你联系相关部门或拨打官方客服热线咨询。"
+
+# 工具结果 → 用户话术（按 tool → kind 组织）。占位符取自 tool_result.sanitized_result。
+# 决策层只产结构化数据，所有面向用户的文案集中在此配置，改措辞只改本段、不动代码。
+tool_response_templates:
+  query_order:
+    success: "订单 {order_id} 当前状态为 {status}，商品是 {product_name}，金额 {amount} 元。"
+    error: "请提供订单号，以便我为您查询。"
+  query_logistics:
+    success: "订单 {order_id} 当前物流状态为 {tracking_status}，最近一条记录是 {latest_time} {latest_status}。"
+    error: "请提供订单号，以便我为您查询物流。"
+  create_handoff:
+    handoff: "已为你转人工客服，服务单号 {ticket_id}。人工客服会基于当前会话上下文继续处理。"
+    error: "转人工服务暂不可用，请稍后重试或拨打官方客服热线。"
+  request_refund:
+    confirmation: "⚠️ 即将为订单 {order_id} 发起【{refund_type}】申请{reason_block}，该操作不可撤销。请确认是否继续？确认请直接回复「确认」。"
+    success: "已为订单 {order_id} 提交{refund_type}申请，受理单号 {refund_id}。"
+    handoff: "已为您创建退款申请（订单 {order_id}，当前状态：{order_status}），并转交人工客服处理，服务单号 {handoff_ticket_id}。"
+    error: "请提供订单号，以便为您发起退款。"
+  modify_address:
+    success: "地址修改申请已提交，新地址：{new_address}。"
+    error: "请提供订单号与新收货地址。"
+  apply_invoice:
+    success: "电子发票已开具，抬头：{invoice_title}。"
+    error: "请提供订单号，以便开具发票。"
+  rag_retrieve:
+    success: "检索到 {count} 条相关文档。"

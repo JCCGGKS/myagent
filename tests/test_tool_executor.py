@@ -75,7 +75,8 @@ class TestToolExecutor:
         assert messages[0]["tool_call_id"] == "call_1"
         assert messages[0]["name"] == "query_order"
         assert state.tool_result is not None
-        assert state.tool_result.kind == "order_query"
+        assert state.tool_result.tool == "query_order"
+        assert state.tool_result.kind == "success"
         assert state.tool_result.sanitized_result["order_id"] == "A1001"
 
     def test_run_logistics_sets_logistics_result(self):
@@ -99,7 +100,8 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         assert state.tool_result is not None
-        assert state.tool_result.kind == "logistics"
+        assert state.tool_result.tool == "query_logistics"
+        assert state.tool_result.kind == "success"
         assert state.tool_result.sanitized_result["tracking_status"] == "运输中"
 
     def test_run_rag_retrieve_uses_rag_tool(self):
@@ -123,7 +125,8 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         rag_tool.run.assert_called_once_with("退货政策", user_id=1)
-        assert state.tool_result.kind == "knowledge"
+        assert state.tool_result.tool == "rag_retrieve"
+        assert state.tool_result.kind == "success"
 
     def test_run_unknown_tool_returns_error_result(self):
         rag_tool = MagicMock()
@@ -174,8 +177,10 @@ class TestToolExecutor:
         import json
 
         parsed = json.loads(messages[0]["content"])
+        assert parsed["tool"] == "create_handoff"
         assert parsed["kind"] == "handoff"
         assert state.tool_result is not None
+        assert state.tool_result.tool == "create_handoff"
         assert state.tool_result.kind == "handoff"
 
     def test_create_handoff_sets_handoff_state(self):
@@ -187,16 +192,24 @@ class TestToolExecutor:
             handoff_service=_fake_handoff_service(),
             rag_tool=rag_tool,
         )
+        tool_calls = [
+            {
+                "id": "call_h",
+                "type": "function",
+                "function": {"name": "create_handoff", "arguments": "{}"},
+            }
+        ]
         state = _state(summary="需要人工处理")
+        asyncio.run(executor.run(tool_calls, state))
 
-        updated = executor.create_handoff(state)
+        assert state.tool_result.tool == "create_handoff"
+        assert state.tool_result.kind == "handoff"
+        assert state.handoff is True
+        assert state.tool_result.sanitized_result["ticket_id"] == "T-001"
 
-        assert updated.tool_result.kind == "handoff"
-        assert updated.handoff is True
-        assert updated.tool_result.sanitized_result["ticket_id"] == "T-001"
-
-    def test_create_handoff_writes_reply_to_skip_redundant_llm(self):
-        """create_handoff 应直接写 state.reply，使 response_generator 命中早返回、不再调 LLM。"""
+    def test_create_handoff_does_not_write_reply_decision_only(self):
+        """决策层（create_handoff）只产 tool_result + 状态标志，绝不直接写 state.reply；
+        回复由 response_generator 按 yml 模板统一生成。"""
         rag_tool = MagicMock()
         rag_tool.run.return_value = []
         executor = ToolExecutor(
@@ -205,17 +218,29 @@ class TestToolExecutor:
             handoff_service=_fake_handoff_service(),
             rag_tool=rag_tool,
         )
+        tool_calls = [
+            {
+                "id": "call_h",
+                "type": "function",
+                "function": {"name": "create_handoff", "arguments": "{}"},
+            }
+        ]
         state = _state(summary="需要人工处理")
+        asyncio.run(executor.run(tool_calls, state))
 
-        updated = executor.create_handoff(state)
-
-        assert updated.reply
-        assert "T-001" in updated.reply
-        # reply 非空 → response_generator 会直接 return，不触发额外 LLM 调用
-        assert updated.handoff is True
+        assert state.tool_result.tool == "create_handoff"
+        assert state.tool_result.kind == "handoff"
+        assert state.handoff is True
+        assert state.tool_result.sanitized_result["ticket_id"] == "T-001"
+        # 决策层不写回复 → 交由生成节点按 yml 模板产出
+        assert state.reply == ""
 
     def test_run_request_refund_needs_confirmation_first(self):
-        """R1 二次确认：未确认（无 confirm=true）时只返回确认提示，绝不真正发起退款。"""
+        """R1 二次确认：未确认（无 confirm=true）时只返回确认提示，绝不真正发起退款。
+
+        注：订单 A1001 状态为「已发货」，需经 refund_auto_states={"已发货"} 切回自动退款
+        路径，才能命中 R1 确认分支（否则默认走阶段一的「建申请单+转人工」分支）。
+        """
         rag_tool = MagicMock()
         rag_tool.run.return_value = []
         refund_service = RefundService()
@@ -225,6 +250,7 @@ class TestToolExecutor:
             handoff_service=_fake_handoff_service(),
             refund_service=refund_service,
             rag_tool=rag_tool,
+            refund_auto_states={"已发货"},
         )
         tool_calls = [
             {
@@ -238,17 +264,21 @@ class TestToolExecutor:
 
         # 返回 confirmation 型结果，且未真正办理（计数器未动，受理单未生成）
         assert state.tool_result is not None
+        assert state.tool_result.tool == "request_refund"
         assert state.tool_result.kind == "confirmation"
-        assert "确认" in state.tool_result.user_facing_summary
-        assert state.reply
-        assert "确认" in state.reply
-        # 确认提示直达用户（response_generator 早返回），同时作为 tool 消息回灌 LLM
+        # 决策层不写回复，确认话术由生成节点按 yml 模板产出（数据在 raw_result 中）
+        assert state.reply == ""
+        assert state.tool_result.raw_result["order_id"] == "A1001"
+        # 同时作为 tool 消息回灌 LLM
         assert json.loads(messages[0]["content"])["kind"] == "confirmation"
         # 服务层未发起任何退款
         assert refund_service._by_key == {}
 
     def test_run_request_refund_with_confirm_executes(self):
-        """R1 二次确认：用户确认后模型以 confirm=true 二次调用，才真正发起退款。"""
+        """R1 二次确认：用户确认后模型以 confirm=true 二次调用，才真正发起退款。
+
+        同样需 refund_auto_states={"已发货"} 切回自动退款路径。
+        """
         rag_tool = MagicMock()
         rag_tool.run.return_value = []
         executor = ToolExecutor(
@@ -257,6 +287,7 @@ class TestToolExecutor:
             handoff_service=_fake_handoff_service(),
             refund_service=RefundService(),
             rag_tool=rag_tool,
+            refund_auto_states={"已发货"},
         )
         tool_calls = [
             {
@@ -269,7 +300,8 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         assert state.tool_result is not None
-        assert state.tool_result.kind == "aftersale_refund"
+        assert state.tool_result.tool == "request_refund"
+        assert state.tool_result.kind == "success"
         assert state.tool_result.sanitized_result["order_id"] == "A1001"
         assert state.tool_result.sanitized_result["refund_id"].startswith("R")
         # 确认痕迹写入审计字段
@@ -319,8 +351,11 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         assert state.tool_result is not None
-        assert state.tool_result.kind == "order_query"
-        assert state.tool_result.sanitized_result["new_address"] == "北京市朝阳区"
+        assert state.tool_result.tool == "modify_address"
+        assert state.tool_result.kind == "success"
+        # raw_result 含完整地址（未经脱敏）；sanitized_result 中地址字段按策略掩码
+        assert state.tool_result.raw_result["new_address"] == "北京市朝阳区"
+        assert "****" in state.tool_result.sanitized_result["new_address"]
 
     def test_run_apply_invoice_uses_order_service(self):
         rag_tool = MagicMock()
@@ -343,7 +378,8 @@ class TestToolExecutor:
         asyncio.run(executor.run(tool_calls, state))
 
         assert state.tool_result is not None
-        assert state.tool_result.kind == "order_query"
+        assert state.tool_result.tool == "apply_invoice"
+        assert state.tool_result.kind == "success"
         assert state.tool_result.sanitized_result["invoice_title"] == "XX公司"
 
     def test_run_failure_isolation_continues_batch(self):
@@ -396,7 +432,7 @@ class TestToolExecutor:
         assert json.loads(failed["content"])["kind"] == "error"
         # 第二个（正常）照常执行
         ok = [m for m in messages if m["tool_call_id"] == "call_b"][0]
-        assert json.loads(ok["content"])["kind"] == "knowledge"
+        assert json.loads(ok["content"])["kind"] == "success"
         # 指标未崩溃（last_result 落为 error，因为异常工具在最后被处理？此处批末是 rag，故 last 为 knowledge）
         assert state.tool_result is not None
 
@@ -404,7 +440,7 @@ class TestToolExecutor:
         """失败重试：非副作用工具基础设施故障，重试后成功则不返回 error。"""
         rag_tool = MagicMock()
         rag_tool.run.return_value = []
-        success = ToolExecutionResult(kind="order_query", user_facing_summary="ok")
+        success = ToolExecutionResult(kind="success")
         # 前两次抛异常，第三次成功
         flaky = MagicMock(side_effect=[RuntimeError("t1"), RuntimeError("t2"), success])
 
@@ -431,8 +467,10 @@ class TestToolExecutor:
 
         # 共尝试 3 次（1 + max_retries=2）
         assert flaky.call_count == 3
-        assert json.loads(messages[0]["content"])["kind"] == "order_query"
-        assert state.tool_result.kind == "order_query"
+        assert json.loads(messages[0]["content"])["tool"] == "query_order"
+        assert json.loads(messages[0]["content"])["kind"] == "success"
+        assert state.tool_result.tool == "query_order"
+        assert state.tool_result.kind == "success"
 
     def test_run_side_effect_tool_not_retried(self):
         """副作用工具（request_refund）失败不自动重试，避免重复触发不可逆动作。"""
@@ -486,7 +524,10 @@ class TestToolExecutor:
         assert third.ticket_id != first.ticket_id
 
     def test_run_refund_confirmed_twice_idempotent(self):
-        """R2 兜底：用户确认后即便模型重复以 confirm=true 调用，也不会生成多个受理单。"""
+        """R2 兜底：用户确认后即便模型重复以 confirm=true 调用，也不会生成多个受理单。
+
+        需 refund_auto_states={"已发货"} 切回自动退款路径，才能走 R2 幂等执行分支。
+        """
         rag_tool = MagicMock()
         rag_tool.run.return_value = []
         executor = ToolExecutor(
@@ -495,6 +536,7 @@ class TestToolExecutor:
             handoff_service=_fake_handoff_service(),
             refund_service=RefundService(),
             rag_tool=rag_tool,
+            refund_auto_states={"已发货"},
         )
         call = {
             "id": "call_confirm",
@@ -508,6 +550,96 @@ class TestToolExecutor:
         asyncio.run(executor.run([call], state))
         second_id = state.tool_result.sanitized_result["refund_id"]
         assert first_id == second_id
+
+    def test_request_refund_in_transit_creates_handoff(self):
+        """阶段一：不可自动退款的状态（如 已发货）不弹确认、不真退，而是建退款申请单 + 转人工。
+
+        默认 ToolExecutor（refund_auto_states 为空）→ 所有状态走 handoff 分支。
+        """
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        handoff_service = _fake_handoff_service()
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=handoff_service,
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {
+                "id": "call_h",
+                "type": "function",
+                "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'},
+            }
+        ]
+        state = _state()
+        asyncio.run(executor.run(tool_calls, state))
+
+        assert state.tool_result.tool == "request_refund"
+        assert state.tool_result.kind == "handoff"
+        # 决策层不写回复，话术由生成节点按 yml 模板产出
+        assert state.reply == ""
+        assert state.handoff is True
+        handoff_service.create_handoff.assert_called_once()
+        assert "handoff_ticket_id" in state.tool_result.sanitized_result
+        # 结果对象无 user_facing_summary 字段（已删除）
+        assert not hasattr(state.tool_result, "user_facing_summary")
+
+    def test_request_refund_handoff_idempotent_same_session(self):
+        """同会话重复「退掉」→ 同一服务单号（handoff 按 session_id 去重）。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        handoff_service = _fake_handoff_service()
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=handoff_service,
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call = {
+            "id": "call_h2",
+            "type": "function",
+            "function": {"name": "request_refund", "arguments": '{"order_id": "A1001", "refund_type": "refund"}'},
+        }
+        state = _state()
+        asyncio.run(executor.run([call], state))
+        first_ticket = state.tool_result.sanitized_result["handoff_ticket_id"]
+        asyncio.run(executor.run([call], state))
+        second_ticket = state.tool_result.sanitized_result["handoff_ticket_id"]
+        assert first_ticket == second_ticket
+
+    def test_request_refund_unknown_order_errors(self):
+        """订单不存在 → 返回 error（不建单、不转人工）。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        # 订单服务：仅 A1001 存在，其余（含 NOPE）返回 None
+        order_service = MagicMock()
+
+        def _get(oid: str):
+            if oid == "A1001":
+                return OrderInfo(order_id="A1001", status="已发货", product_name="键盘", amount=199.0)
+            return None
+
+        order_service.get_order_status.side_effect = _get
+        executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call = {
+            "id": "call_h3",
+            "type": "function",
+            "function": {"name": "request_refund", "arguments": '{"order_id": "NOPE", "refund_type": "refund"}'},
+        }
+        state = _state()
+        asyncio.run(executor.run([call], state))
+        assert state.tool_result.tool == "request_refund"
+        assert state.tool_result.kind == "error"
+        assert "NOPE" in state.tool_result.raw_result["message"]
 
     # ---- R5 统一参数 schema 校验 ----
 
@@ -578,4 +710,4 @@ class TestToolExecutor:
         assert boom.call_count == 0
         # 返回干净 error，而非「执行出错」那种基础设施兜底
         assert json.loads(messages[0]["content"])["kind"] == "error"
-        assert "refund_type" in state.tool_result.user_facing_summary
+        assert "refund_type" in state.tool_result.raw_result["message"]

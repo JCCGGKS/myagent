@@ -184,3 +184,67 @@ class TestDialogServices:
         assert result.reply == "已由 agent_node 生成"
         # 不应再调用 LLM
         llm_client.chat.completions.create.assert_not_called()
+
+    def test_response_generator_fills_template_from_yaml(self):
+        """决策层产出的 tool_result 由生成节点按 yml 模板填值产出 reply，不调 LLM（去冗余）。"""
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.return_value = "订单 {order_id} 当前状态为 {status}，金额 {amount} 元。"
+        llm_client = AsyncMock()
+        service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            tool_result=ToolExecutionResult(
+                tool="query_order", kind="success",
+                raw_result={"order_id": "A1001", "status": "已发货", "product_name": "键盘", "amount": 199.0},
+                sanitized_result={"order_id": "A1001", "status": "已发货", "product_name": "键盘", "amount": 199.0},
+            ),
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply == "订单 A1001 当前状态为 已发货，金额 199.0 元。"
+        # 命中模板 → 不调 LLM
+        llm_client.chat.completions.create.assert_not_called()
+
+    def test_response_generator_falls_back_to_llm_when_no_template(self):
+        """无匹配模板（新工具/开放问答）时，生成节点退回 LLM 生成。"""
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.return_value = None
+        llm_client = AsyncMock()
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="LLM 兜底回复。"))]
+        )
+        service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            tool_result=ToolExecutionResult(tool="unknown_tool", kind="success", raw_result={"x": 1}),
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply == "LLM 兜底回复。"
+        llm_client.chat.completions.create.assert_called()
+
+    def test_sanitize_masks_sensitive_fields(self):
+        """sanitize_tool_result 对手机号/身份证/地址/姓名/邮箱做掩码，其余原样。"""
+        from app.business.tools.sanitize import sanitize_tool_result
+
+        raw = {
+            "phone": "13800138000",
+            "id_card": "110101199001011234",
+            "address": "北京市海淀区中关村大街1号",
+            "name": "张三",
+            "email": "zhangsan@example.com",
+            "order_id": "A1001",
+            "status": "已发货",
+        }
+        sanitized = sanitize_tool_result(raw)
+        assert sanitized["phone"] == "138****8000"
+        assert sanitized["id_card"].endswith("1234") and sanitized["id_card"].startswith("****")
+        assert sanitized["address"].startswith("北京市海淀") and "****" in sanitized["address"]
+        assert sanitized["name"] == "张****"
+        assert sanitized["email"] == "z****n@example.com"
+        # 非敏感字段原样
+        assert sanitized["order_id"] == "A1001"
+        assert sanitized["status"] == "已发货"
+        # 副本而非同一对象
+        assert sanitized is not raw
+

@@ -14,6 +14,7 @@ from app.business.tools.domain import (
     RefundService,
 )
 from app.business.tools.rag_tool import RagRetrieveTool
+from app.business.tools.sanitize import sanitize_tool_result
 from app.utils import build_action_record, observe_handoff, observe_tool
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,11 @@ TOOL_ALIASES: dict[str, str] = {
 # 供 registry.build_tool_schemas() 读取
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {name: spec["schema"] for name, spec in TOOLS.items()}
 
+# 退款状态策略：命中的状态走「自动退款」路径（未来启用）。
+# 阶段一集合为空 → 所有状态的退款请求一律建申请单 + 转人工（不自动执行真退款）。
+# 后续把明确可退的状态（如 待付款 / 待发货）加入此集合，即可收窄人工介入。
+AUTO_REFUNDABLE_STATUSES: frozenset[str] = frozenset()
+
 
 class ToolExecutor:
     """统一的工具执行服务：覆盖 LLM 函数调用工具与业务工具。
@@ -185,16 +191,19 @@ class ToolExecutor:
         max_retries: int = 2,
         retry_base_delay: float = 0.1,
         retry_max_delay: float = 1.0,
+        refund_auto_states: frozenset[str] = AUTO_REFUNDABLE_STATUSES,
     ) -> None:
         self.order_service = order_service
         self.logistics_service = logistics_service
         self.handoff_service = handoff_service
         self.refund_service = refund_service or RefundService()
         self.rag_tool = rag_tool or RagRetrieveTool()
+        # 退款状态策略：哪些订单状态允许走自动退款路径（见 AUTO_REFUNDABLE_STATUSES）。
         # 失败重试：非副作用工具在基础设施故障（异常）时按退避重试；副作用工具不重试。
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.retry_max_delay = retry_max_delay
+        self.refund_auto_states = refund_auto_states
         # 从单点注册表构建 名称 -> handler 方法 的映射
         self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
 
@@ -211,6 +220,11 @@ class ToolExecutor:
             start = time.perf_counter()
             # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
             result = await self._execute_with_retry(name, tc, state, side_effect)
+            # 统一收口：填充产生结果的工具名（handler 不手写），并生成脱敏副本。
+            # handler 只回填 raw_result，sanitized_result 在此集中脱敏，保证不漏。
+            if isinstance(result, ToolExecutionResult):
+                result.tool = canonical
+                result.sanitized_result = sanitize_tool_result(result.raw_result)
             status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
             observe_tool(canonical, status, time.perf_counter() - start)
             tool_messages.append(
@@ -246,14 +260,14 @@ class ToolExecutor:
             args = json.loads(tc["function"].get("arguments") or "{}")
         except (json.JSONDecodeError, ValueError):
             logger.warning("[tool] invalid JSON args for %s raw=%r", name, tc["function"].get("arguments"))
-            return ToolExecutionResult(kind="error", user_facing_summary=f"工具 {name} 的参数格式错误，无法执行。")
+            return ToolExecutionResult(kind="error", raw_result={"message": f"工具 {name} 的参数格式错误，无法执行。"})
 
         # R5 统一参数 schema 校验：缺必填 / 类型错 / 枚举非法 提前拦截，
         # 返回干净 error 且不进 handler、不重试（属调用方错误，非基础设施故障）。
         validation_err = self._validate_tool_args(name, args, state)
         if validation_err:
             logger.warning("[tool] validation failed for %s: %s", name, validation_err)
-            return ToolExecutionResult(kind="error", user_facing_summary=validation_err)
+            return ToolExecutionResult(kind="error", raw_result={"message": validation_err})
 
         max_attempts = 1 if side_effect else self.max_retries + 1
         last_exc: Exception | None = None
@@ -279,7 +293,7 @@ class ToolExecutor:
         logger.error("[tool] %s execution failed after %d attempt(s): %r", name, max_attempts, last_exc)
         return ToolExecutionResult(
             kind="error",
-            user_facing_summary=f"工具 {name} 执行出错，请稍后重试或联系人工客服。",
+            raw_result={"message": f"工具 {name} 执行出错，请稍后重试或联系人工客服。"},
         )
 
     async def _execute_one(
@@ -289,7 +303,7 @@ class ToolExecutor:
         canonical = TOOL_ALIASES.get(name, name)
         handler = self._handlers.get(canonical)
         if handler is None:
-            return ToolExecutionResult(kind="error", user_facing_summary=f"未知工具: {name}")
+            return ToolExecutionResult(kind="error", raw_result={"message": f"未知工具: {name}"})
         # 业务处理器为同步实现（mock/同步 DAO），放到线程执行避免阻塞事件循环。
         return await asyncio.to_thread(handler, args, state)
 
@@ -351,63 +365,47 @@ class ToolExecutor:
     def _rag_retrieve(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         docs = self.rag_tool.run(args.get("query", ""), user_id=state.user_id)
         return ToolExecutionResult(
-            kind="knowledge",
-            raw_result={"retrieved_docs": docs},
-            sanitized_result={"retrieved_docs": docs},
-            user_facing_summary=f"检索到 {len(docs)} 条相关文档",
+            kind="success",
+            raw_result={"retrieved_docs": docs, "count": len(docs)},
         )
 
     def _query_order(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         order_id = args.get("order_id") or state.slots.get("order_id")
         if not order_id:
-            return ToolExecutionResult(
-                kind="error",
-                user_facing_summary="请提供订单号，以便我为您查询。",
-            )
+            return ToolExecutionResult(kind="error", raw_result={"message": "请提供订单号，以便我为您查询。"})
         if self.order_service is None:
+            return ToolExecutionResult(kind="error", raw_result={"message": f"订单服务未配置，无法查询: {order_id}"})
+        order = self.order_service.get_order_status(order_id)
+        if order is None:
             return ToolExecutionResult(
                 kind="error",
-                user_facing_summary=f"订单服务未配置，无法查询: {order_id}",
+                raw_result={"message": f"没有查到订单 {order_id}，请确认订单号后重试。"},
             )
-        order = self.order_service.get_order_status(order_id)
-        raw = order.model_dump() if order else None
-        summary = f"订单 {order_id} 当前状态为 {order.status}" if order else "没有查到这个订单号"
         return ToolExecutionResult(
-            kind="order_query",
-            raw_result=raw,
-            sanitized_result=raw,
-            user_facing_summary=summary,
+            kind="success",
+            raw_result=order.model_dump(),
         )
 
     def _query_logistics(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         order_id = args.get("order_id") or state.slots.get("order_id")
         if not order_id:
-            return ToolExecutionResult(
-                kind="error",
-                user_facing_summary="请提供订单号，以便我为您查询物流。",
-            )
+            return ToolExecutionResult(kind="error", raw_result={"message": "请提供订单号，以便我为您查询物流。"})
         if self.logistics_service is None:
+            return ToolExecutionResult(kind="error", raw_result={"message": f"物流服务未配置，无法查询: {order_id}"})
+        logistics = self.logistics_service.get_logistics(order_id)
+        if logistics is None:
             return ToolExecutionResult(
                 kind="error",
-                user_facing_summary=f"物流服务未配置，无法查询: {order_id}",
+                raw_result={"message": f"没有查到订单 {order_id} 的物流信息，请确认订单号是否正确。"},
             )
-        logistics = self.logistics_service.get_logistics(order_id)
-        raw = logistics.model_dump() if logistics else None
-        latest_status = (
-            logistics.timeline[-1].status
-            if logistics and logistics.timeline
-            else "无"
-        )
-        summary = (
-            f"订单 {order_id} 当前物流状态为 {logistics.tracking_status}，最近节点 {latest_status}"
-            if logistics
-            else "没有查到物流信息"
-        )
+        raw = logistics.model_dump()
+        # 补充「最近一条物流节点」字段，供生成节点模板（{latest_time}/{latest_status}）直接填值。
+        latest = logistics.timeline[-1] if logistics.timeline else None
+        raw["latest_time"] = latest.time if latest else ""
+        raw["latest_status"] = latest.status if latest else ""
         return ToolExecutionResult(
-            kind="logistics",
+            kind="success",
             raw_result=raw,
-            sanitized_result=raw,
-            user_facing_summary=summary,
         )
 
     def _handle_handoff(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
@@ -423,55 +421,57 @@ class ToolExecutor:
         if self.handoff_service is None:
             state.tool_result = ToolExecutionResult(
                 kind="error",
-                user_facing_summary="转人工服务未配置，无法创建服务单。",
+                raw_result={"message": "转人工服务未配置，无法创建服务单。"},
             )
-            # 直接落地回复，避免 response_generator 再调一次 LLM（去冗余）。
-            state.reply = state.tool_result.user_facing_summary
+            # 决策层不写面向用户的回复（去冗余的早返回改为生成节点按 yml 模板产出），
+            # 故此处不再落 state.reply，交由 response_generator 统一生成。
             return state
         handoff = self.handoff_service.create_handoff(state.session_id, state.summary)
         state.tool_result = ToolExecutionResult(
             kind="handoff",
             raw_result=handoff.model_dump(),
-            sanitized_result=handoff.model_dump(),
-            user_facing_summary=f"已创建人工服务单 {handoff.ticket_id}",
         )
-        # 直接落地面向用户的最终回复，使下游 response_generator 命中早返回、
-        # 不再多调一次 LLM 把 tool_result 改写成话术（去冗余，与 agent 直答同思路）。
-        state.reply = (
-            f"已为你转人工客服，服务单号 {handoff.ticket_id}。"
-            "人工客服会基于当前会话上下文继续处理。"
-        )
+        # 决策层只设结构化结果与状态标志，绝不写 state.reply（话术由生成节点按 yml 模板产出）。
         state.handoff = True
         state.action_history.append(
-            build_action_record("handoff_node", state.tool_result.user_facing_summary)
+            build_action_record("handoff_node", f"已创建人工服务单 {handoff.ticket_id}")
         )
         return state
 
     def _request_refund(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
+        """退款入口：先查订单状态，再按状态闸门分流。
+
+        - 状态命中 ``refund_auto_states`` → 走自动退款路径（R1+R2，未来启用）；
+        - 其余状态（含 已发货/派送中/已签收 等）→ 阶段一统一「建退款申请单 + 转人工」，
+          不自动执行真退款（解决「派送中弹确认退款」的误导）。
+        """
         order_id = args.get("order_id") or state.slots.get("order_id")
         if not order_id:
-            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号，以便为您发起退款。")
+            return ToolExecutionResult(kind="error", raw_result={"message": "请提供订单号，以便为您发起退款。"})
         if self.refund_service is None:
-            return ToolExecutionResult(kind="error", user_facing_summary=f"退款服务未配置，无法处理: {order_id}")
+            return ToolExecutionResult(kind="error", raw_result={"message": f"退款服务未配置，无法处理: {order_id}"})
         refund_type = args.get("refund_type", "refund")
         reason = args.get("reason", "")
-        # R1 二次确认：未确认前绝不执行任何退款副作用，仅返回确认提示让用户拍板。
-        # 确认信号来自模型在用户确认后以 confirm=true 二次调用（幂等保护见 R2）。
+        order = self.order_service.get_order_status(order_id) if self.order_service else None
+        if order is None:
+            return ToolExecutionResult(kind="error", raw_result={"message": f"没有查到订单 {order_id}，请确认订单号后重试。"})
+        if order.status in self.refund_auto_states:
+            return self._request_refund_auto(args, order_id, refund_type, reason, state)
+        return self._request_refund_handoff(order_id, order.status, refund_type, reason, state)
+
+    def _request_refund_auto(self, args, order_id, refund_type, reason, state) -> ToolExecutionResult:
+        """自动退款路径（未来启用）：R1 二次确认 → R2 幂等执行真实退款。
+
+        未确认前绝不执行任何退款副作用，仅返回 confirmation 让用户拍板；
+        确认信号来自模型在用户确认后以 confirm=true 二次调用（幂等保护见 R2）。
+        决策层不写 state.reply，确认提示由生成节点按 yml 模板产出。
+        """
         confirmed = args.get("confirm") is True or self._refund_confirmed(state, order_id, refund_type)
+        reason_block = f"（原因：{reason}）" if reason else ""
         if not confirmed:
-            prompt = (
-                f"⚠️ 即将为订单 {order_id} 发起【{refund_type}】申请"
-                + (f"（原因：{reason}）" if reason else "")
-                + "，该操作不可撤销。请确认是否继续？确认请直接回复「确认」。"
-            )
-            # 直接落地面向用户的最终回复，使 response_generator 命中早返回、
-            # 不再多调一次 LLM 把确认提示改写成话术（与 handoff 同思路，保证提示必达）。
-            state.reply = prompt
             return ToolExecutionResult(
                 kind="confirmation",
-                raw_result={"order_id": order_id, "refund_type": refund_type, "confirmed": False},
-                sanitized_result={"order_id": order_id, "refund_type": refund_type, "confirmed": False},
-                user_facing_summary=prompt,
+                raw_result={"order_id": order_id, "refund_type": refund_type, "reason_block": reason_block, "confirmed": False},
             )
         # 已确认 → 执行（R2 幂等兜底：重复确认不会生成新受理单）。
         result = self.refund_service.request_refund(order_id, refund_type=refund_type, reason=reason)
@@ -480,10 +480,30 @@ class ToolExecutor:
         if marker not in state.confirmed_slots:
             state.confirmed_slots.append(marker)
         return ToolExecutionResult(
-            kind="aftersale_refund",
+            kind="success",
             raw_result=result.model_dump(),
-            sanitized_result=result.model_dump(),
-            user_facing_summary=f"已为订单 {order_id} 提交{refund_type}申请，受理单号 {result.refund_id}",
+        )
+
+    def _request_refund_handoff(self, order_id, order_status, refund_type, reason, state) -> ToolExecutionResult:
+        """阶段一默认分支：建退款申请单 + 转人工，不自动执行真退款。
+
+        复用 HandoffService 承载退款申请（按 session_id 幂等去重），
+        决策层只产结构化结果（kind=handoff）与状态标志，用户话术由生成节点按 yml 模板产出。
+        """
+        summary = f"用户申请退款 订单{order_id}（状态：{order_status}）类型{refund_type}" + (f" 原因：{reason}" if reason else "")
+        handoff = self.handoff_service.create_handoff(state.session_id, summary) if self.handoff_service else None
+        ticket_id = handoff.ticket_id if handoff else "未知"
+        state.handoff = True
+        observe_handoff()
+        state.action_history.append(build_action_record("refund_handoff", summary))
+        return ToolExecutionResult(
+            kind="handoff",
+            raw_result={
+                "order_id": order_id,
+                "order_status": order_status,
+                "refund_type": refund_type,
+                "handoff_ticket_id": ticket_id,
+            },
         )
 
     @staticmethod
@@ -495,33 +515,28 @@ class ToolExecutor:
         order_id = args.get("order_id") or state.slots.get("order_id")
         new_address = args.get("new_address", "")
         if not order_id or not new_address:
-            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号与新收货地址。")
+            return ToolExecutionResult(kind="error", raw_result={"message": "请提供订单号与新收货地址。"})
         if self.order_service is None:
-            return ToolExecutionResult(kind="error", user_facing_summary=f"订单服务未配置，无法修改地址: {order_id}")
+            return ToolExecutionResult(kind="error", raw_result={"message": f"订单服务未配置，无法修改地址: {order_id}"})
         result = self.order_service.modify_address(order_id, new_address)
         if not result.get("ok"):
-            return ToolExecutionResult(kind="error", user_facing_summary=result.get("message", "地址修改失败。"))
+            return ToolExecutionResult(kind="error", raw_result={"message": result.get("message", "地址修改失败。")})
         return ToolExecutionResult(
-            kind="order_query",
+            kind="success",
             raw_result=result,
-            sanitized_result=result,
-            user_facing_summary=f"订单 {order_id} 的收货地址已提交修改为：{new_address}",
         )
 
     def _apply_invoice(self, args: dict[str, Any], state: ConversationState) -> ToolExecutionResult:
         order_id = args.get("order_id") or state.slots.get("order_id")
         invoice_title = args.get("invoice_title", "")
         if not order_id:
-            return ToolExecutionResult(kind="error", user_facing_summary="请提供订单号，以便开具发票。")
+            return ToolExecutionResult(kind="error", raw_result={"message": "请提供订单号，以便开具发票。"})
         if self.order_service is None:
-            return ToolExecutionResult(kind="error", user_facing_summary=f"订单服务未配置，无法开票: {order_id}")
+            return ToolExecutionResult(kind="error", raw_result={"message": f"订单服务未配置，无法开票: {order_id}"})
         result = self.order_service.apply_invoice(order_id, invoice_title=invoice_title)
         if not result.get("ok"):
-            return ToolExecutionResult(kind="error", user_facing_summary=result.get("message", "开票失败。"))
-        suffix = f"（抬头：{invoice_title}）" if invoice_title else ""
+            return ToolExecutionResult(kind="error", raw_result={"message": result.get("message", "开票失败。")})
         return ToolExecutionResult(
-            kind="order_query",
+            kind="success",
             raw_result=result,
-            sanitized_result=result,
-            user_facing_summary=f"订单 {order_id} 的电子发票已开具{suffix}",
         )

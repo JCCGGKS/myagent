@@ -16,9 +16,13 @@ logger = logging.getLogger(__name__)
 class AgentNodeService:
     """Agent 节点服务（ReAct 循环，决策与工具编排）。
 
-    当 LLM 直接给出结论（无 tool_calls）时，本节点把 ``content`` 写入
-    ``state.reply``，使下游 ``response_generator`` 命中早返回、不再多调一次 LLM
-    （去冗余，详见任务「去冗余调用」）。需要工具或超限兜底时仍交给 generator。
+    本节点只做**决策与工具编排**：判断调哪个工具、把工具结果（``state.tool_result``，
+    结构化数据）与状态标志写回，由下游 ``response_generator`` 基于 ``state.tool_result``
+    + ``response_prompts.yml`` 模板统一生成面向用户的回复。工具结果产生的回复**绝不**在本
+    节点产出（避免硬编码话术外泄，且保证文案单一来源）。
+
+    仅当 LLM 直接给出结论、整轮从未调用工具时，才把 ``content`` 写入 ``state.reply``
+    作为直答（下游 generator 命中早返回、不再多调一次 LLM，去冗余）。
     """
 
     def __init__(
@@ -41,7 +45,7 @@ class AgentNodeService:
         self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def run(self, state: ConversationState) -> ConversationState:
-        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则直接写 reply；有 tool_calls 则执行后继续。
+        """执行 ReAct 循环（异步）：调 LLM → 无 tool_calls 则直答；有 tool_calls 则执行后继续。
 
         关键修复：只有当**整轮循环从未调用过工具**时，才把 LLM 的收尾文本当作最终
         回复写入 ``state.reply``（这是「LLM 直接作答、无需工具」的情形，下游
@@ -49,7 +53,8 @@ class AgentNodeService:
 
         一旦调用过工具，收尾轮的 ``content`` 往往只是模型的「已有足够信息、无需再调
         工具」之类的**决策旁白**，并非面向用户的答案。此时**不**写入 ``state.reply``，
-        留空交由 ``response_generator`` 基于 ``tool_result`` 生成友好且接地气的回答
+        且工具 handler 也只回填 ``state.tool_result``（结构化），绝不写回复文案——
+        留空交由 ``response_generator`` 基于 ``tool_result`` + yml 模板生成友好回答
         （其本职就是根据工具结果措辞）。否则用户会收到模型内部决策文本（见评估发现）。
         """
         messages = self._build_messages(state)

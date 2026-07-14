@@ -22,10 +22,10 @@ class ActionRecord(BaseModel):
 
 
 class ToolExecutionResult(BaseModel):
-    kind: Literal["knowledge", "order_query", "logistics", "aftersale_refund", "handoff", "confirmation", "error"]
-    raw_result: dict[str, Any] | None = None
-    sanitized_result: dict[str, Any] | None = None
-    user_facing_summary: str = ""
+    tool: str = ""  # 产生结果的工具（规范名），由 ToolExecutor.run() 从注册表 canonical 自动填入
+    kind: Literal["success", "error", "confirmation", "handoff"] = "success"  # 结果性质，不再含工具名
+    raw_result: dict[str, Any] | None = None  # 原始业务数据（内部全量，含敏感字段）
+    sanitized_result: dict[str, Any] | None = None  # 脱敏副本（经 sanitize_tool_result 处理），跨信任边界的安全版本，绝不直接等于 raw_result
 
 
 class PendingIntent(BaseModel):

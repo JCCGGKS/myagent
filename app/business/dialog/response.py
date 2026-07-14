@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from string import Formatter
 from typing import Any, Optional
 
 from app.config import LLMConfig
@@ -16,20 +17,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_RESPONSE_PROMPT_PATH = get_config_dir() / "response_prompts.yml"
 
 
+class _SafeDict(dict):
+    """占位符缺失时填空串而非抛异常，容忍模板与数据字段不齐。"""
+
+    def __missing__(self, key: str) -> str:  # noqa: D401
+        return ""
+
+
+def _safe_format(template: str, data: dict) -> str:
+    """用 ``data`` 填值模板，缺失字段留空、不抛异常。"""
+    return Formatter().vformat(template, (), _SafeDict(data))
+
+
 class ResponsePromptRegistry:
     def __init__(self, prompt_path: Optional[Path] = None) -> None:
         self.prompt_path = prompt_path or DEFAULT_RESPONSE_PROMPT_PATH
-        self._prompts = self._load()
+        self._data = self._load()
 
     def get(self) -> dict:
-        return self._prompts
+        """对话/兜底示例（few-shot），供 LLM 生成时注入提示词。"""
+        return self._data.get("response_prompts", {})
+
+    def get_tool_template(self, tool: str, kind: str) -> str | None:
+        """按 tool + kind 取工具结果的话术模板；无匹配返回 None（走 LLM 兜底）。"""
+        return self._data.get("tool_response_templates", {}).get(tool, {}).get(kind)
 
     def _load(self) -> dict:
         data = load_yaml_file(self.prompt_path)
-        prompts = data.get("response_prompts", {})
-        if not isinstance(prompts, dict):
+        if "response_prompts" not in data or not isinstance(data["response_prompts"], dict):
             raise ValueError(f"Invalid response prompt config: {self.prompt_path}")
-        return prompts
+        return data
 
 
 class ResponseService:
@@ -47,10 +64,25 @@ class ResponseService:
         self.generation_kwargs = llm_config.generation_kwargs() if llm_config is not None else {}
 
     async def generate(self, state: ConversationState) -> ConversationState:
-        """生成响应（由真实 LLM 驱动，异步）。"""
-        # 如果已经有 reply（如 agent_node 已生成），直接返回（去冗余，不再调 LLM）
+        """生成响应（由真实 LLM 驱动，异步）。
+
+        职责：成为 ``state.reply`` 的唯一写入方。
+        - 已有 reply（agent_node 直答 / 澄清节点产出）→ 早返回（去冗余，不调 LLM）；
+        - 决策层产出的 ``tool_result`` → 按 yml 模板填值产出回复（不调 LLM，保留去冗余收益）；
+        - 无匹配模板（新工具/开放问答）→ LLM 兜底生成。
+        """
+        # 其他节点（澄清/直答）已设回复则尊重，直接返回（去冗余）。
         if state.reply:
             return state
+
+        # 决策层只产 tool_result（结构化），不写 reply；本节点按 yml 模板填值产出 reply。
+        if state.tool_result is not None:
+            tpl = self.prompt_registry.get_tool_template(state.tool_result.tool, state.tool_result.kind)
+            if tpl:
+                state.reply = _safe_format(tpl, state.tool_result.sanitized_result or {})
+                if not state.action_history or state.action_history[-1].action_name != "response_generator":
+                    state.action_history.append(build_action_record("response_generator", state.reply))
+                return state
 
         # 构造 LLM 输入
         examples = self._build_response_examples(state)
