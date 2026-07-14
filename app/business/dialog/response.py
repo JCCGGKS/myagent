@@ -79,10 +79,17 @@ class ResponseService:
         if state.tool_result is not None:
             tpl = self.prompt_registry.get_tool_template(state.tool_result.tool, state.tool_result.kind)
             if tpl:
-                state.reply = _safe_format(tpl, state.tool_result.sanitized_result or {})
-                if not state.action_history or state.action_history[-1].action_name != "response_generator":
-                    state.action_history.append(build_action_record("response_generator", state.reply))
-                return state
+                data = state.tool_result.sanitized_result or {}
+                # RAG 检索为空（count 为 0/缺失）时，「检索到 0 条相关文档」不是有效的最终
+                # 回复，跳过模板、降级到下方 LLM 生成（用通用知识作答或向用户澄清），避免把
+                # 空检索结果当作答案呈现给用户（见回归 06_工具调用）。
+                if state.tool_result.tool == "rag_retrieve" and not data.get("count"):
+                    pass
+                else:
+                    state.reply = _safe_format(tpl, data)
+                    if not state.action_history or state.action_history[-1].action_name != "response_generator":
+                        state.action_history.append(build_action_record("response_generator", state.reply))
+                    return state
 
         # 构造 LLM 输入
         examples = self._build_response_examples(state)

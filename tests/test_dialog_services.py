@@ -223,6 +223,29 @@ class TestDialogServices:
         assert result.reply == "LLM 兜底回复。"
         llm_client.chat.completions.create.assert_called()
 
+    def test_response_generator_falls_back_to_llm_when_rag_empty(self):
+        """RAG 检索为空（count=0）时，模板「检索到 0 条相关文档」不是有效回复，
+        生成节点应跳过模板、退回 LLM 生成，而非把空检索结果当答案。"""
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.return_value = "检索到 {count} 条相关文档。"
+        llm_client = AsyncMock()
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="LLM 兜底回复。"))]
+        )
+        service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            tool_result=ToolExecutionResult(
+                tool="rag_retrieve", kind="success",
+                raw_result={"retrieved_docs": [], "count": 0},
+                sanitized_result={"retrieved_docs": [], "count": 0},
+            ),
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply == "LLM 兜底回复。"
+        llm_client.chat.completions.create.assert_called()
+
     def test_sanitize_masks_sensitive_fields(self):
         """sanitize_tool_result 对手机号/身份证/地址/姓名/邮箱做掩码，其余原样。"""
         from app.business.tools.sanitize import sanitize_tool_result
