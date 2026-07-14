@@ -34,7 +34,7 @@ def router():
             {"intent": "after_sale_refund", "sub_intent": "after_sale_refund.consult_policy",
              "action_sub_intent": "after_sale_refund.request_refund",
              "keywords": ["退款", "退货"], "action_keywords": ["申请退款", "办理退货", "退掉"],
-             "confidence_with_order": 0.88, "confidence_without_order": 0.8, "needs_clarification_when_action_and_no_order": True},
+             "confidence_with_order": 0.88, "confidence_without_order": 0.8, "needs_clarification_when_no_order": True},
         ],
     }
     return IntentRouterService(rule_registry=rule_registry)
@@ -93,6 +93,16 @@ class TestRoutingServices:
         assert result.main_intent == "after_sale_refund"
         assert result.needs_clarification is True
         # 缺订单号 → 缺失槽位，下游澄清节点据此向用户索要订单号
+        assert result.slots.get("order_id") is None
+
+    def test_route_should_require_clarification_for_bare_refund_keyword(self, router):
+        """仅含基础关键词「退款」、不含任何强动作词、缺订单号时，也必须需要澄清
+        （向用户索要订单号），而非被当作无需澄清的 consult 直接进 agent_node 触发
+        RAG 并以「检索到 0 条相关文档」充当最终回复。与「退掉」动作词行为一致。"""
+        state = ConversationState(session_id="test-session", user_id=1, channel="web")
+        result = asyncio.run(router.route(state, "退款"))
+        assert result.main_intent == "after_sale_refund"
+        assert result.needs_clarification is True
         assert result.slots.get("order_id") is None
 
     def test_intent_router_should_route_greeting_to_unrecognize(self, router):

@@ -10,7 +10,9 @@
 #   confidence_with_order        有 order_id 时的置信度
 #   confidence_without_order     无 order_id 时的置信度
 #   needs_order                  为 true 时：有 order_id 置信度取 with_order，否则取 without_order；needs_clarification = (order_id is None)
-#   needs_clarification_when_action_and_no_order  为 true 时：needs_clarification = (action 命中且 order_id 为 None)
+#   needs_clarification_when_no_order  为 true 时：needs_clarification = (命中关键词或动作词 且 order_id 为 None)
+#       —— 覆盖「退款/退货/不想要了」等基础关键词与「退掉/我要退款」等强动作词，缺单号即澄清；
+#          仅对明确咨询型话术（退款规则/怎么退，见上方优先规则）不强制澄清。
 #   risk_level / handoff_reason / handoff_reason_emotion  透传到 IntentResult
 routing_rules:
   - intent: handoff_service
@@ -186,7 +188,7 @@ routing_rules:
       - 申请退货
     confidence_with_order: 0.88
     confidence_without_order: 0.8
-    needs_clarification_when_action_and_no_order: true
+    needs_clarification_when_no_order: true
 
   # —— 纯问候/闲聊兜底（必须置于最后：仅当其它规则均未命中时触发）——
   - intent: unrecognize

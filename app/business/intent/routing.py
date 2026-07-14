@@ -251,8 +251,12 @@ class IntentRouterService:
         inherited_order = bool(state.slots.get("order_id"))
         if rule.get("needs_order"):
             needs = order_id is None and not inherited_order
-        elif rule.get("needs_clarification_when_action_and_no_order"):
-            needs = action_hit and order_id is None and not inherited_order
+        elif rule.get("needs_clarification_when_no_order"):
+            # 缺订单号即需澄清：覆盖「强动作词」（退掉/我要退款）与「基础关键词」
+            # （退款/退货/不想要了）。否则「退款」这类仅含基础关键词的消息会漏判为
+            # 无需澄清的 consult，直接进 agent_node 触发 RAG 检索并以「检索到 0 条」
+            # 这类无效内容当作最终回复（见回归 06_工具调用）。
+            needs = (action_hit or keyword_hit) and order_id is None and not inherited_order
         else:
             needs = False
 
