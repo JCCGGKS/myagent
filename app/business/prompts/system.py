@@ -18,8 +18,6 @@ _EMPTY_VALUES = (None, "", {}, [])
 # running_summary / recent_messages / pending_intents / 计数器 / reply 等）
 # 一律不进入提示词，也不被任何节点透传。
 AGENT_FIELDS = (
-    "current_main_intent",
-    "current_sub_intent",
     "stage",
     "slots",
     "missing_slots",
