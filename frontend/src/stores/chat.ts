@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { postChat, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession } from "@/lib/api";
+import { postChat, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession, isExtensionAllowed, DOC_TYPE_OPTIONS } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import {
   clearSessionIdFromStorage,
@@ -233,22 +233,10 @@ export const useChatStore = defineStore("chat", () => {
     if (!fileList?.length) {
       return summary;
     }
-    const SUPPORTED = [".md", ".markdown", ".json"];
-    const MARKDOWN_SUFFIXES = [".md", ".markdown"];
-    const JSON_SUFFIXES = [".json"];
     const files = Array.from(fileList);
-    const isSupported = (file: File) => {
-      const suffix = file.name
-        ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
-        : "";
-      if (!file.name || !SUPPORTED.includes(suffix)) {
-        return false;
-      }
-      // 后缀需与所选文档类型一致
-      if (docType === "json" && !JSON_SUFFIXES.includes(suffix)) return false;
-      if (docType === "markdown" && !MARKDOWN_SUFFIXES.includes(suffix)) return false;
-      return true;
-    };
+    // 后缀需属于所选文档类型允许的扩展名（与文档类型下拉一致）
+    const isSupported = (file: File) =>
+      !!file.name && isExtensionAllowed(file.name, docType);
     const valid = files.filter(isSupported);
     summary.invalidNames = files.filter((f) => !isSupported(f)).map((f) => f.name);
 

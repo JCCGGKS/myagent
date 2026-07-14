@@ -164,6 +164,42 @@ export async function uploadKnowledgeFile(
   return (await response.json()) as KnowledgeUploadResult;
 }
 
+// 知识库可上传的文档类型，与后端分块策略（FORMAT_STRATEGIES）对齐。
+// 每个类型绑定其对应的文件后缀，供前端下拉选择与上传校验使用。
+export interface DocTypeOption {
+  value: string;
+  label: string;
+  extensions: string[];
+}
+
+export const DOC_TYPE_OPTIONS: DocTypeOption[] = [
+  { value: "markdown", label: "Markdown 文档", extensions: [".md", ".markdown"] },
+  { value: "json", label: "JSON 数据", extensions: [".json"] },
+  { value: "word", label: "Word 文档", extensions: [".docx", ".doc"] },
+  { value: "excel", label: "Excel 表格", extensions: [".xlsx", ".xls"] },
+  { value: "csv", label: "CSV 表格", extensions: [".csv"] },
+  { value: "pdf", label: "PDF 文档", extensions: [".pdf"] },
+  { value: "ppt", label: "PPT 演示文稿", extensions: [".pptx", ".ppt"] },
+];
+
+const DOC_TYPE_EXTENSION_MAP: Record<string, string[]> = Object.fromEntries(
+  DOC_TYPE_OPTIONS.map((o) => [o.value, o.extensions]),
+);
+
+// 判断文件后缀是否属于指定文档类型允许的扩展名。
+export function isExtensionAllowed(fileName: string, docType: string): boolean {
+  const ext = fileName.includes(".")
+    ? fileName.slice(fileName.lastIndexOf(".")).toLowerCase()
+    : "";
+  const allowed = DOC_TYPE_EXTENSION_MAP[docType] ?? [];
+  return allowed.includes(ext);
+}
+
+// 取文档类型对应的展示标签（用于上传校验提示等）。
+export function docTypeLabel(docType: string): string {
+  return DOC_TYPE_OPTIONS.find((o) => o.value === docType)?.label ?? docType;
+}
+
 export interface RagConfig {
   retrieval_strategy: "bm25" | "semantic" | "hybrid";
   top_k: number;

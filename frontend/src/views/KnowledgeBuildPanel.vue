@@ -2,13 +2,13 @@
 import { computed, onMounted, reactive, ref } from "vue";
 
 import { useChatStore } from "@/stores/chat";
-import { getRagConfig, updateRagConfig, type RagConfig } from "@/lib/api";
+import { getRagConfig, updateRagConfig, type RagConfig, DOC_TYPE_OPTIONS, isExtensionAllowed, docTypeLabel } from "@/lib/api";
 import type { KnowledgeFileItem } from "@/types/chat";
 
 const store = useChatStore();
 const fileInput = ref<HTMLInputElement | null>(null);
 const dragOver = ref(false);
-const docType = ref<"markdown" | "json">("markdown");
+const docType = ref<string>("markdown");
 const showConfigModal = ref(false);
 const errorModal = ref({ visible: false, title: "", message: "" });
 // 信息弹窗：用于上传成功 / 幂等跳过等中性提示（type 控制配色）
@@ -36,12 +36,17 @@ function closeInfo() {
 }
 
 function isValidExtension(fileName: string): boolean {
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  return ["md", "markdown", "json"].includes(ext);
+  return isExtensionAllowed(fileName, docType.value);
 }
 
 const uploading = ref(false);
 const isUploading = computed(() => uploading.value);
+
+// 当前所选文档类型对应的允许后缀（用于拖拽区 accept 与提示文案）
+const allowedExtensions = computed(() => {
+  const opt = DOC_TYPE_OPTIONS.find((o) => o.value === docType.value);
+  return opt ? opt.extensions.join(",") : "";
+});
 
 const strategyOptions = [
   { value: "bm25", label: "稀疏向量检索 (BM25)" },
@@ -195,7 +200,7 @@ async function runUpload(fileList: FileList, selectedDocType: "markdown" | "json
     const result = await store.uploadKnowledgeFiles(fileList, selectedDocType);
     const parts: string[] = [];
     if (result.invalidNames.length) {
-      const typeLabel = selectedDocType === "json" ? "JSON" : "Markdown";
+      const typeLabel = docTypeLabel(selectedDocType);
       parts.push(
         `以下文件后缀与所选「${typeLabel}」类型不一致，已跳过：\n${result.invalidNames.join(", ")}`,
       );
@@ -274,6 +279,20 @@ function statusLabel(item: KnowledgeFileItem): string {
   }
 }
 
+const DOC_TYPE_SHORT: Record<string, string> = {
+  markdown: "Markdown",
+  json: "JSON",
+  word: "Word",
+  excel: "Excel",
+  csv: "CSV",
+  pdf: "PDF",
+  ppt: "PPT",
+};
+
+function docTypeShort(dt: string): string {
+  return DOC_TYPE_SHORT[dt] ?? dt.toUpperCase();
+}
+
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -304,8 +323,9 @@ async function onRemove(id: number) {
     <section class="kb-toolbar">
       <label class="kb-field">
         <select v-model="docType">
-          <option value="markdown">文档类型：Markdown</option>
-          <option value="json">文档类型：JSON</option>
+          <option v-for="opt in DOC_TYPE_OPTIONS" :key="opt.value" :value="opt.value">
+            文档类型：{{ opt.label }}
+          </option>
         </select>
       </label>
 
@@ -330,13 +350,13 @@ async function onRemove(id: number) {
       <input
         ref="fileInput"
         type="file"
-        accept=".md,.markdown,.json"
+        :accept="allowedExtensions"
         multiple
         hidden
         @change="onFileChange"
       />
       <p class="kb-dropzone-text">拖拽文件到此处上传</p>
-      <p class="kb-dropzone-hint">支持 .md / .markdown / .json</p>
+      <p class="kb-dropzone-hint">支持 {{ allowedExtensions }}</p>
     </section>
 
     <!-- 检索配置弹窗 -->
@@ -523,7 +543,7 @@ async function onRemove(id: number) {
               <span class="kb-file-name">{{ item.filename }}</span>
             </td>
             <td>{{ formatSize(item.file_size) }}</td>
-            <td>{{ item.doc_type === "json" ? "JSON" : "Markdown" }}</td>
+            <td>{{ docTypeShort(item.doc_type) }}</td>
             <td>{{ item.chunk_count }}</td>
             <td class="kb-status-cell">
               <span class="kb-status" :class="`is-${item.status}`">
