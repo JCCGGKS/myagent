@@ -1,8 +1,4 @@
 response_prompts:
-  refund_policy_fallback: "退款规则我暂时没有准确命中，你可以补充订单号或具体问题。"
-  refund_request_ack: "已收到你的退款诉求。请提供订单号后，我可以继续帮你确认下一步处理方式。"
-  order_not_found: "没有查到这个订单号，请确认后重试，或者我可以帮你转人工。"
-  logistics_not_found: "没有查到该订单的物流信息，请确认订单号是否正确。"
   greeting: "你好，我可以帮你查询订单、物流、退款售后问题，也可以为你转人工客服。"
   unknown_fallback: "这个问题我暂时无法准确处理。你可以换一种说法，或者我可以帮你转人工。"
   complaint_ack: "非常抱歉给你带来不好的体验，我会尽快为你处理这个问题。"
@@ -13,10 +9,12 @@ response_prompts:
 tool_response_templates:
   query_order:
     success: "订单 {order_id} 当前状态为 {status}，商品是 {product_name}，金额 {amount} 元。"
-    error: "请提供订单号，以便我为您查询。"
+    # error 文案由 handler 的 raw_result.message 动态给出（已区分「缺订单」与「订单不存在」），
+    # 此处仅作兜底：不再无脑追问订单号。
+    error: "没有查询到相关订单信息，请确认订单号后重试。"
   query_logistics:
     success: "订单 {order_id} 当前物流状态为 {tracking_status}，最近一条记录是 {latest_time} {latest_status}。"
-    error: "请提供订单号，以便我为您查询物流。"
+    error: "没有查询到相关物流信息，请确认订单号后重试。"
   create_handoff:
     handoff: "已为你转人工客服，服务单号 {ticket_id}。人工客服会基于当前会话上下文继续处理。"
     error: "转人工服务暂不可用，请稍后重试或拨打官方客服热线。"
@@ -25,12 +23,15 @@ tool_response_templates:
     success: "已为订单 {order_id} 提交{refund_type_label}申请，受理单号 {refund_id}。"
     handoff: "已为您创建退款申请（订单 {order_id}，当前状态：{order_status}），并转交人工客服处理，服务单号 {handoff_ticket_id}。"
     cancelled: "已取消本次退款申请，如需办理可随时告诉我。"
-    error: "请提供订单号，以便为您发起退款。"
+    # error 文案由 handler 的 raw_result.message 按上下文动态给出（已区分「缺订单」与「订单不存在」），
+    # 此处仅作兜底模板：不再无脑追问订单号。
+    error: "暂时无法为您发起退款，请确认订单号后重试。"
   modify_address:
     success: "地址修改申请已提交，新地址：{new_address}。"
-    error: "请提供订单号与新收货地址。"
+    error: "暂时无法修改地址，请确认订单号与新收货地址后重试。"
   apply_invoice:
     success: "电子发票已开具，抬头：{invoice_title}。"
-    error: "请提供订单号，以便开具发票。"
+    error: "暂时无法开具发票，请确认订单号与发票抬头后重试。"
   rag_retrieve:
-    success: "检索到 {count} 条相关文档。"
+    # success 模板已移除：RAG 文档需经 LLM 综述，不再用「检索到 N 条」这类固定话术。
+    empty: "抱歉，没有检索到相关资料，你可以换个说法，或联系人工客服。"
