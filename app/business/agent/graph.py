@@ -452,9 +452,22 @@ class CustomerServiceAgent:
             snap = await self.graph.aget_state(config)
         else:
             snap = self.graph.get_state(config)
-        state = None
+        state: ConversationState | None = None
         if snap is not None and getattr(snap, "values", None):
-            state = snap.values.get("state")
+            candidate = snap.values.get("state")
+            if isinstance(candidate, ConversationState):
+                state = candidate
+            else:
+                # 陈旧/损坏的检查点（如旧代码版本写入的不同结构，或 state 为 None）
+                # 会让节点拿到 None.state，进而报
+                # 'NoneType' object has no attribute 'session_id'。直接清掉该
+                # thread 的检查点，让本轮以全新 state 启动（会话消息存于 SessionStore，
+                # 与图态解耦，清图态不丢用户可见的历史）。
+                logger.warning(
+                    _tag("infra", "invalid checkpoint state thread=%s, clearing"),
+                    request.session_id,
+                )
+                await self.clear_checkpoint(request.session_id)
         if state is None:
             state = ConversationState(
                 session_id=request.session_id,
