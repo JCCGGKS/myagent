@@ -7,13 +7,11 @@ from app.business.rag.chunking.markdown_strategy import MarkdownChunkingStrategy
 from app.business.rag.chunking.models import Chunk
 from app.business.rag.chunking.pdf_strategy import PdfChunkingStrategy
 from app.business.rag.chunking.ppt_strategy import PptChunkingStrategy
-from app.business.rag.chunking.qa_strategy import QaChunkingStrategy
 from app.business.rag.chunking.recursive_splitter import (
     DefaultTextStrategy,
     RecursiveSplitter,
 )
 from app.business.rag.chunking.registry import (
-    DOC_TYPE_STRATEGIES,
     FORMAT_STRATEGIES,
     get_chunking_strategy,
 )
@@ -31,12 +29,10 @@ __all__ = [
     "MarkdownChunkingStrategy",
     "WordChunkingStrategy",
     "JsonChunkingStrategy",
-    "QaChunkingStrategy",
     "ExcelCsvChunkingStrategy",
     "PdfChunkingStrategy",
     "PptChunkingStrategy",
     "get_chunking_strategy",
-    "DOC_TYPE_STRATEGIES",
     "FORMAT_STRATEGIES",
     "structure_chunk",
     "chunk_markdown_text",

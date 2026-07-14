@@ -44,15 +44,14 @@
 + 新建策略文件，零改动。
 
 - `Chunk`（`chunking/models.py`）：`chunk_no / content / heading_path / doc_type / chunk_type / metadata`；`chunk_type` ∈ `text | table | clause`。
-- 注册优先级：`doc_type`（如 `faq`）优先于 `doc_format`（文件后缀）；未知格式回退 `DefaultTextStrategy`（递归字符全量切）。
-- 策略清单（`chunking/`）：
+- 分块策略完全按 `doc_format`（文件后缀）选择；未知格式回退 `DefaultTextStrategy`（递归字符全量切）。`doc_type` 仅作内容类型元信息记录，不参与策略选择——FAQ 的 JSON / Markdown 文件分别由 `JsonChunkingStrategy` / `MarkdownChunkingStrategy` 处理。
+- 策略清单（`chunking/`，共 6 个）：
 
   | 策略类 | 命中键 | `chunk_type` | 说明 |
   |---|---|---|---|
   | `MarkdownChunkingStrategy` | `markdown` | `text` | 解析 `#`~`######` 标题树 → `structure_chunk`，继承 `heading_path`；超长块由 `RecursiveSplitter` 降级 |
   | `WordChunkingStrategy` | `word` | `text` | 复用 `structure_chunk`（docx→文本由 parser 层负责） |
-  | `JsonChunkingStrategy` | `json` | `text` | 通用 JSON 记录：每对一块，字段经 `source` 透传 |
-  | `QaChunkingStrategy` | `doc_type=faq` | `text` | FAQ：JSON `{question,answer}` 与 Markdown `Q:/A:` 均每对一块；非 Q&A 文档按结构切块兜底 |
+  | `JsonChunkingStrategy` | `json` | `text` | 通用 JSON 记录：每对一块，字段经 `source` 透传（FAQ 的 `{question,answer}` 也按记录切块） |
   | `ExcelCsvChunkingStrategy` | `excel`/`csv` | `table` | 行级 + 重建表头上下文（`列名=值`）+ 表概要块；带 `table_id`/`caption`/`header`/`row_index` |
   | `PdfChunkingStrategy` | `pdf` | `table`/`clause` | 表格→行级；长文档/合同→条款级（`第X条`/`（一）`） |
   | `PptChunkingStrategy` | `ppt` | `text`/`clause` | 按 `---` 分页 / 空行分段，含要点标记升级为 `clause` |
@@ -321,8 +320,8 @@ Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
 - 真实 OpenAI 兼容 Embedding
 - 真实 DashScope Rerank（配置开关、失败降级）
 - 检索结果去重（融合后直接返回；开启 rerank 时走 DashScope 精排）
-- Markdown / Word 结构切块（`chunking/` 策略模式，`doc_type` 优先于 `doc_format` 选策略）
-- FAQ（JSON `{question,answer}` / Markdown `Q:/A:`）每对一块
+- Markdown / Word 结构切块（`chunking/` 策略模式，按 `doc_format` 选策略）
+- JSON / Markdown 通用切块（FAQ 等 `question`/`answer` 内容按对应格式记录切块）
 - `Chunk.chunk_type`（`text`/`table`/`clause`）随入库 payload 透传
 - 全链路参数配置化（`top_k` / `min_score_threshold` / `chunk_*` / `rrf_k`）
 - `user_id` 元数据写入与回传

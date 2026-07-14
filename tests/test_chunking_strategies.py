@@ -1,7 +1,7 @@
 """测试分块策略模式（chunking 策略）。
 
-覆盖：7 个策略 + 注册工厂兜底 + Chunk.chunk_type 序列化。
-行为对齐改造前的 chunker（Markdown/JSON/纯文本无回归），并验证 FAQ /
+覆盖：6 个策略（markdown/word/json/excel·csv/pdf/ppt）+ 注册工厂兜底 + Chunk.chunk_type 序列化。
+行为对齐改造前的 chunker（Markdown/JSON/纯文本无回归），并验证
 表格 / 条款 / 版式 的近期能力接口与 plans/chunking-strategy-plan.md §4 一致。
 """
 
@@ -13,7 +13,6 @@ from app.business.rag.chunking.models import Chunk
 from app.business.rag.chunking.registry import get_chunking_strategy
 from app.business.rag.chunking.markdown_strategy import MarkdownChunkingStrategy
 from app.business.rag.chunking.json_strategy import JsonChunkingStrategy
-from app.business.rag.chunking.qa_strategy import QaChunkingStrategy
 from app.business.rag.chunking.excel_csv_strategy import ExcelCsvChunkingStrategy
 from app.business.rag.chunking.pdf_strategy import PdfChunkingStrategy
 from app.business.rag.chunking.ppt_strategy import PptChunkingStrategy
@@ -71,41 +70,6 @@ class TestJsonStrategy:
         assert chunks[0].content == text
         assert chunks[0].metadata["source"] == source
         assert chunks[0].chunk_type == "text"
-
-
-# --------------------------------------------------------------------------- #
-# QA / FAQ（当前能力）
-# --------------------------------------------------------------------------- #
-class TestQaStrategy:
-    def test_faq_json_question_answer_paired(self):
-        # JSON FAQ：source 带 question，text 即 answer → 每对一块
-        answer = "登录后进入订单页可申请电子发票。"
-        source = json.dumps({"question": "怎么开发票？", "answer": answer}, ensure_ascii=False)
-        chunks = QaChunkingStrategy().chunk(answer, doc_type="faq", source=source)
-        assert len(chunks) == 1
-        assert chunks[0].content == f"问题：怎么开发票？\n回答：{answer}"
-        assert chunks[0].chunk_type == "text"
-
-    def test_faq_markdown_qa_paired(self):
-        # Markdown Q&A：Q:/A: 配对，每对一块
-        text = "Q: 多久发货？\nA: 一般 48 小时内发货。\nQ: 支持七天无理由吗？\nA: 支持，自签收起 7 日内。"
-        chunks = QaChunkingStrategy().chunk(text, doc_type="faq", source="qa.md")
-        assert len(chunks) == 2
-        assert "多久发货" in chunks[0].content
-        assert "七天无理由" in chunks[1].content
-
-    def test_faq_markdown_heading_fallback_keeps_structure(self):
-        # 非 Q&A 的 FAQ 文档（标题层级）按结构切块，保留 heading_path（无回归）
-        text = "# 订单常见问题\n## 如何修改收货地址\n在订单页点击修改地址。\n## 如何取消订单\n未发货可取消。"
-        chunks = QaChunkingStrategy().chunk(text, doc_type="faq", source="order_faq.md")
-        assert chunks[0].heading_path == ["订单常见问题", "如何修改收货地址"]
-        assert chunks[1].heading_path == ["订单常见问题", "如何取消订单"]
-
-    def test_doc_type_faq_priority_over_format(self):
-        # doc_type=faq 优先于 doc_format=json：应命中 QaChunkingStrategy 而非 Json
-        strat = get_chunking_strategy("faq", "json")
-        assert isinstance(strat, QaChunkingStrategy)
-        assert not isinstance(strat, JsonChunkingStrategy)
 
 
 # --------------------------------------------------------------------------- #

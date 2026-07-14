@@ -162,6 +162,31 @@ class KnowledgeIngestionService:
             total += self._ingest_chunks(chunks, user_id=user_id, doc_id=doc_id)
         return total
 
+    def ingest_text(
+        self,
+        text: str,
+        doc_type: str = "unknown",
+        doc_format: str = "markdown",
+        source: str = "",
+        user_id: int | None = None,
+        doc_id: int | None = None,
+    ) -> int:
+        """通用文本入库：按 doc_type / doc_format 取策略切块。
+
+        覆盖 markdown / word / pdf / ppt / excel / csv 等非 JSON 文本格式；
+        doc_format 与上传时选择的文档类型一致，确保落到对应分块策略。
+        """
+        strategy = get_chunking_strategy(doc_type, doc_format)
+        chunks = strategy.chunk(
+            text,
+            doc_type=doc_type,
+            source=source,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            min_chunk_size=self.min_chunk_size,
+        )
+        return self._ingest_chunks(chunks, user_id=user_id, doc_id=doc_id)
+
     def _ingest_chunks(
         self, chunks: list, user_id: int | None = None, doc_id: int | None = None
     ) -> int:

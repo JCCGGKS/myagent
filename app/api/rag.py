@@ -190,9 +190,11 @@ async def knowledge_upload(
                 records, doc_type=doc_type, user_id=current_user.id, doc_id=doc_id
             )
         else:
-            chunk_count = ingestion.ingest_markdown_text(
-                content, doc_type=doc_type, source=file.filename,
-                user_id=current_user.id, doc_id=doc_id,
+            # 非 JSON 文本：按所选文档类型（doc_type 即格式）取对应分块策略
+            # （markdown / word / pdf / ppt / excel / csv 等）。
+            chunk_count = ingestion.ingest_text(
+                content, doc_type=doc_type, doc_format=doc_type,
+                source=file.filename, user_id=current_user.id, doc_id=doc_id,
             )
     except HTTPException:
         raise
