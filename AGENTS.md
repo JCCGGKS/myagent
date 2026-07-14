@@ -36,7 +36,7 @@ myagent/
 - `dialog/`：`clarification.py`（`ClarificationService` + `ClarificationPromptRegistry`）、`response.py`（`ResponseService` + `ResponsePromptRegistry`）、`message.py`（`MessageService` 边界批量落库）、`session.py`（`SessionService` 会话/消息读写 + `get_session_service` 工厂）。
 - `tools/`：`domain.py`（`OrderService` / `LogisticsService` / `HandoffService` / `extract_order_id`）、`tool_executor.py`（`ToolExecutor`）、`registry.py`（`build_tool_schemas`）、`rag_tool.py`（`RagRetrieveTool`）。
 - `context/`：`context.py`（`ContextService` 最近消息窗口 + `running_summary` 压缩）、`state_summary.py`（共享状态摘要，打破 context ↔ intent 循环依赖）。
-- `rag/`：`chunker` / `ingestion` / `sparse_bm25` / `retrieval_strategy` / `rerank`（知识检索）。
+- `rag/`：`chunking/`（策略模式分块：`models` / `base` / `recursive_splitter` / `structure_chunk` / 7 个策略文件 / `registry`）+ `retrieval/`（独立检索目录：`models` / `base` / `bm25` / `semantic` / `hybrid` / `registry` / `rerank`，每个策略一个文件）+ `ingestion` / `sparse_bm25`（知识检索，`chunking` 与 `retrieval` 互不 import）。
 - `prompts/`：`intent.py` / `system.py`（LLM prompt 定义）。
 - `auth/`：`service.py`（register/login/forgot/reset/change 业务）、`router.py`（前缀 `/auth`）。
 - `memory/`：记忆持久化（当前占位）。

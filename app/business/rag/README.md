@@ -10,9 +10,9 @@
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │  1.分块  │ →  │ 2.向量化 │ →  │  3.入库  │ →  │  4.检索  │ →  │  5.召回  │ →  │  6.融合  │ →  │ 7.重排序 │
 └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-  Chunker       Embedding        Qdrant.upsert   Strategy        multi-strategy   RRF fusion      Rerank /
-                + sparse_                          .retrieve       (BM25/Semantic)                  credibility
-                bm25
+  Chunking        Embedding        Qdrant.upsert   Strategy        multi-strategy   RRF fusion      Rerank（可选）
+  Strategy         + sparse_                          .retrieve       (BM25/Semantic)
+  (registry)       bm25
 ```
 
 > 各阶段对应参数（chunk_size/top_k/rrf_k/...）来源详见末尾"参数来源对照表"。
@@ -24,7 +24,7 @@
 入口在 `app/api/rag.py:knowledge_upload`，把前端上传的文件驱动走完 1→3 阶段，并维护 `knowledge_files` 元信息状态（`app/dao/knowledge_file.py`）。链路：
 
 1. **落元信息（PROCESSING）**：`file_dao.create(user_id, filename, file_size, doc_type, status=PROCESSING)`；返回 `record["id"]` 作为 `doc_id`，透传后续入库，用于按文档删向量。
-2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段构造 `Chunker`、按顶层配置构造 `EmbeddingClient` 与 `QdrantClient`。
+2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段配置 `chunk_size`/`chunk_overlap` 等分块参数、按顶层配置构造 `EmbeddingClient` 与 `QdrantClient`，分块委托 `get_chunking_strategy(doc_type, doc_format)` 选择策略。
 3. **向量化前置校验**：`embedding_client is None`（缺 `embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
 4. **分块 + 向量化 + 批量入库**：`.json` → `ingest_json_records`；`.md/.markdown` → `ingest_markdown_text`；二者汇聚到 `_ingest_chunks`：批量算 dense、逐块算 BM25 sparse，一次性 upsert 命名向量 `{dense, bm25}`（payload 含 `user_id` / `doc_id`）。
 5. **状态变更**：
@@ -36,15 +36,30 @@
 
 ---
 
-## 1. 分块（chunker.py）
+## 1. 分块（chunking/ 策略模式）
 
-**职责**：把原始文档切成结构化 `Chunk` 列表。
+**职责**：把原始文档切成结构化 `Chunk` 列表。分块逻辑按**策略模式**组织
+（`app/business/rag/chunking/`），每类文档一个策略文件，由 `registry.get_chunking_strategy`
+单点注册 + 工厂分发；编排层（`ingestion`）只依赖抽象与工厂，新增格式 = 加一行注册
++ 新建策略文件，零改动。
 
-- `Chunk`：`chunk_no / content / heading_path / doc_type / metadata`。
-- `Chunker.chunk_markdown()`：按 `#`~`######` 标题切分逻辑块，每个块继承其上层 `heading_path`；超长块用递归字符切块继续切。
-- `Chunker.chunk_text()`：无 Markdown 结构时的通用文本切块。
-- 递归分隔符优先级：`\n\n` > `\n` > `。` > `；` > `，` > ` ` > 硬切（保留 `chunk_overlap`）。
-- **参数全部配置化**（`chunk_size` / `chunk_overlap` / `min_chunk_size`），由 `api/rag.py:_build_ingestion_service` 在构造时从 `rag` 段读入并注入 Chunker，**不硬编码**。
+- `Chunk`（`chunking/models.py`）：`chunk_no / content / heading_path / doc_type / chunk_type / metadata`；`chunk_type` ∈ `text | table | clause`。
+- 注册优先级：`doc_type`（如 `faq`）优先于 `doc_format`（文件后缀）；未知格式回退 `DefaultTextStrategy`（递归字符全量切）。
+- 策略清单（`chunking/`）：
+
+  | 策略类 | 命中键 | `chunk_type` | 说明 |
+  |---|---|---|---|
+  | `MarkdownChunkingStrategy` | `markdown` | `text` | 解析 `#`~`######` 标题树 → `structure_chunk`，继承 `heading_path`；超长块由 `RecursiveSplitter` 降级 |
+  | `WordChunkingStrategy` | `word` | `text` | 复用 `structure_chunk`（docx→文本由 parser 层负责） |
+  | `JsonChunkingStrategy` | `json` | `text` | 通用 JSON 记录：每对一块，字段经 `source` 透传 |
+  | `QaChunkingStrategy` | `doc_type=faq` | `text` | FAQ：JSON `{question,answer}` 与 Markdown `Q:/A:` 均每对一块；非 Q&A 文档按结构切块兜底 |
+  | `ExcelCsvChunkingStrategy` | `excel`/`csv` | `table` | 行级 + 重建表头上下文（`列名=值`）+ 表概要块；带 `table_id`/`caption`/`header`/`row_index` |
+  | `PdfChunkingStrategy` | `pdf` | `table`/`clause` | 表格→行级；长文档/合同→条款级（`第X条`/`（一）`） |
+  | `PptChunkingStrategy` | `ppt` | `text`/`clause` | 按 `---` 分页 / 空行分段，含要点标记升级为 `clause` |
+
+- 共享基础（`chunking/`）：`base.py`（`BaseChunkingStrategy` ABC）、`recursive_splitter.py`（`RecursiveSplitter` + `DefaultTextStrategy` 兜底）、`structure_chunk.py`（`_parse_heading_blocks` + `structure_chunk`，Markdown/Word 共用）。
+- 递归分隔符优先级（超长块兜底）：`\n\n` > `\n` > `。` > `；` > `，` > ` ` > 硬切（`chunk_overlap` 滑窗保证语义连贯）。
+- **参数全部配置化**（`chunk_size` / `chunk_overlap` / `min_chunk_size`），由 `api/rag.py:_build_ingestion_service` 从 `rag` 段读入并下发给各策略，**不硬编码**。
 
 ---
 
@@ -93,9 +108,16 @@
 
 ---
 
-## 4. 检索（retrieval_strategy.py）
+## 4. 检索（retrieval/ 目录，策略模式一个文件一个策略）
 
 **职责**：根据配置选择具体策略，从 Qdrant 召回候选文档。
+
+**文件布局**（与 `chunking/` 对齐）：
+- `models.py` — `Document` 统一结果结构。
+- `base.py` — `RetrievalStrategy`（ABC），统一接口 `retrieve(query) -> list[Document]`。
+- `bm25.py` / `semantic.py` / `hybrid.py` — 三种具体策略，各自独立文件。
+- `registry.py` — 工厂 `get_strategy_from_config` / `_build_strategy` / `_build_embedding_client`。
+- `rerank.py` — DashScope 重排客户端。
 
 ### 抽象与具体策略
 - `Document`：统一结果结构 `id / content / metadata / score`；`metadata` 包含 `doc_type`、`heading_path`、`source`、入库时传入的 `user_id`（如有）。
@@ -163,7 +185,6 @@
 - 融合后按分数降序排序输出。
 
 ### 为什么不走 Qdrant 原生 FusionQuery
-- `QdrantClient.search_hybrid()` 提供 `Prefetch + FusionQuery(RRF)`，**目前是死代码**，未在 `HybridStrategy` 中调用。
 - 当前实现选择**客户端 RRF**：更易调试、配置可控、与现有 `min_score_threshold` 过滤逻辑对齐。
 - 后续若性能成为瓶颈，可切到服务端 RRF（去除 `top_k * 2` 召回缓冲）。
 
@@ -173,26 +194,22 @@
 
 ---
 
-## 7. 重排序（tools/rag_tool.py + rerank.py）
+## 7. 重排序（tools/rag_tool.py + retrieval/rerank.py）
 
 **职责**：在召回结果上做精排，可选启用 DashScope rerank。
 
 ### RagRetrieveTool.run()
-流水线：`retrieve → _dedup → (rerank | credibility) → top_k`
+流水线：`retrieve → _dedup → (rerank?) → top_k`
 
 #### 去重（_dedup）
 - 按 `content` 去重，保留同内容中分数最高的一份。
 
-#### Rerank（_rerank）
-- `RerankClient`：调用 DashScope rerank 接口（`DASHSCOPE_RERANK_URL`，默认模型 `gated-rerank`）。
+#### Rerank（_rerank，仅启用时）
+- 启用 `rag.rerank.enabled=true` 时，调用 DashScope rerank 接口（`DASHSCOPE_RERANK_URL`，默认模型 `gated-rerank`）对召回结果精排。
 - `rerank(query, documents)`：返回 `[(原索引, 相关性分数)]` 降序。
 - **调用失败不抛异常，降级为原始顺序**，保证链路不中断。
 - `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `embedding.api_key` 时返回 `None`。
-
-#### 可信度微调（_apply_credibility）
-- 未启用 rerank 时，按 `score + DOC_TYPE_CREDIBILITY[doc_type]` 微调排序：
-  - `policy 0.05 > faq 0.03 > product 0.02 > help 0.01`
-- 用于在分数相同时提升权威来源的优先级。
+- **未启用 rerank 时，融合（RRF）结束即返回，不再做额外调序**——结果顺序由检索策略的融合分数决定。
 
 #### 工具调用接口
 - 提供 `name / description / to_tool_schema()` 供 LLM 工具调用。
@@ -303,8 +320,10 @@ Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
 - 真实 Qdrant（dense + bm25/IDF 双向量、客户端 RRF 融合）
 - 真实 OpenAI 兼容 Embedding
 - 真实 DashScope Rerank（配置开关、失败降级）
-- 检索结果去重 + doc_type 可信度排序
-- Markdown 结构切块
+- 检索结果去重（融合后直接返回；开启 rerank 时走 DashScope 精排）
+- Markdown / Word 结构切块（`chunking/` 策略模式，`doc_type` 优先于 `doc_format` 选策略）
+- FAQ（JSON `{question,answer}` / Markdown `Q:/A:`）每对一块
+- `Chunk.chunk_type`（`text`/`table`/`clause`）随入库 payload 透传
 - 全链路参数配置化（`top_k` / `min_score_threshold` / `chunk_*` / `rrf_k`）
 - `user_id` 元数据写入与回传
 - 检索策略泛型依赖注入（HybridStrategy 接收 `list[RetrievalStrategy]`）

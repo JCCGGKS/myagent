@@ -28,7 +28,7 @@
   - `get_session_service()`：按配置构造默认实现（内存 / MySQL）。
   - 存储实现（内存 / MySQL）仍由 `SessionStore` 负责，本模块只做业务层编排，避免上层直接依赖数据访问细节。
 | `memory/` | 对话记忆（占位） | 仅保留目录，真正的记忆能力后续实现；消息落库属于 `dialog` 模块 |
-| `rag/` | 知识检索 | `chunker` / `ingestion` / `sparse_bm25` / `retrieval_strategy` / `rerank` |
+| `rag/` | 知识检索 | `chunking/`（分块策略）/ `retrieval/`（检索策略）/ `ingestion` / `sparse_bm25` |
 | `prompts/` | LLM prompt 定义 | intent / clarification / response / agent 等 |
 | `auth/` | 认证业务 | service / router / models / deps |
 
