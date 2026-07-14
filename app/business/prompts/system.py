@@ -11,35 +11,23 @@ _EMPTY_VALUES = (None, "", {}, [])
 
 # 每个节点只取「对它本身执行有帮助」的状态字段——通过不同的字段
 # 白名单做上下文隔离，避免把无关字段喂给对应助手。例如：
-# - 调度节点（agent）只需意图/阶段/槽位/当前动作来决策调工具，不需要情绪；
-# - 澄清节点需要缺失槽位/当前动作来生成追问，并借情绪定语气；
-# - 最终回复节点需要已确认槽位/情绪/是否需要澄清来组织友好回复。
+# - 调度节点（agent）只依据已填槽位（多轮继承的 order_id 等）决策调工具；意图是上游路由/策略层的决策信号，不作为 agent 上下文，不需要情绪；
+# - 澄清节点需要意图（定追问口径）+ 缺失槽位（问什么）+ 情绪（定语气）来生成追问；
+# - 最终回复节点只需用户情绪来定回复语气（数据已由 tool_result 携带），不需要意图/槽位等；
 # 白名单之外的字段（session_id / user_id / channel / action_history /
 # running_summary / recent_messages / pending_intents / 计数器 / reply 等）
 # 一律不进入提示词，也不被任何节点透传。
 AGENT_FIELDS = (
-    "stage",
     "slots",
-    "missing_slots",
-    "current_action",
 )
 CLARIFICATION_FIELDS = (
     "current_main_intent",
     "current_sub_intent",
-    "stage",
-    "slots",
     "missing_slots",
-    "current_action",
     "emotion",
 )
 RESPONSE_FIELDS = (
-    "current_main_intent",
-    "current_sub_intent",
-    "stage",
-    "slots",
-    "confirmed_slots",
     "emotion",
-    "needs_clarification",
 )
 
 
@@ -98,6 +86,7 @@ def build_agent_system_prompt(state: ConversationState) -> str:
     prompt += (
         "\n\n你负责判断是否需要调用工具来获取信息以回答用户。"
         "\n- 若需要订单、物流、知识库等信息，请调用对应的工具；"
+        "\n- 若用户一次询问订单的多个维度（如订单详情与物流进度），请在同一次回复中发起所有相关的独立工具调用，确保回答覆盖用户询问的全部内容，不要只返回其中一部分；"
         "\n- 若信息已足够（无需调用工具），不要输出任何内容，直接结束即可。"
         "\n注意：你只做工具调用决策，绝不向用户输出任何文字，也不要输出分析或推理过程；"
         "最终回复由系统后续环节统一生成。"
@@ -135,5 +124,10 @@ def build_response_system_prompt(
     # tool_result 是执行产物、供回复引用，仅在回复节点显式透传（其余节点不透传）。
     if state.tool_result:
         prompt += f"\n工具调用结果：{state.tool_result.model_dump()}"
+        prompt += (
+            "\n【严格遵循工具结果】工具调用结果是回答的唯一事实来源：你必须严格依据其中的"
+            "字段与数值作答，不得擅自编造、篡改或遗漏状态/金额/时间/订单号等任何数据；"
+            "若结果已覆盖用户所问，直接据此生成回复，不要引入工具结果之外的信息。"
+        )
     prompt += "\n请根据以上信息，生成友好的客服响应，语气与下方示例保持一致。"
     return _append_examples(prompt, examples)
