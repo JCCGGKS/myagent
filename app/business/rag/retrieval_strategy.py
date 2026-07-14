@@ -5,6 +5,9 @@ from typing import Any
 
 from app.config.rag_config import RagConfig
 from app.pkgs.vector import QdrantClient, get_qdrant_client
+from app.utils.module_logger import _tagged, get_module_logger
+
+logger = get_module_logger("rag")
 
 
 class Document:
@@ -46,6 +49,7 @@ class BM25Strategy(RetrievalStrategy):
 
     def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
         """执行 BM25 检索。"""
+        logger.info(_tagged("rag", "BM25 retrieve start query=%r user_id=%s"), query, user_id)
         results = self.client.search_bm25(
             query=query,
             limit=max(self.top_k * 2, 20),  # 多召回一些，后续过滤
@@ -62,6 +66,7 @@ class BM25Strategy(RetrievalStrategy):
             for hit in results
             if hit["score"] >= self.min_score_threshold
         ]
+        logger.info(_tagged("rag", "BM25 retrieve end raw=%d filtered=%d"), len(results), len(filtered))
         return filtered
 
 
@@ -84,6 +89,7 @@ class SemanticStrategy(RetrievalStrategy):
         """执行语义向量检索。"""
         if self.embedding_client is None:
             raise RuntimeError("SemanticStrategy 未配置 embedding_client，无法生成查询向量")
+        logger.info(_tagged("rag", "Semantic retrieve start query=%r user_id=%s"), query, user_id)
         query_vector = self.embedding_client.embed_one(query)
 
         # 2. 调用 Qdrant 向量检索（距离度量由集合创建时的 qdrant.distance 固定）
@@ -104,6 +110,7 @@ class SemanticStrategy(RetrievalStrategy):
             for hit in results
             if hit["score"] >= self.min_score_threshold
         ]
+        logger.info(_tagged("rag", "Semantic retrieve end raw=%d filtered=%d"), len(results), len(filtered))
         return filtered
 
 
@@ -124,6 +131,7 @@ class HybridStrategy(RetrievalStrategy):
 
     def retrieve(self, query: str, user_id: int | None = None) -> list[Document]:
         """各子策略分别召回，RRF 融合后返回。"""
+        logger.info(_tagged("rag", "Hybrid retrieve start strategies=%d query=%r user_id=%s"), len(self._strategies), query, user_id)
         # 1. 各路召回
         results_by_strategy: list[list[Document]] = []
         for strategy in self._strategies:
@@ -134,6 +142,7 @@ class HybridStrategy(RetrievalStrategy):
 
         # 3. 过滤低分，返回缓冲截断结果
         filtered = [doc for doc in fused if doc.score >= self.min_score_threshold]
+        logger.info(_tagged("rag", "Hybrid retrieve end fused=%d filtered=%d"), len(fused), len(filtered))
         return filtered[: max(self.top_k * 2, 20)]
 
     def _rrf_fusion(self, results_by_strategy: list[list[Document]]) -> list[Document]:

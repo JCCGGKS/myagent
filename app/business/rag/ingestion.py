@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
 from app.business.rag.chunker import Chunker
 from app.pkgs.vector import QdrantClient
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("rag")
 
 
 def build_embedding_client() -> EmbeddingClient | None:
@@ -147,7 +147,7 @@ class KnowledgeIngestionService:
         if not chunks:
             return 0
         if self.embedding_client is None:
-            logger.warning("未配置 embedding_client，跳过向量化（仅记录分块数=%d）", len(chunks))
+            logger.warning(_tagged("rag", "未配置 embedding_client，跳过向量化（仅记录分块数=%d）"), len(chunks))
             return 0
 
         from app.business.rag.sparse_bm25 import build_sparse_vector
@@ -182,5 +182,5 @@ class KnowledgeIngestionService:
             )
 
         self.qdrant_client.upsert(points)
-        logger.info("已入库 %d 个块", len(points))
+        logger.info(_tagged("rag", "已入库 %d 个块 user_id=%s doc_id=%s"), len(points), user_id, doc_id)
         return len(points)

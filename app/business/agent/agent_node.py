@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from app.config import LLMConfig
@@ -9,8 +8,9 @@ from app.business.prompts import build_agent_system_prompt
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas
 from app.utils.llm import call_llm_async
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("agent")
 
 
 class AgentNodeService:
@@ -59,9 +59,10 @@ class AgentNodeService:
         """
         messages = self._build_messages(state)
         tool_called = False
+        logger.info(_tagged("agent", "run start session=%s main=%s"), state.session_id, state.current_main_intent)
 
         for _round in range(self.max_tool_rounds):
-            logger.debug("agent_node: round %d, session=%s", _round, state.session_id)
+            logger.debug(_tagged("agent", "run round=%d session=%s"), _round, state.session_id)
 
             response = await self._call_llm(messages)
 
@@ -86,10 +87,11 @@ class AgentNodeService:
             # 上下文生成——即便本轮确实无需工具，也由下游产出干净话术，而非调度节点的自言自语。
             content = (response.get("content") or "").strip()
             if content and not tool_called:
-                logger.debug("agent_node: scheduler emitted non-tool text, discarding as user reply: %r", content[:80])
+                logger.debug(_tagged("agent", "scheduler emitted non-tool text, discarding as user reply: %r"), content[:80])
             break
 
         # 若超过最大轮次仍只有 tool_calls，response_generator 会基于已有 tool_result 兜底生成
+        logger.info(_tagged("agent", "run end session=%s tool_called=%s"), state.session_id, tool_called)
         return state
 
     def _build_messages(self, state: ConversationState) -> list[dict[str, Any]]:
@@ -120,7 +122,7 @@ class AgentNodeService:
 
     async def _call_llm(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """调用 LLM（异步），返回响应（包含 content 或 tool_calls）。"""
-        logger.debug("agent_node: calling LLM with %d messages", len(messages))
+        logger.debug(_tagged("agent", "calling LLM with %d messages"), len(messages))
         return await call_llm_async(
             self.llm_client,
             self.llm_model,

@@ -10,6 +10,9 @@ from app.schema import (
     RefundResult,
 )
 from app.dao.data import load_orders, load_logistics
+from app.utils.module_logger import _tagged, get_module_logger
+
+logger = get_module_logger("tool")
 
 
 # 不依赖 \b：Python3 默认 unicode 模式下中文也算「单词字符」，
@@ -32,11 +35,14 @@ class OrderService:
         self._orders = {item["order_id"]: OrderInfo(**item) for item in raw_orders}
 
     def get_order_status(self, order_id: str) -> OrderInfo | None:
-        return self._orders.get(order_id)
+        found = self._orders.get(order_id)
+        logger.info(_tagged("tool", "OrderService.get_order_status order_id=%s hit=%s"), order_id, found is not None)
+        return found
 
     def modify_address(self, order_id: str, new_address: str) -> dict[str, object]:
         """修改订单收货地址（mock：无真实订单后端，返回受理结果）。"""
         if order_id not in self._orders:
+            logger.warning(_tagged("tool", "OrderService.modify_address miss order_id=%s"), order_id)
             return {"ok": False, "order_id": order_id, "message": "没有查到这个订单号"}
         return {
             "ok": True,
@@ -48,6 +54,7 @@ class OrderService:
     def apply_invoice(self, order_id: str, invoice_title: str = "") -> dict[str, object]:
         """开具电子发票（mock：无真实发票后端，返回受理结果）。"""
         if order_id not in self._orders:
+            logger.warning(_tagged("tool", "OrderService.apply_invoice miss order_id=%s"), order_id)
             return {"ok": False, "order_id": order_id, "message": "没有查到这个订单号"}
         return {
             "ok": True,
@@ -70,7 +77,9 @@ class LogisticsService:
             )
 
     def get_logistics(self, order_id: str) -> LogisticsInfo | None:
-        return self._records.get(order_id)
+        found = self._records.get(order_id)
+        logger.info(_tagged("tool", "LogisticsService.get_logistics order_id=%s hit=%s"), order_id, found is not None)
+        return found
 
 
 class HandoffService:
@@ -81,10 +90,12 @@ class HandoffService:
 
     def create_handoff(self, session_id: str, summary: str) -> HandoffResult:
         if session_id in self._by_session:
+            logger.info(_tagged("tool", "HandoffService.create_handoff reused session=%s"), session_id)
             return self._by_session[session_id]
         self._counter += 1
         result = HandoffResult(ticket_id=f"H{self._counter}", summary=summary)
         self._by_session[session_id] = result
+        logger.info(_tagged("tool", "HandoffService.create_handoff created ticket=%s session=%s"), result.ticket_id, session_id)
         return result
 
 
@@ -109,6 +120,7 @@ class RefundService:
     def request_refund(self, order_id: str, refund_type: str = "refund", reason: str = "") -> RefundResult:
         key = (order_id, refund_type)
         if key in self._by_key:
+            logger.info(_tagged("tool", "RefundService.request_refund reused order_id=%s type=%s"), order_id, refund_type)
             return self._by_key[key]
         self._counter += 1
         result = RefundResult(
@@ -118,4 +130,5 @@ class RefundService:
             status="已受理",
         )
         self._by_key[key] = result
+        logger.info(_tagged("tool", "RefundService.request_refund accepted refund_id=%s order_id=%s type=%s"), result.refund_id, order_id, refund_type)
         return result

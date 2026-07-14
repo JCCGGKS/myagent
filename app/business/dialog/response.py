@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from string import Formatter
 from typing import Any, Optional
@@ -11,8 +10,9 @@ from app.business.prompts import build_response_system_prompt
 from app.utils import build_action_record, load_yaml_file
 from app.utils.config_paths import get_config_dir
 from app.utils.llm import call_llm_async, LLM_CALL_FAILED_REPLY
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("response")
 
 DEFAULT_RESPONSE_PROMPT_PATH = get_config_dir() / "response_prompts.yml"
 
@@ -72,6 +72,7 @@ class ResponseService:
         - 无匹配模板（新工具/开放问答）→ LLM 兜底生成。
         """
         # 其他节点（澄清/直答）已设回复则尊重，直接返回（去冗余）。
+        logger.info(_tagged("response", "generate start session=%s has_reply=%s has_tool=%s"), state.session_id, bool(state.reply), state.tool_result is not None)
         if state.reply:
             return state
 
@@ -89,6 +90,7 @@ class ResponseService:
                     state.reply = _safe_format(tpl, data)
                     if not state.action_history or state.action_history[-1].action_name != "response_generator":
                         state.action_history.append(build_action_record("response_generator", state.reply))
+                    logger.info(_tagged("response", "generate end session=%s source=template tool=%s kind=%s"), state.session_id, state.tool_result.tool, state.tool_result.kind)
                     return state
 
         # 构造 LLM 输入
@@ -104,6 +106,7 @@ class ResponseService:
         state.reply = reply
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
             state.action_history.append(build_action_record("response_generator", reply))
+        logger.info(_tagged("response", "generate end session=%s source=llm"), state.session_id)
         return state
 
     def _build_messages(self, state: ConversationState) -> list[dict]:
@@ -136,7 +139,7 @@ class ResponseService:
 
     async def _call_llm(self, messages: list[dict], state: Optional[ConversationState] = None) -> str:
         """调用 LLM 生成响应（需配置真实 LLM client，异步）。失败时兜底为统一道歉语。"""
-        logger.debug("ResponseService: calling LLM with %d messages", len(messages))
+        logger.debug(_tagged("response", "calling LLM with %d messages session=%s"), len(messages), state.session_id if state else None)
         result = await call_llm_async(
             self.llm_client,
             self.llm_model,

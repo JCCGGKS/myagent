@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.utils.module_logger import _tagged, get_module_logger
+
+logger = get_module_logger("rag")
+
 
 @dataclass
 class Chunk:
@@ -112,6 +116,7 @@ class Chunker:
                         )
                     )
                     no += 1
+        logger.info(_tagged("rag", "chunk_markdown done doc_type=%s blocks=%d chunks=%d"), doc_type, len(blocks), len(chunks))
         return chunks
 
     def chunk_text(
@@ -133,6 +138,7 @@ class Chunker:
                     metadata={"source": source},
                 )
             )
+        logger.info(_tagged("rag", "chunk_text done doc_type=%s chunks=%d"), doc_type, len(chunks))
         return chunks
 
     def _recursive_split(self, text: str) -> list[str]:

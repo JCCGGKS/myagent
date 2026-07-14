@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import time
 from typing import Any
 
@@ -16,8 +15,9 @@ from app.business.tools.domain import (
 from app.business.tools.rag_tool import RagRetrieveTool
 from app.business.tools.sanitize import sanitize_tool_result
 from app.utils import build_action_record, observe_handoff, observe_tool
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("tool")
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +221,7 @@ class ToolExecutor:
     ) -> list[dict[str, Any]]:
         tool_messages: list[dict[str, Any]] = []
         last_result: ToolExecutionResult | None = None
+        logger.info("[tool] run start session=%s calls=%d", state.session_id, len(tool_calls))
         for tc in tool_calls:
             name = tc["function"]["name"]
             canonical = TOOL_ALIASES.get(name, name)
@@ -251,6 +252,7 @@ class ToolExecutor:
                 last_result = result
         if last_result is not None:
             state.tool_result = last_result
+        logger.info("[tool] run end session=%s last_tool=%s", state.session_id, last_result.tool if last_result else None)
         return tool_messages
 
     async def _execute_with_retry(

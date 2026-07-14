@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
-
 import requests
 
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_module_logger("rag")
 
 # DashScope 重排服务地址（文本重排 / rerank）
 DASHSCOPE_RERANK_URL = "https://dashscope.aliyuncs.com/api/v1/services/rerank"
@@ -42,6 +42,7 @@ class RerankClient:
         """
         if not documents:
             return []
+        logger.info(_tagged("rag", "rerank start query=%r docs=%d model=%s"), query, len(documents), self.model)
         payload = {
             "model": self.model,
             "input": {"query": query, "documents": documents},
@@ -58,13 +59,14 @@ class RerankClient:
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:  # 重排为增强项，失败降级为原始顺序
-            logger.warning("rerank 调用失败，降级为原始顺序: %s", e)
+            logger.warning(_tagged("rag", "rerank 调用失败，降级为原始顺序: %s"), e)
             return list(enumerate([1.0 - i * 1e-6 for i in range(len(documents))]))
 
         results = data.get("output", {}).get("results", [])
         # results 含 index 与 relevance_score，按分数降序
         scored = [(r["index"], float(r["relevance_score"])) for r in results]
         scored.sort(key=lambda x: x[1], reverse=True)
+        logger.info(_tagged("rag", "rerank end scored=%d"), len(scored))
         return scored
 
 
@@ -79,7 +81,7 @@ def build_rerank_client() -> RerankClient | None:
     emb_cfg = load_embedding_config_raw()
     api_key = emb_cfg.get("api_key") if isinstance(emb_cfg, dict) else None
     if not api_key:
-        logger.warning("rerank 已开启但未配置 embedding.api_key，跳过重排")
+        logger.warning(_tagged("rag", "rerank 已开启但未配置 embedding.api_key，跳过重排"))
         return None
     model = rerank_cfg.get("model") or DEFAULT_RERANK_MODEL
     return RerankClient(api_key=api_key, model=model)

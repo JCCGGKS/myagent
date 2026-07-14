@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from app.utils.module_logger import TAGGED_MODULES
 from app.utils.trace import TraceIdFilter
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -36,43 +37,54 @@ def _daily_filename(prefix: str) -> str:
 
 
 def setup_logging(config: LoggingConfig | None = None) -> None:
-    """根据配置初始化 root logger：控制台 + 每日滚动的文件。"""
+    """根据配置初始化日志：控制台 + 每个模块独立的每日滚动文件。
+
+    每个模块（graph / intent / agent / tool / rag / response / context / api / auth）
+    拥有自己的 logger（name="myagent.<module>"）与独立文件
+    logs/<module>-YYYY-MM-DD.log；同时冒泡到 root 控制台，便于实时观察。
+    单次请求跨多模块时，靠日志行里统一注入的 trace_id（[tid=...]）跨文件还原。
+    """
     if config is None:
         config = LoggingConfig()
 
-    handlers: list[logging.Handler] = []
-
     # trace_id 注入到每条日志：无请求上下文时为 '-'。挂在 handler 上，
-    # 子 logger（graph / tool / api / auth / rag）冒泡上来的记录同样带上。
+    # 各模块 logger 冒泡上来的记录同样带上。
     trace_filter = TraceIdFilter()
+    formatter = _make_formatter()
+
+    # root：仅承载控制台输出（不再落共享单文件）
+    root = logging.getLogger()
+    root.setLevel(config.numeric_level)
+    root.handlers.clear()
 
     if config.console:
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(_make_formatter())
+        console_handler.setFormatter(formatter)
         console_handler.addFilter(trace_filter)
-        handlers.append(console_handler)
+        root.addHandler(console_handler)
 
+    # 每个模块独立文件
     if config.file:
         log_dir = config.log_dir
         log_dir.mkdir(parents=True, exist_ok=True)
-        # TimedRotatingFileHandler 在 midnight 切分；suffix 会自动追加。
-        file_handler = TimedRotatingFileHandler(
-            filename=log_dir / _daily_filename("app"),
-            when="midnight",
-            interval=1,
-            backupCount=14,
-            encoding="utf-8",
-            utc=False,
-        )
-        file_handler.setFormatter(_make_formatter())
-        file_handler.addFilter(trace_filter)
-        handlers.append(file_handler)
-
-    logging.basicConfig(
-        level=config.numeric_level,
-        handlers=handlers,
-        force=True,
-    )
+        for module in TAGGED_MODULES:
+            mlog = logging.getLogger(f"myagent.{module}")
+            mlog.setLevel(config.numeric_level)
+            mlog.handlers.clear()
+            # TimedRotatingFileHandler 在 midnight 切分；suffix 会自动追加。
+            file_handler = TimedRotatingFileHandler(
+                filename=log_dir / _daily_filename(module),
+                when="midnight",
+                interval=1,
+                backupCount=14,
+                encoding="utf-8",
+                utc=False,
+            )
+            file_handler.setFormatter(formatter)
+            file_handler.addFilter(trace_filter)
+            mlog.addHandler(file_handler)
+            # 仍冒泡到 root 控制台，避免模块日志只在文件、控制台看不到
+            mlog.propagate = True
 
 
 def _make_formatter() -> logging.Formatter:

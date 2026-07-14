@@ -69,7 +69,7 @@ LLM 自己决定「调哪个工具 → 看结果 → 再调/回答」。
 
 | 层 | 本质 | 职责 | 本项目落点 |
 |---|---|---|---|
-| **Logs** | 系统级 catch-all | 计划外异常 / 兜底降级 / 启动生命周期 | 单文件 `logs/app-*.log`，每行 `[tid=...] [tag] ...` |
+| **Logs** | 系统级 catch-all | 计划外异常 / 兜底降级 / 启动生命周期 | 分模块文件 `logs/<module>-*.log`（`<module>`=graph/intent/agent/tool/rag/response/context/api/auth），每行 `[tid=...] [tag] ...` |
 | **event_log** | 单请求链路追踪（trace） | 这一轮「为什么这么答」的决策链回放 | `event_log` 表 + `GET /chat/session/{id}/events?trace_id=` |
 | **Metrics** | 跨请求聚合/告警 | 调用量 / 延迟 / 失败率 / 意图分布 | `/metrics` 端点（Prometheus + Grafana） |
 
@@ -91,10 +91,10 @@ LLM 自己决定「调哪个工具 → 看结果 → 再调/回答」。
   - 图跑完由 `MessageService.persist_events` **best-effort** 批量落库（失败仅记日志，绝不阻断 `final` 下发）
 - 回放：`GET /chat/session/{session_id}/events?trace_id=`（复用 `session_service.get_owner` 鉴权，防越权读他人会话）
 
-### 2.2 Logs：单文件 + `[tid]` + `[tag]`
-- **单一日志系统、单一文件**：所有模块共用 `logging.getLogger("myagent")`，`propagate=True` 落 `logs/app-YYYY-MM-DD.log`（按天滚动）。不按模块拆文件——单条请求跨多模块，拆开会打散无法还原。
+### 2.2 Logs：分模块文件 + `[tid]` + `[tag]`
+- **分模块日志系统、独立文件**：每个模块使用 `logging.getLogger("myagent.<module>")`（`<module>`=graph/intent/agent/tool/rag/response/context/api/auth），由 `logging_config.setup_logging` 为每个模块注册独立文件 `logs/<module>-YYYY-MM-DD.log`（按天滚动），同时冒泡 root 控制台。不再落共享单文件——单条请求跨多模块时，用每行的 `trace_id`（`[tid=...]`）跨文件还原同一次请求，模块内排查则直接看对应 `logs/<module>-*.log`。
 - **每行带 `trace_id`**：`contextvars.ContextVar` + `logging.Filter`（`TraceIdFilter`）注入 `[tid=...]`，无请求上下文记 `-`；`trace_id` 由 `TraceIdMiddleware` 在请求入口分配（可沿用上游 `X-Trace-Id`）。
-- **`[tag]` 分段检索**：`[api]`/`[auth]`/`[rag]`（接口层）、`[intent]`/`[tool]`/`[state]`/`[policy]`/`[agent]`/`[handoff]`/`[response]`/`[compressor]`/`[persist]`/`[infra]`（pipeline）。grep `tid=xxx` 还原单次请求，grep `[tool]` 只看工具调用。
+- **`[tag]` 分段检索**：`[api]`/`[auth]`/`[rag]`（接口层）、`[intent]`/`[tool]`/`[state]`/`[policy]`/`[agent]`/`[handoff]`/`[response]`/`[compressor]`/`[persist]`/`[infra]`（pipeline）。单模块内 grep `[tool]` 只看工具调用；跨模块用 `tid=xxx` 串出完整请求链路。
 
 ### 2.3 Metrics：聚合与告警
 - `app/utils/metrics.py` 定义低基数指标（label 只用 `intent`/`tool_name`/`node`/`status`/`model`，**绝不**放 `user_id`/`session_id`/prompt，避免基数爆炸）：

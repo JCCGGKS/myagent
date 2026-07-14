@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -16,13 +15,14 @@ from app.schema.intent import (
     SubIntentCode,
 )
 from app.business.prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
+from app.utils.module_logger import _tagged, get_module_logger
 
 try:
     from openai import AsyncOpenAI
 except ImportError:  # pragma: no cover
     AsyncOpenAI = None
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("intent")
 
 # Valid values the router actually uses (derived from the single source of truth)
 VALID_MAIN = set(MAIN_INTENT_CODES)
@@ -143,13 +143,13 @@ class LLMIntentFallbackService:
         self.client = None
 
         if not use_llm:
-            logger.info("LLM fallback disabled: use_llm=False")
+            logger.info(_tagged("intent", "LLM fallback disabled: use_llm=False"))
             return
         if AsyncOpenAI is None:
-            logger.warning("LLM fallback disabled: openai SDK not installed")
+            logger.warning(_tagged("intent", "LLM fallback disabled: openai SDK not installed"))
             return
         if not config.is_usable:
-            logger.info("LLM fallback disabled: api_key not configured")
+            logger.info(_tagged("intent", "LLM fallback disabled: api_key not configured"))
             return
 
         client_kwargs: dict[str, object] = {
@@ -159,7 +159,7 @@ class LLMIntentFallbackService:
         if config.base_url:
             client_kwargs["base_url"] = config.base_url
         self.client = AsyncOpenAI(**client_kwargs)
-        logger.info("LLMIntentFallbackService initialized model=%s (async)", config.model)
+        logger.info(_tagged("intent", "LLMIntentFallbackService initialized model=%s (async)"), config.model)
 
     @property
     def enabled(self) -> bool:
@@ -167,35 +167,35 @@ class LLMIntentFallbackService:
 
     async def classify(self, message: str, state: ConversationState) -> IntentResult | None:
         if self.client is None:
-            logger.debug("LLM fallback skipped: client not available")
+            logger.debug(_tagged("intent", "LLM fallback skipped: client not available"))
             return None
 
         # 从状态对象借用上下文（上下文隔离：只取上一轮子意图）。
         previous_sub_intent = state.current_sub_intent
         logger.debug(
-            "LLM fallback classify message=%r previous_sub_intent=%s",
+            _tagged("intent", "LLM fallback classify message=%r previous_sub_intent=%s"),
             message[:80], previous_sub_intent,
         )
         try:
             prompt = build_llm_intent_user_prompt(message, state=state)
             parsed = await self._classify_with_chat_completions(prompt)
         except Exception as exc:
-            logger.warning("LLM fallback classify crashed: %s", repr(exc))
+            logger.warning(_tagged("intent", "LLM fallback classify crashed: %s"), repr(exc))
             return None
 
         if parsed is None:
-            logger.info("LLM fallback: parsing failed, returning None")
+            logger.info(_tagged("intent", "LLM fallback: parsing failed, returning None"))
             return None
 
         if parsed.confidence < self.config.confidence_threshold:
             logger.info(
-                "LLM fallback: confidence=%.2f below threshold=%.2f, discarding",
+                _tagged("intent", "LLM fallback: confidence=%.2f below threshold=%.2f, discarding"),
                 parsed.confidence, self.config.confidence_threshold,
             )
             return None
 
         logger.info(
-            "LLM fallback success: intent=%s.%s confidence=%.2f extras=%d",
+            _tagged("intent", "LLM fallback success: intent=%s.%s confidence=%.2f extras=%d"),
             parsed.main_intent, parsed.sub_intent, parsed.confidence, len(parsed.intents),
         )
         extra_intents = [
@@ -234,12 +234,12 @@ class LLMIntentFallbackService:
                 **gen_kwargs,
             )
         except Exception as exc:
-            logger.warning("chat.completions API error: %s", repr(exc))
+            logger.warning(_tagged("intent", "chat.completions API error: %s"), repr(exc))
             return None
 
         content = response.choices[0].message.content if response.choices else None
         if not content:
-            logger.warning("chat.completions returned empty content")
+            logger.warning(_tagged("intent", "chat.completions returned empty content"))
             return None
 
         # Strip markdown code fences if present
@@ -253,7 +253,7 @@ class LLMIntentFallbackService:
         try:
             data: dict[str, Any] = json.loads(content)
         except json.JSONDecodeError as exc:
-            logger.warning("chat.completions JSON decode error: %s raw=%s", repr(exc), content[:200])
+            logger.warning(_tagged("intent", "chat.completions JSON decode error: %s raw=%s"), repr(exc), content[:200])
             return None
 
         # 多意图：intents 列表优先；否则按单意图字段归一化
@@ -261,7 +261,7 @@ class LLMIntentFallbackService:
         if isinstance(raw_intents, list) and raw_intents:
             intents_norm = [_normalize_one(it) for it in raw_intents if isinstance(it, dict)]
             if not intents_norm:
-                logger.warning("chat.completions intents list empty/invalid")
+                logger.warning(_tagged("intent", "chat.completions intents list empty/invalid"))
                 return None
             primary = intents_norm[0]
             extra_llm = [LLMIntentItem(**it) for it in intents_norm[1:]]
@@ -270,18 +270,18 @@ class LLMIntentFallbackService:
             extra_llm = []
 
         if primary["main_intent"] not in VALID_MAIN:
-            logger.warning("LLM returned invalid main_intent=%s, discarding", primary["main_intent"])
+            logger.warning(_tagged("intent", "LLM returned invalid main_intent=%s, discarding"), primary["main_intent"])
             return None
         if primary["sub_intent"] not in VALID_SUB:
-            logger.warning("LLM returned invalid sub_intent=%s, discarding", primary["sub_intent"])
+            logger.warning(_tagged("intent", "LLM returned invalid sub_intent=%s, discarding"), primary["sub_intent"])
             return None
 
         try:
             parsed = LLMIntentDecision(**primary, intents=extra_llm)
-            logger.debug("chat.completions success: %s intents=%d", content[:100], len(extra_llm) + 1)
+            logger.debug(_tagged("intent", "chat.completions success: %s intents=%d"), content[:100], len(extra_llm) + 1)
             return parsed
         except Exception as exc:
-            logger.warning("LLMIntentDecision construction error: %s primary=%s", repr(exc), primary)
+            logger.warning(_tagged("intent", "LLMIntentDecision construction error: %s primary=%s"), repr(exc), primary)
             return None
 
     def _safe_dump(self, response: object) -> str:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from app.schema import ConversationState, IntentResult, PendingIntent
@@ -9,8 +8,9 @@ from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.business.intent.policy import DialoguePolicy
 from app.business.intent.llm_fallback import LLMIntentFallbackService
 from app.business.context.state_summary import build_state_summary
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("intent")
 
 # 上下文跟进可承接的上一轮子意图（有 order_id 时）
 _SLOT_FOLLOWUP_SUB_INTENTS = {
@@ -59,7 +59,7 @@ class IntentRouterService:
         emotion_keywords = rules.get("emotion_keywords", {})
 
         logger.debug(
-            "Routing message session=%s previous_intent=%s order_id=%s emotion=%s",
+            _tagged("intent", "Routing message session=%s previous_intent=%s order_id=%s emotion=%s"),
             state.session_id, previous_main_intent, order_id, emotion.primary,
         )
 
@@ -109,7 +109,7 @@ class IntentRouterService:
                 candidate_intents = ["unrecognize", previous_main_intent]
 
             logger.info(
-                "Routed intent=%s source=%s session=%s",
+                _tagged("intent", "Routed intent=%s source=%s session=%s"),
                 intent.main_intent, intent.route_source, state.session_id,
             )
 
@@ -122,7 +122,7 @@ class IntentRouterService:
             llm_intent = await self._route_with_llm_fallback(message, state)
             if llm_intent is not None:
                 logger.info(
-                    "Rule result overridden by LLM: %s.%s -> %s.%s session=%s",
+                    _tagged("intent", "Rule result overridden by LLM: %s.%s -> %s.%s session=%s"),
                     intent.main_intent, intent.sub_intent,
                     llm_intent.main_intent, llm_intent.sub_intent,
                     state.session_id,
@@ -141,7 +141,7 @@ class IntentRouterService:
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unrecognize", "unsupported_biz", intent.main_intent}
         logger.debug(
-            "Routing result intent=%s.%s shift=%s session=%s",
+            _tagged("intent", "Routing result intent=%s.%s shift=%s session=%s"),
             intent.main_intent, intent.sub_intent, intent.is_intent_shift, state.session_id,
         )
         return intent
@@ -151,6 +151,7 @@ class IntentRouterService:
     ) -> IntentResult | None:
         if self.llm_fallback_service is None or not self.llm_fallback_service.enabled:
             return None
+        logger.debug(_tagged("intent", "LLM fallback classify session=%s"), state.session_id)
         return await self.llm_fallback_service.classify(message, state)
 
     # 续办信号关键词（Phase 3）：用户未给出明确新意图、但希望处理下一个待办
@@ -194,6 +195,10 @@ class IntentRouterService:
                         reason=extra.reason,
                     )
                 )
+                logger.info(
+                    _tagged("intent", "Pending enqueue main=%s sub=%s session=%s"),
+                    extra.main_intent, extra.sub_intent, state.session_id,
+                )
         # 3) 续办触发：有待处理 + 未识别新意图 + 继续信号 → 激活队首
         elif (
             state.pending_intents
@@ -208,6 +213,10 @@ class IntentRouterService:
             intent.confidence = nxt.confidence
             intent.needs_clarification = False
             intent.route_source = "pending_advance"
+            logger.info(
+                _tagged("intent", "Pending advance main=%s sub=%s queue_left=%d session=%s"),
+                nxt.main_intent, nxt.sub_intent, len(state.pending_intents), state.session_id,
+            )
 
     def _rule_matches(
         self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any
@@ -276,7 +285,7 @@ class IntentRouterService:
             intent_fields["handoff_reason"] = handoff_reason
 
         intent = IntentResult(**intent_fields)
-        logger.info("Routed intent=%s.%s source=rule session=%s", main, sub, state.session_id)
+        logger.info(_tagged("intent", "Routed intent=%s.%s source=rule session=%s"), main, sub, state.session_id)
         return intent, [main, previous_main_intent]
 
     def _detect_emotion(self, lowered_message: str, state: ConversationState):
@@ -317,7 +326,7 @@ class StateTrackerService:
         previous_slots = dict(state.slots)
 
         logger.debug(
-            "StateTracker apply session=%s intent=%s.%s shift=%s",
+            _tagged("intent", "StateTracker apply session=%s intent=%s.%s shift=%s"),
             state.session_id, intent.main_intent, intent.sub_intent, intent.is_intent_shift,
         )
 
@@ -360,7 +369,7 @@ class StateTrackerService:
 
         state.summary = build_state_summary(state)
         logger.info(
-            "State updated session=%s stage=%s slots=%s missing=%s",
+            _tagged("intent", "State updated session=%s stage=%s slots=%s missing=%s"),
             state.session_id, state.stage, state.slots, state.missing_slots,
         )
         return state
@@ -384,28 +393,28 @@ class HandoffClarificationPolicy:
     def decide(self, state: ConversationState) -> ConversationState:
         if state.handoff:
             state.current_action = "handoff_human"
-            logger.info("Policy: handoff forced session=%s", state.session_id)
+            logger.info(_tagged("intent", "Policy: handoff forced session=%s"), state.session_id)
         elif state.needs_clarification:
             if state.current_main_intent == "unrecognize":
                 state.current_action = "ask_intent_clarification"
                 state.intent_clarification_count += 1
                 logger.info(
-                    "Policy: ask_intent_clarification count=%d session=%s",
+                    _tagged("intent", "Policy: ask_intent_clarification count=%d session=%s"),
                     state.intent_clarification_count, state.session_id,
                 )
             else:
                 state.current_action = "ask_slot_clarification"
                 logger.info(
-                    "Policy: ask_slot_clarification missing=%s session=%s",
+                    _tagged("intent", "Policy: ask_slot_clarification missing=%s session=%s"),
                     state.missing_slots, state.session_id,
                 )
         elif state.current_main_intent in self._SELF_SERVICE_INTENTS | {"complaint"}:
             # 这些意图可能需要工具调用（订单查询、物流查询、RAG 检索等）
             state.current_action = "agent_process"
-            logger.debug("Policy: agent_process session=%s", state.session_id)
+            logger.debug(_tagged("intent", "Policy: agent_process session=%s"), state.session_id)
         else:
             state.current_action = "answer_directly"
-            logger.debug("Policy: answer_directly session=%s", state.session_id)
+            logger.debug(_tagged("intent", "Policy: answer_directly session=%s"), state.session_id)
 
         # 本轮已成功解析/补齐槽位 → 清零澄清计数，避免历史包袱滚雪球。
         # 阈值因此变为「连续澄清失败次数」而非「会话累计」，更贴合
@@ -430,9 +439,9 @@ class HandoffClarificationPolicy:
             state.handoff = True
             state.handoff_reason = "clarification_failed"
             logger.warning(
-                "Policy: forced handoff (clarification failed) session=%s",
+                _tagged("intent", "Policy: forced handoff (clarification failed) session=%s"),
                 state.session_id,
             )
 
-        logger.info("Policy decision action=%s session=%s", state.current_action, state.session_id)
+        logger.info(_tagged("intent", "Policy decision action=%s session=%s"), state.current_action, state.session_id)
         return state

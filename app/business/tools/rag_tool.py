@@ -9,6 +9,9 @@ from app.business.rag.retrieval_strategy import (
 )
 from app.config.rag_config import get_rag_config_service
 from app.business.rag.rerank import build_rerank_client
+from app.utils.module_logger import _tagged, get_module_logger
+
+logger = get_module_logger("tool")
 
 
 def _config_top_k() -> int:
@@ -64,6 +67,7 @@ class RagRetrieveTool:
             包含 `content`、`metadata`、`score` 的文档列表。
         """
         # 1. 执行检索
+        logger.info(_tagged("tool", "rag_retrieve start query=%r user_id=%s top_k=%d"), query, user_id, self.top_k)
         docs = self.strategy.retrieve(query, user_id=user_id)
 
         # 2. 去重（设计 §7.3）：按内容去重，保留分数更高者
@@ -76,7 +80,9 @@ class RagRetrieveTool:
             docs = self._apply_credibility(docs)
 
         # 4. 返回 top_k
-        return [doc.to_dict() for doc in docs[: self.top_k]]
+        results = [doc.to_dict() for doc in docs[: self.top_k]]
+        logger.info(_tagged("tool", "rag_retrieve end hits=%d user_id=%s"), len(results), user_id)
+        return results
 
     def _dedup(self, docs: list[Document]) -> list[Document]:
         """按内容去重，保留同内容中分数最高的一份。"""

@@ -10,8 +10,10 @@ from collections.abc import AsyncGenerator, Awaitable
 from typing import Any, Callable
 
 from app.schema import ChatRequest, ChatResponse, ConversationState
+from app.utils.module_logger import _tagged, get_module_logger
 
-logger = logging.getLogger(__name__)
+# 分模块 logger：落入 logs/graph-*.log（同时冒泡控制台），阶段标签经 _tag 注入 [stage] 前缀。
+logger = get_module_logger("graph")
 
 
 def _tag(stage: str, msg: str) -> str:
@@ -20,7 +22,7 @@ def _tag(stage: str, msg: str) -> str:
     阶段取值：input / intent / state / policy / clarification / agent / handoff /
     response / compressor / tool / persist / agent。
     """
-    return f"[{stage}] {msg}"
+    return _tagged(stage, msg)
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
 from app.business.tools.registry import build_tool_schemas

@@ -5,6 +5,9 @@ from typing import Union
 
 from app.schema import ConversationState
 from app.business.context.state_summary import build_state_summary
+from app.utils.module_logger import _tagged, get_module_logger
+
+logger = get_module_logger("context")
 
 # 摘要折叠器：同步 (old_summary, overflow) -> str，或异步 -> Awaitable[str]
 Summarizer = Callable[[str, list[dict]], Union[str, Awaitable[str]]]
@@ -35,6 +38,7 @@ class ContextService:
         if len(state.recent_messages) > self.max_recent_messages:
             overflow = state.recent_messages[: -self.max_recent_messages]
             state.recent_messages = state.recent_messages[-self.max_recent_messages :]
+            logger.info(_tagged("context", "window trimmed overflow=%d keep=%d session=%s"), len(overflow), len(state.recent_messages), state.session_id)
             state.running_summary = await self._fold_summary(state.running_summary, overflow)
 
         # summary 为每轮一句话状态快照（与叙述性 running_summary 职责区分）
@@ -53,9 +57,11 @@ class ContextService:
                 if hasattr(folded, "__await__"):
                     folded = await folded
                 if folded:
+                    logger.info(_tagged("context", "summary folded via summarizer len=%d session_overflow=%d"), len(folded), len(overflow))
                     return folded
             except Exception:
                 # 折叠失败不影响主流程，降级为拼接
+                logger.warning(_tagged("context", "summarizer failed, fallback to concat session_overflow=%d"), len(overflow))
                 pass
         folded = " ".join(
             f"{item['role']}:{item.get('content', '')}"
