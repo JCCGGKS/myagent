@@ -19,4 +19,4 @@ CREATE TABLE IF NOT EXISTS `knowledge_files` (
   UNIQUE KEY `uq_kf_user_content_hash` (`user_id`, `content_hash`)            COMMENT '幂等唯一：同一用户相同内容（含已软删哨兵）仅一条；删除改写哨兵 DELETED:{id} 避免撞键',
   KEY `idx_knowledge_files_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文件元信息表';
--- 删除文件 set content_hash = "DELETE:{file_id}",
+-- 删除文件 set content_hash = "DELETE:{file_id}"，不影响后续相同文件的删除
