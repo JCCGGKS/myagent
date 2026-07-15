@@ -613,7 +613,7 @@ function onUpdateFileChange(event: Event) {
                 <button
                   class="kb-update"
                   type="button"
-                  :disabled="uploadingId === item.id"
+                  :disabled="updatingId === item.id"
                   @click="onUpdateClick(item)"
                 >
                   更新
@@ -621,13 +621,13 @@ function onUpdateFileChange(event: Event) {
                 <button
                   class="kb-remove"
                   type="button"
-                  :disabled="uploadingId === item.id"
+                  :disabled="updatingId === item.id"
                   @click="onRemove(item.id)"
                 >
                   删除
                 </button>
               </div>
-              <span v-if="uploadingId === item.id" class="kb-updating-tip">更新中…</span>
+              <span v-if="updatingId === item.id" class="kb-updating-tip">更新中…</span>
             </td>
           </tr>
           <tr v-if="!store.knowledgeFiles.length">
