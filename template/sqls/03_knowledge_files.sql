@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `knowledge_files` (
   `filename`       VARCHAR(255)  NOT NULL                                        COMMENT '原始文件名',
   `file_size`      INT           NOT NULL                                        COMMENT '文件大小（字节数）',
   `doc_type`       VARCHAR(32)   NOT NULL                                        COMMENT '文档类型（markdown / json）',
+  `content_hash`   VARCHAR(64)   NOT NULL DEFAULT 'DELETE'                      COMMENT '内容哈希 SHA-256（user_id + 文件内容），上传幂等去重键；删除时改写为哨兵 DELETED:{id}（非 NULL、按主键唯一），释放真实哈希槽位',
   `chunk_count`    INT           NOT NULL DEFAULT 0                              COMMENT '入库分块数',
   `status`         TINYINT       NOT NULL DEFAULT 0                              COMMENT 'ingest status (0=processing处理中 1=success成功 2=error失败)',
   `error_message`  VARCHAR(500)  DEFAULT NULL                                    COMMENT '失败原因（status=2 时写入）',
@@ -15,5 +16,7 @@ CREATE TABLE IF NOT EXISTS `knowledge_files` (
   `updated_at`     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted_at`     TIMESTAMP     DEFAULT NULL                                    COMMENT '软删除时间（NULL 表示未删除，列表过滤）',
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_kf_user_content_hash` (`user_id`, `content_hash`)            COMMENT '幂等唯一：同一用户相同内容（含已软删哨兵）仅一条；删除改写哨兵 DELETED:{id} 避免撞键',
   KEY `idx_knowledge_files_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文件元信息表';
+-- 删除文件 set content_hash = "DELETE:"

@@ -33,7 +33,7 @@ class KnowledgeFileDAO(ABC):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
-        content_hash: str | None = None,
+        content_hash: str = "",
     ) -> dict[str, Any]:
         ...
 
@@ -82,10 +82,11 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
-        content_hash: str | None = None,
+        content_hash: str = "",
     ) -> dict[str, Any]:
-        # 内存实现下同步校验唯一约束（事件循环单线程，await 间隙仍可能被其他协程插入）
-        if content_hash is not None:
+        # 内存实现下同步校验唯一约束（事件循环单线程，await 间隙仍可能被其他协程插入）。
+        # 仅对非空真实哈希做校验（空串为未指定哈希的占位，不参与去重）。
+        if content_hash:
             for rec in self._by_id.values():
                 if (
                     rec.get("deleted_at") is None
@@ -163,7 +164,10 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
     async def delete(self, file_id: int) -> None:
         rec = self._by_id.get(file_id)
         if rec is not None:
-            rec["content_hash"] = None  # 释放唯一约束槽位，允许删除后重新上传相同内容
+            # 软删除保留哈希槽位：写入「DELETED:{id}」哨兵（非 NULL、且按主键全局唯一），
+            # 既不触发 NOT NULL 约束，也不会在多文件删除时撞 (user_id, content_hash) 唯一键。
+            # 删除后重传相同内容：查重查不到哨兵，自然新建一条记录重新向量化。
+            rec["content_hash"] = f"DELETED:{file_id}"
             rec["deleted_at"] = datetime.now(UTC)
 
 
@@ -202,7 +206,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         status: int = 0,
         chunk_count: int = 0,
         error_message: str | None = None,
-        content_hash: str | None = None,
+        content_hash: str = "",
     ) -> dict[str, Any]:
         async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
@@ -291,11 +295,12 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
 
-            # 同时清空 content_hash：释放 (user_id, content_hash) 唯一约束槽位，
-            # 使删除后重新上传相同内容不再被唯一约束拦截。
+            # 软删除保留哈希槽位：写入「DELETED:{id}」哨兵（非 NULL、按主键全局唯一），
+            # 避免 NOT NULL 约束报错，也不会在多文件删除时撞 (user_id, content_hash) 唯一键。
+            # 删除后重传相同内容：查重查不到哨兵，自然新建一条记录重新向量化。
             await db.execute(
                 update(KnowledgeFile)
                 .where(KnowledgeFile.id == file_id)
-                .values(deleted_at=datetime.now(UTC), content_hash=None)
+                .values(deleted_at=datetime.now(UTC), content_hash=f"DELETED:{file_id}")
             )
             await db.commit()

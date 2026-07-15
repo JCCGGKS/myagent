@@ -33,7 +33,7 @@ class KnowledgeFile(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     doc_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    content_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[int] = mapped_column(SmallInteger, default=0)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)

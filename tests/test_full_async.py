@@ -206,7 +206,7 @@ def test_m2_knowledge_file_dao_async_roundtrip():
     dao = SqlKnowledgeFileDAO(_async_factory())
 
     async def _run():
-        rec = await dao.create(1, "a.md", 10, "markdown", status=1)
+        rec = await dao.create(1, "a.md", 10, "markdown", status=1, content_hash="h_a")
         got = await dao.get_by_id(rec["id"])
         await dao.update_status(rec["id"], 2, chunk_count=5)
         updated = await dao.get_by_id(rec["id"])
