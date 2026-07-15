@@ -42,6 +42,10 @@ from app.config.rag_config import get_rag_config_service, load_embedding_config_
 from app.config.llm import load_llm_config  # noqa: E402
 from app.pkgs.vector import get_qdrant_client  # noqa: E402
 from app.business.rag.ingestion import build_embedding_client  # noqa: E402
+from app.business.rag.retrieval.rerank import (  # noqa: E402
+    RerankClient,
+    build_rerank_client,
+)
 
 from openai import AsyncOpenAI, OpenAI  # noqa: E402
 from ragas.llms import llm_factory  # noqa: E402
@@ -102,6 +106,27 @@ def dedup(docs):
         if key not in best or d.score > best[key].score:
             best[key] = d
     return list(best.values())
+
+
+def _rerank_docs(rerank_client: RerankClient, query: str, docs: list) -> list:
+    """用 rerank 客户端对检索结果重排（仅增强项，失败降级为原始顺序，不丢结果）。"""
+    if not docs:
+        return docs
+    try:
+        scored = rerank_client.rerank(query, [d.content for d in docs])
+    except Exception as e:
+        print(f"[rerank] 调用失败，降级为原始顺序: {e}")
+        return docs
+    ordered: list = []
+    seen: set = set()
+    for idx, _score in scored:
+        if 0 <= idx < len(docs) and id(docs[idx]) not in seen:
+            ordered.append(docs[idx])
+            seen.add(id(docs[idx]))
+    for d in docs:  # 补回 rerank 未覆盖的块，避免丢结果
+        if id(d) not in seen:
+            ordered.append(d)
+    return ordered or docs
 
 
 def _preflight_dimension_check(qdrant) -> None:
@@ -319,6 +344,11 @@ async def main() -> None:
         "--concurrency", type=int, default=4,
         help="并发评测 case 数（默认 4，同步 retrieve 走 to_thread 避免阻塞事件循环）",
     )
+    parser.add_argument(
+        "--rerank", action="store_true",
+        help="对检索结果施加 rerank（用配置段 rag.rerank 的 model/api_key/base_url）；"
+             "无可用 rerank 端点时优雅降级为原始顺序。默认跟随 rag.rerank.enabled。",
+    )
     args = parser.parse_args()
 
     cases_path = Path(args.cases)
@@ -399,13 +429,35 @@ async def main() -> None:
     per_strategy: dict[str, dict] = {}
     sem = asyncio.Semaphore(args.concurrency)
 
+    # rerank（可选增强）：接进 eval 检索路径，使 item 2 可被度量。
+    # 优先级：--rerank 强制用配置段（需 api_key）；否则跟随 rag.rerank.enabled。
+    rerank_client = None
+    if args.rerank:
+        rc = cfg.rerank
+        if rc.api_key:
+            rerank_client = RerankClient(
+                api_key=rc.api_key,
+                model=rc.model,
+                base_url=rc.base_url,
+            )
+            print(f"[rerank] 启用（--rerank，model={rc.model}）")
+        else:
+            print("[WARN] --rerank 已指定但 rag.rerank.api_key 为空，跳过重排")
+    elif cfg.rerank.enabled:
+        rerank_client = build_rerank_client()
+        if rerank_client:
+            print(f"[rerank] 按配置启用（model={cfg.rerank.model}）")
+
     async def run_case(strat, c):
         async with sem:
             kk = getattr(strat, "top_k", k)
             # retrieve 是同步方法（内部 embed_one 走网络），用 to_thread 避免阻塞事件循环，
             # 从而让多 case 的异步 LLM 调用可以重叠。
             try:
-                docs = dedup(await asyncio.to_thread(strat.retrieve, c["query"], None))[:kk]
+                docs = dedup(await asyncio.to_thread(strat.retrieve, c["query"], None))
+                if rerank_client is not None:
+                    docs = await asyncio.to_thread(_rerank_docs, rerank_client, c["query"], docs)
+                docs = docs[:kk]
             except Exception as e:  # 检索异常（如 embedding 失败）不中断整轮
                 return {"id": c["id"], "query": c["query"], "expected_doc": c["expected_doc"],
                         "_failed": True, "_reason": f"retrieve_error: {e}"}
