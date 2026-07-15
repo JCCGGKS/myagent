@@ -140,6 +140,21 @@ class TestRerankClient:
         )
         assert build_rerank_client() is None
 
+    def test_build_missing_model_or_base_url_returns_none(self, monkeypatch):
+        from app.business.rag.retrieval.rerank import build_rerank_client
+        # 已开启但缺少 model / base_url（改由配置显式提供，不再有代码内默认）
+        # -> 视为未就绪，跳过重排返回 None
+        monkeypatch.setattr(
+            "app.config.rag_config.load_rag_config_raw",
+            lambda: {"rerank": {"enabled": True, "api_key": "k", "model": ""}},
+        )
+        assert build_rerank_client() is None
+        monkeypatch.setattr(
+            "app.config.rag_config.load_rag_config_raw",
+            lambda: {"rerank": {"enabled": True, "api_key": "k", "base_url": ""}},
+        )
+        assert build_rerank_client() is None
+
     def test_rerank_reorders_by_score(self, monkeypatch):
         import json
         from app.business.rag.retrieval.rerank import RerankClient
@@ -148,14 +163,18 @@ class TestRerankClient:
             class R:
                 def raise_for_status(self): pass
                 def json(self):
-                    return {"output": {"results": [
+                    return {"results": [
                         {"index": 1, "relevance_score": 0.9},
                         {"index": 0, "relevance_score": 0.3},
-                    ]}}
+                    ]}
             return R()
 
         monkeypatch.setattr("app.business.rag.retrieval.rerank.requests.post", fake_post)
-        client = RerankClient(api_key="test-key")
+        client = RerankClient(
+            api_key="test-key",
+            model="gated-rerank",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
         scored = client.rerank("q", ["docA", "docB"])
         assert [i for i, _ in scored] == [1, 0]  # 降序：docB 在前
 
@@ -166,7 +185,11 @@ class TestRerankClient:
             raise RuntimeError("network down")
 
         monkeypatch.setattr("app.business.rag.retrieval.rerank.requests.post", fake_post)
-        client = RerankClient(api_key="test-key")
+        client = RerankClient(
+            api_key="test-key",
+            model="gated-rerank",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
         scored = client.rerank("q", ["a", "b", "c"])
         assert [i for i, _ in scored] == [0, 1, 2]  # 降级保持原序
 

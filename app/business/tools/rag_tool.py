@@ -5,7 +5,7 @@ from typing import Any
 from app.business.rag.retrieval.base import RetrievalStrategy
 from app.business.rag.retrieval.models import Document
 from app.business.rag.retrieval.registry import get_strategy_from_config
-from app.business.rag.retrieval.rerank import DEFAULT_RERANK_MODEL, build_rerank_client
+from app.business.rag.retrieval.rerank import build_rerank_client
 from app.config.rag_config import get_rag_config_service
 from app.utils.module_logger import _tagged, get_module_logger
 
@@ -25,7 +25,6 @@ class RagRetrieveTool:
         strategy: RetrievalStrategy | None = None,
         top_k: int | None = None,
         rerank_enabled: bool | None = None,
-        rerank_model: str = "",
     ) -> None:
         # 策略延迟到首次 run() 再构建：避免模块导入时（如 tool_executor 顶层构造）
         # 因未配置向量模型而直接抛错，使 bm25 等无需向量的检索策略在无 embedding
@@ -35,8 +34,8 @@ class RagRetrieveTool:
         self.top_k = top_k if top_k is not None else _config_top_k()
         # None 表示运行时由 RagConfig 决定（支持 /rag/config 动态开关）
         self._rerank_enabled_override = rerank_enabled
-        # 未指定模型时使用后端默认重排模型
-        self.rerank_model = rerank_model or DEFAULT_RERANK_MODEL
+        # 重排模型（model）/ 网关（base_url）统一由 rag.rerank 配置读取，
+        # 经 build_rerank_client() 在 _rerank 时构建，无需在此持有默认值。
 
     @property
     def strategy(self) -> RetrievalStrategy:
@@ -149,5 +148,4 @@ def get_rag_tool() -> RagRetrieveTool:
         strategy=get_strategy_from_config(),
         top_k=cfg.top_k,
         rerank_enabled=cfg.rerank.enabled,
-        rerank_model=cfg.rerank.model,
     )
