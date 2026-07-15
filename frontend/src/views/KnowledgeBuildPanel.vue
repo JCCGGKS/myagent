@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 
 import { useChatStore } from "@/stores/chat";
 import { getRagConfig, updateRagConfig, type RagConfig, DOC_TYPE_OPTIONS, isExtensionAllowed, docTypeLabel } from "@/lib/api";
@@ -78,6 +78,16 @@ const strategyLabel = computed(() => {
   }
 });
 
+// 各策略推荐默认配置（评估起点，详见 eval/rag/eval_rag.md §9）。
+// 不同策略阈值量纲不同：bm25 0~10（初始 4）、semantic 余弦 0~1（初始 0.0）、
+// hybrid RRF 融合分极小（必须接近 0，初始 0.0）。切换策略时最小匹配度会吸附到该策略默认，
+// 避免「单一全局阈值跨策略直套」导致返回空结果。
+const STRATEGY_DEFAULTS: Record<string, { top_k: number; min_score_threshold: number; rrf_k: number }> = {
+  bm25: { top_k: 5, min_score_threshold: 4.0, rrf_k: 60 },
+  semantic: { top_k: 5, min_score_threshold: 0.0, rrf_k: 60 },
+  hybrid: { top_k: 6, min_score_threshold: 0.0, rrf_k: 60 },
+};
+
 // 当前检索策略下，哪些配置项是“激活”的（其余置灰）
 const activeFields = computed<Set<string>>(() => {
   const s = ragForm.retrieval_strategy;
@@ -98,21 +108,21 @@ const thresholdAttrs = computed<{ min: number; max: number; step: number; hint: 
         min: 0,
         max: 10,
         step: 0.1,
-        hint: "BM25 原始分数，0~10 量级，强命中约 4~6。阈值越高越精准但可能漏召回。",
+        hint: "BM25 原始分数，0~10 量级，强命中约 4~6，推荐默认 4。阈值越高越精准但可能漏召回。",
       };
     case "semantic":
       return {
         min: 0,
         max: 1,
         step: 0.05,
-        hint: "余弦相似度，0~1。0.7 左右较严格，0.5 更宽松易召回。",
+        hint: "余弦相似度，0~1。推荐默认 0.0（仅取 top_k，不做阈值过滤）；如需过滤可设在 0.5~0.7。",
       };
     case "hybrid":
       return {
         min: 0,
-        max: 0.05,
+        max: 0.01,
         step: 0.001,
-        hint: "RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016；必须接近 0，否则会过滤掉全部结果。",
+        hint: "RRF 融合分数约 1/(k+rank)，k=60 时最大 ~0.016；阈值必须 ≤0.01（接近 0），否则会过滤掉全部结果。推荐默认 0.0。",
       };
     default:
       return { min: 0, max: 1, step: 0.05, hint: "" };
@@ -136,6 +146,27 @@ const defaultConfig: RagConfig = {
   rerank: { enabled: false, model: "" },
 };
 const ragForm = reactive<RagConfig>(structuredClone(defaultConfig));
+
+// 切换策略时，把最小匹配度吸附到该策略的默认量纲，避免「单一全局阈值跨策略直套」返回空结果。
+watch(
+  () => ragForm.retrieval_strategy,
+  (next) => {
+    const d = STRATEGY_DEFAULTS[next];
+    if (d) ragForm.min_score_threshold = d.min_score_threshold;
+  },
+);
+
+// 硬限制最小匹配度在当策略合法区间内（原生 number 输入框不阻止手输越界值）。
+watch(
+  () => ragForm.min_score_threshold,
+  (val) => {
+    const a = thresholdAttrs.value;
+    if (val == null || Number.isNaN(val)) return;
+    if (val < a.min) ragForm.min_score_threshold = a.min;
+    else if (val > a.max) ragForm.min_score_threshold = a.max;
+  },
+);
+
 // 最近一次成功保存/加载的配置快照，用于“取消”
 const savedSnapshot = ref<RagConfig>(structuredClone(defaultConfig));
 const configSaving = ref(false);
@@ -175,8 +206,13 @@ function cancelRagConfig() {
 }
 
 function resetRagConfig() {
-  // 重置为后端当前的已保存配置（即快照），停留弹窗以便查看
-  applySnapshot(savedSnapshot.value);
+  // 重置为当前策略的推荐默认配置（详见 eval/rag/eval_rag.md §9）
+  const d = STRATEGY_DEFAULTS[ragForm.retrieval_strategy];
+  if (d) {
+    ragForm.top_k = d.top_k;
+    ragForm.min_score_threshold = d.min_score_threshold;
+    ragForm.rrf_k = d.rrf_k;
+  }
   configError.value = "";
 }
 
