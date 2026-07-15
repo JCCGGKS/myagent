@@ -53,6 +53,24 @@ def test_update_status():
         assert got["error_message"] == "boom"
 
 
+def test_update_status_refresh_created_at():
+    for dao in _scenarios():
+        rec = asyncio.run(dao.create(1, "a.md", 1024, "markdown"))
+        old_created = asyncio.run(dao.get_by_id(rec["id"]))["created_at"]
+
+        # 默认不刷新 created_at
+        asyncio.run(
+            dao.update_status(rec["id"], KNOWLEDGE_FILE_STATUS_ERROR, error_message="boom")
+        )
+        assert asyncio.run(dao.get_by_id(rec["id"]))["created_at"] == old_created
+
+        # refresh_created_at=True 时刷新为当前时间
+        asyncio.run(
+            dao.update_status(rec["id"], KNOWLEDGE_FILE_STATUS_ERROR, error_message="boom", refresh_created_at=True)
+        )
+        assert asyncio.run(dao.get_by_id(rec["id"]))["created_at"] >= old_created
+
+
 def test_list_by_user_filters_others_and_deleted():
     for dao in _scenarios():
         r1 = asyncio.run(dao.create(1, "a.md", 10, "markdown", content_hash="h_r1"))
@@ -163,3 +181,37 @@ def test_create_duplicate_content_hash_raises():
             raise AssertionError("expected DuplicateKnowledgeFileError")
         except DuplicateKnowledgeFileError:
             pass
+
+
+def test_update_content_refreshes_metadata_and_updated_at():
+    for dao in _scenarios():
+        rec = asyncio.run(
+            dao.create(1, "a.md", 10, "markdown", content_hash="old", status=KNOWLEDGE_FILE_STATUS_SUCCESS)
+        )
+        old_updated = asyncio.run(dao.get_by_id(rec["id"]))["updated_at"]
+        asyncio.run(dao.update_content(rec["id"], "new", "a-v2.md", 20, "json"))
+        got = asyncio.run(dao.get_by_id(rec["id"]))
+        assert got["content_hash"] == "new"
+        assert got["filename"] == "a-v2.md"
+        assert got["file_size"] == 20
+        assert got["doc_type"] == "json"
+        assert got["updated_at"] >= old_updated  # 上传时间刷新
+
+
+def test_update_content_rejects_duplicate_hash():
+    for dao in _scenarios():
+        asyncio.run(
+            dao.create(1, "a.md", 10, "markdown", content_hash="keep", status=KNOWLEDGE_FILE_STATUS_SUCCESS)
+        )
+        rec = asyncio.run(
+            dao.create(1, "b.md", 10, "markdown", content_hash="mine", status=KNOWLEDGE_FILE_STATUS_SUCCESS)
+        )
+        # 把 b 的内容哈希改成与 a 相同的 "keep" → 与他人冲突，应抛错（排除自身）
+        try:
+            asyncio.run(dao.update_content(rec["id"], "keep", "b.md", 10, "markdown"))
+            raise AssertionError("expected DuplicateKnowledgeFileError")
+        except DuplicateKnowledgeFileError:
+            pass
+        # 自身同哈希更新不冲突
+        asyncio.run(dao.update_content(rec["id"], "mine", "b.md", 10, "markdown"))
+        assert asyncio.run(dao.get_by_id(rec["id"]))["content_hash"] == "mine"

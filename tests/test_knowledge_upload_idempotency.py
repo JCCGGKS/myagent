@@ -119,11 +119,91 @@ def test_reupload_after_delete_allowed(env):
             status=KNOWLEDGE_FILE_STATUS_SUCCESS, content_hash=h,
         )
     )
-    asyncio.run(env.dao.delete(rec["id"]))  # 软删除同时清空 content_hash，释放唯一约束槽位
+    asyncio.run(env.dao.delete(rec["id"]))  # 软删除改写为哨兵 DELETED:{id}，释放真实哈希槽位
 
     # 删除后可重新上传相同内容（不会因唯一约束冲突）
     result = asyncio.run(rag_module.knowledge_upload(_make_request(), _make_file("d.md", content), "faq"))
     assert result["duplicated"] is False
     assert result["id"] != rec["id"]
     assert env.qdrant.upsert.call_count == 1
+
+
+def test_update_knowledge_file_rebuilds_vectors(env):
+    content = "# 原文档\n\n初版内容。"
+    rec = asyncio.run(
+        env.dao.create(
+            1, "orig.md", len(content), "faq",
+            status=KNOWLEDGE_FILE_STATUS_SUCCESS, content_hash=_hash(1, content),
+        )
+    )
+    env.qdrant.reset_mock()
+    new_content = "# 新文档\n\n改版内容。"
+    new_hash = _hash(1, new_content)
+
+    # 更新同 file_id：删旧向量 + 重建 + 刷新上传时间，doc_id 不变
+    result = asyncio.run(
+        rag_module.update_knowledge_file(
+            rec["id"], _make_request(), _make_file("orig.md", new_content), "faq"
+        )
+    )
+    assert result["id"] == rec["id"]            # 同一文件，doc_id 不变
+    assert result["content_hash"] == new_hash   # 内容变更同步哈希
+    assert result["duplicated"] is False
+    # 旧向量删除 + 新向量写入各一次
+    env.qdrant.delete_by_doc_id.assert_called_once_with(rec["id"])
+    assert env.qdrant.upsert.call_count == 1
+
+
+def test_upload_error_refreshes_created_at(env, monkeypatch):
+    # 预置一条 ERROR 记录（模拟上次上传失败），重传同内容会复用并重新向量化
+    content = "# 文档\n\n内容。"
+    rec = asyncio.run(
+        env.dao.create(
+            1, "e.md", len(content), "faq",
+            status=KNOWLEDGE_FILE_STATUS_ERROR, content_hash=_hash(1, content),
+        )
+    )
+    old_created = env.dao._by_id[rec["id"]]["created_at"]
+    # 强制向量化阶段抛错，触发错误分支
+    fake_ingestion = MagicMock()
+    fake_ingestion.embedding_client = None
+    fake_ingestion.ingest_text.side_effect = RuntimeError("向量化失败")
+    monkeypatch.setattr(rag_module, "_build_ingestion_service", lambda: fake_ingestion)
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            rag_module.knowledge_upload(_make_request(), _make_file("e.md", content), "faq")
+        )
+
+    row = env.dao._by_id[rec["id"]]
+    # 错误分支刷新了 created_at（使失败上传按最新时间排序），状态回到 ERROR
+    assert row["created_at"] >= old_created
+    assert row["status"] == KNOWLEDGE_FILE_STATUS_ERROR
+    assert row["error_message"] == "向量化失败"
+
+
+def test_update_knowledge_file_duplicate_content_409(env):
+    # 已存在文件 b（内容 B）
+    content_b = "# 文件B\n\n已有内容。"
+    asyncio.run(
+        env.dao.create(
+            1, "b.md", len(content_b), "faq",
+            status=KNOWLEDGE_FILE_STATUS_SUCCESS, content_hash=_hash(1, content_b),
+        )
+    )
+    # 文件 a 尝试更新成与 b 相同的内容 → 409
+    content_a = "# 文件A\n\n初版。"
+    rec_a = asyncio.run(
+        env.dao.create(
+            1, "a.md", len(content_a), "faq",
+            status=KNOWLEDGE_FILE_STATUS_SUCCESS, content_hash=_hash(1, content_a),
+        )
+    )
+    with pytest.raises(Exception) as exc:
+        asyncio.run(
+            rag_module.update_knowledge_file(
+                rec_a["id"], _make_request(), _make_file("a.md", content_b), "faq"
+            )
+        )
+    assert exc.value.status_code == 409
 

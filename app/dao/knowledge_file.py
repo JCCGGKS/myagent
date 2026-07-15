@@ -58,12 +58,23 @@ class KnowledgeFileDAO(ABC):
         status: int,
         chunk_count: int | None = None,
         error_message: str | None = None,
+        refresh_created_at: bool = False,
     ) -> None:
         ...
 
     @abstractmethod
     async def delete(self, file_id: int) -> None:
         """软删除：标记 deleted_at，不物理删除。"""
+
+    @abstractmethod
+    async def update_content(
+        self, file_id: int, content_hash: str, filename: str, file_size: int, doc_type: str
+    ) -> None:
+        """更新文件内容相关元信息（content_hash / filename / file_size / doc_type）并刷新 updated_at。
+
+        用于「更新文件」接口：重建向量后同步新内容哈希，保持幂等键一致。
+        若新 content_hash 与「其他」未软删记录冲突，抛 DuplicateKnowledgeFileError。
+        """
 
 
 class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
@@ -150,6 +161,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         status: int,
         chunk_count: int | None = None,
         error_message: str | None = None,
+        refresh_created_at: bool = False,
     ) -> None:
         rec = self._by_id.get(file_id)
         if rec is None:
@@ -160,6 +172,8 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
             rec["chunk_count"] = chunk_count
         if error_message is not None:
             rec["error_message"] = error_message
+        if refresh_created_at:
+            rec["created_at"] = datetime.now(UTC)
 
     async def delete(self, file_id: int) -> None:
         rec = self._by_id.get(file_id)
@@ -169,6 +183,29 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
             # 删除后重传相同内容：查重查不到哨兵，自然新建一条记录重新向量化。
             rec["content_hash"] = f"DELETED:{file_id}"
             rec["deleted_at"] = datetime.now(UTC)
+
+    async def update_content(
+        self, file_id: int, content_hash: str, filename: str, file_size: int, doc_type: str
+    ) -> None:
+        rec = self._by_id.get(file_id)
+        if rec is None:
+            return
+        # 唯一约束校验：排除自身，避免更新后与他人 (user_id, content_hash) 撞键
+        for other in self._by_id.values():
+            if (
+                other["id"] != file_id
+                and other.get("deleted_at") is None
+                and other["user_id"] == rec["user_id"]
+                and other.get("content_hash") == content_hash
+            ):
+                raise DuplicateKnowledgeFileError(
+                    f"duplicate content_hash {content_hash} for user {rec['user_id']}"
+                )
+        rec["content_hash"] = content_hash
+        rec["filename"] = filename
+        rec["file_size"] = file_size
+        rec["doc_type"] = doc_type
+        rec["updated_at"] = datetime.now(UTC)
 
 
 class SqlKnowledgeFileDAO(KnowledgeFileDAO):
@@ -277,6 +314,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
         status: int,
         chunk_count: int | None = None,
         error_message: str | None = None,
+        refresh_created_at: bool = False,
     ) -> None:
         async with self._db() as db:
             from app.model.knowledge import KnowledgeFile
@@ -289,6 +327,8 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                 row.chunk_count = chunk_count
             if error_message is not None:
                 row.error_message = error_message
+            if refresh_created_at:
+                row.created_at = datetime.now(UTC)
             await db.commit()
 
     async def delete(self, file_id: int) -> None:
@@ -304,3 +344,28 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                 .values(deleted_at=datetime.now(UTC), content_hash=f"DELETED:{file_id}")
             )
             await db.commit()
+
+    async def update_content(
+        self, file_id: int, content_hash: str, filename: str, file_size: int, doc_type: str
+    ) -> None:
+        async with self._db() as db:
+            from app.model.knowledge import KnowledgeFile
+
+            # 更新内容元信息 + 刷新 updated_at（上传时间）。唯一约束 (user_id, content_hash)
+            # 在自身行上保持不变不会冲突；若与他人已上传内容重复，MySQL 抛 IntegrityError。
+            try:
+                await db.execute(
+                    update(KnowledgeFile)
+                    .where(KnowledgeFile.id == file_id)
+                    .values(
+                        content_hash=content_hash,
+                        filename=filename,
+                        file_size=file_size,
+                        doc_type=doc_type,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+                await db.commit()
+            except IntegrityError as exc:
+                await db.rollback()
+                raise DuplicateKnowledgeFileError(str(exc)) from exc

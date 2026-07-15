@@ -100,6 +100,7 @@ export interface KnowledgeUploadResult {
   chunk_count: number;
   status: 0 | 1 | 2;
   error_message: string | null;
+  content_hash: string | null;
   created_at: string | null;
   updated_at: string | null;
   // 幂等命中：同一用户上传相同内容，服务端跳过向量化直接返回已有记录
@@ -160,6 +161,40 @@ export async function uploadKnowledgeFile(
     }
     const detail = await response.text().catch(() => "");
     throw new Error(`上传失败 (${response.status}): ${detail}`);
+  }
+  return (await response.json()) as KnowledgeUploadResult;
+}
+
+// 更新已上传的知识库文件（multipart/form-data）：删除旧向量 + 重建 + 刷新上传时间。
+// doc_type 以表单字段传入（与上传一致），无默认值，由调用方（下拉选择）提供。
+export async function updateKnowledgeFile(
+  docId: number,
+  file: File,
+  docType: string,
+): Promise<KnowledgeUploadResult> {
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("doc_type", docType);
+
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/knowledge/files/${docId}`, {
+    method: "PUT",
+    body: formData,
+    headers,
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+      localStorage.removeItem("myagent_user");
+      window.location.href = "/login";
+      throw new Error("登录已过期，请重新登录");
+    }
+    const detail = await response.text().catch(() => "");
+    throw new Error(`更新失败 (${response.status}): ${detail}`);
   }
   return (await response.json()) as KnowledgeUploadResult;
 }
