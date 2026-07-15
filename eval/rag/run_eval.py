@@ -1,303 +1,364 @@
-#!/usr/bin/env python3
-"""RAG 检索质量评估（BM25 腿，端到端命中本地 Qdrant，无需 embedding / LLM）。
+"""RAG 检索评测执行器（白盒检索层）。
 
-背景与边界
-----------
-- 当前 ``config/llm_config.local.yml`` 的 ``rag.retrieval_strategy = bm25``，
-  且 ``embedding.api_key`` 为空（生产入库会跳过向量化）。真实可用的检索腿
-  只有 BM25 稀疏向量。
-- BM25 稀疏向量由 ``build_sparse_vector`` 在本地构建（**不需要 embedding API**），
-  可直接端到端命中本地 Qdrant（默认 127.0.0.1:6333）。
-- 因此本评估只覆盖 BM25 腿，验证 ``template/knowledge`` 下的知识文档经
-  分块 + 入库后，能否在 top_k 内召回答案所需的关键事实（``must_contain``）。
-- 若后续配置语义 / 混合检索，需先填 ``embedding.api_key``，本脚本可扩展为
-  对 semantic / hybrid 策略分别评估（见结尾说明）。
+读取 `rag_eval_cases.json`，将 `template/knowledge/md/` 全部文档入库到**独立的评测
+集合**（不污染生产 `customer_service_knowledge`），然后对每个 query 跑 bm25 / semantic /
+hybrid 三种检索策略，计算确定性指标并出报告。
 
-指标
-----
-recall@k（k=1/3/5）= 在 top-k 召回块中命中的关键事实数 / 关键事实总数。
-命中判定：关键事实字符串是否作为子串出现在拼接后的召回块文本中。
+指标（均确定性、零 LLM 调用，对齐 eval_rag.md §4 / §6.3）：
+- Recall@k        ：金标事实点（must_contain）在前 k 个召回块中的覆盖率（文档召回率口径）
+- context_recall  ：金标文档（expected_doc）是否出现在前 k 个召回块中（文档级召回，0/1）
+- context_precision：前 k 个召回块中「相关块」占比（相关 = 命中金标文档 或 含任一事实点）
+- MRR             ：首个「命中金标文档」块的排名倒数（无则 0）
 
-用法
-----
-  python3 eval/rag/run_eval.py                 # 跑默认用例集，打印 + 写报告
-  python3 eval/rag/run_eval.py --top-k 5       # 自定义 top_k（默认读 rag 配置）
-  python3 eval/rag/run_eval.py --no-ingest     # 跳过入库（复用已存在的 eval 集合）
-  python3 eval/rag/run_eval.py --report out.md # 指定报告路径（默认 eval/rag/rag_eval_report.md）
+依赖：Qdrant 在线 + 配置正确的 qdrant 段；semantic/hybrid 还需顶层 embedding 段
+（api_key）。未配 embedding 时自动跳过 semantic/hybrid，仅跑 bm25。
+
+用法：
+  python3 eval/rag/run_eval.py                      # 全量，三策略（可行时）
+  python3 eval/rag/run_eval.py --strategies bm25   # 仅 BM25（无需 embedding）
+  python3 eval/rag/run_eval.py --k 3 --limit 10    # 自定义 k 与样本数
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-import uuid
+import time
+from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from qdrant_client.models import Modifier, SparseVectorParams
+from app.business.rag.ingestion import (  # noqa: E402
+    KnowledgeIngestionService,
+    build_embedding_client,
+)
+from app.business.rag.retrieval.bm25 import BM25Strategy  # noqa: E402
+from app.business.rag.retrieval.semantic import SemanticStrategy  # noqa: E402
+from app.business.rag.retrieval.hybrid import HybridStrategy  # noqa: E402
+from app.config.rag_config import get_rag_config_service  # noqa: E402
+from app.pkgs.vector import get_qdrant_client  # noqa: E402
 
-from app.business.rag.chunking.registry import get_chunking_strategy
-from app.business.rag.retrieval.bm25 import BM25Strategy
-from app.business.rag.sparse_bm25 import build_sparse_vector
-from app.config.rag_config import get_rag_config_service
-from app.pkgs.vector import get_qdrant_client
-from app.pkgs.vector.qdrant import SPARSE_VECTOR_NAME
-
-# --------------------------------------------------------------------------- #
-# 评估集合（eval 专用，避免污染生产 customer_service_knowledge）
-# --------------------------------------------------------------------------- #
-EVAL_COLLECTION = "eval_kb_bm25"
-KNOWLEDGE_DIR = ROOT / "template" / "knowledge" / "md"
-
-# 知识文档 → doc_type（仅作元数据，BM25 检索不使用；与生产入库口径一致）
-DOC_TYPE_MAP: dict[str, str] = {
-    "refund_policy.md": "policy",
-    "after_sale.md": "faq",
-    "logistics_shipping.md": "faq",
-    "order_faq.md": "faq",
-    "invoice_rule.md": "faq",
-    "membership_faq.md": "faq",
-    "product_robot_pro.md": "product",
-    "product_kb_pack.md": "product",
-}
-
-# 评估用例：每条对齐一个知识文档（category），query 为用户口语化问法，
-# must_contain 为答案必须检索到的关键事实（子串匹配，取自真实文档原文）。
-CASES: list[dict] = [
-    # 退款政策
-    {"id": "rag_001", "category": "refund_policy", "query": "七天无理由退货怎么操作",
-     "must_contain": ["七天无理由", "原路退回"]},
-    {"id": "rag_002", "category": "refund_policy", "query": "退款一般多久能到账",
-     "must_contain": ["原路退回", "1-3 个工作日"]},
-    {"id": "rag_003", "category": "refund_policy", "query": "哪些情况不支持无理由退款",
-     "must_contain": ["不支持无理由退款", "虚拟商品"]},
-    {"id": "rag_004", "category": "refund_policy", "query": "退款进度都有哪些状态",
-     "must_contain": ["审核中", "已退款"]},
-    # 售后 / 退换货
-    {"id": "rag_005", "category": "after_sale", "query": "退货退款的流程是什么",
-     "must_contain": ["退货退款", "运费由用户承担"]},
-    {"id": "rag_006", "category": "after_sale", "query": "智能客服机器人Pro质保多久",
-     "must_contain": ["整机一年质保", "主要部件两年"]},
-    {"id": "rag_007", "category": "after_sale", "query": "什么情况算质量问题可以退换",
-     "must_contain": ["质量问题", "运费由商家承担"]},
-    # 物流
-    {"id": "rag_008", "category": "logistics_shipping", "query": "订单满多少可以包邮",
-     "must_contain": ["包邮", "99 元"]},
-    {"id": "rag_009", "category": "logistics_shipping", "query": "偏远地区运费怎么算",
-     "must_contain": ["偏远地区", "运费"]},
-    {"id": "rag_010", "category": "logistics_shipping", "query": "跨省物流一般几天能到",
-     "must_contain": ["跨省", "3-5 天"]},
-    # 订单 FAQ
-    {"id": "rag_011", "category": "order_faq", "query": "怎么修改收货地址",
-     "must_contain": ["修改地址", "已发货"]},
-    {"id": "rag_012", "category": "order_faq", "query": "已经发货的订单还能取消吗",
-     "must_contain": ["已发货", "取消订单"]},
-    # 发票
-    {"id": "rag_013", "category": "invoice_rule", "query": "怎么开电子发票",
-     "must_contain": ["电子普通发票", "1-3 个工作日"]},
-    {"id": "rag_014", "category": "invoice_rule", "query": "开增值税专用发票需要什么信息",
-     "must_contain": ["增值税专用发票", "企业税号"]},
-    # 会员
-    {"id": "rag_015", "category": "membership_faq", "query": "金卡会员有什么权益",
-     "must_contain": ["金卡", "免邮券"]},
-    {"id": "rag_016", "category": "membership_faq", "query": "怎么联系人工客服",
-     "must_contain": ["转人工"]},
-    # 产品：机器人 Pro
-    {"id": "rag_017", "category": "product_robot_pro", "query": "智能客服机器人Pro多少钱",
-     "must_contain": ["1999", "智能客服机器人 Pro"]},
-    {"id": "rag_018", "category": "product_robot_pro", "query": "机器人Pro支持多少路并发",
-     "must_contain": ["50 路并发"]},
-    {"id": "rag_019", "category": "product_robot_pro", "query": "机器人Pro怎么部署",
-     "must_contain": ["SaaS", "无需本地部署"]},
-    # 产品：知识库增强包
-    {"id": "rag_020", "category": "product_kb_pack", "query": "知识库增强包多少钱",
-     "must_contain": ["399", "知识库增强包"]},
-    {"id": "rag_021", "category": "product_kb_pack", "query": "知识库增强包能无理由退款吗",
-     "must_contain": ["不支持无理由退款", "虚拟服务"]},
-    {"id": "rag_022", "category": "product_kb_pack", "query": "知识库增强包能单独使用吗",
-     "must_contain": ["依赖", "不能独立运行"]},
-]
+EVAL_COLLECTION = "rag_eval_knowledge"
+KNOWLEDGE_MD_DIR = ROOT / "template" / "knowledge" / "md"
 
 
 # --------------------------------------------------------------------------- #
 # 入库
 # --------------------------------------------------------------------------- #
-def ingest_knowledge(client, collection: str) -> int:
-    """分块 + 构建稀疏向量，写入 Qdrant（仅 bm25 腿，无需 embedding）。
-
-    分块改用策略模式：按 doc_type / markdown 取 MarkdownChunkingStrategy。
-    """
-    # 重建稀疏专用集合（与生产集合 schema 解耦）
+def reset_collection(client) -> None:
+    """清空评测集合，避免跨次运行累积重复向量。"""
     real = client._client
-    if real.collection_exists(collection):
-        real.delete_collection(collection)
-    real.create_collection(
-        collection_name=collection,
-        sparse_vectors_config={
-            SPARSE_VECTOR_NAME: SparseVectorParams(modifier=Modifier.IDF)
-        },
-    )
-    client.collection_name = collection
+    try:
+        if real.collection_exists(EVAL_COLLECTION):
+            real.delete_collection(EVAL_COLLECTION)
+            print(f"[RESET] 已删除旧评测集合 {EVAL_COLLECTION}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[RESET] 集合删除跳过：{exc!r}")
 
+
+def ingest_corpus(client, doc_map: dict[str, str]) -> int:
+    """将 md/ 下各文档按 doc_type 入库。
+
+    doc_map: {相对路径(如 md/refund_policy.md): doc_type}
+    返回写入块总数。
+    """
+    embedding_client = build_embedding_client()
+    svc = KnowledgeIngestionService(
+        qdrant_client=client,
+        embedding_client=embedding_client,
+        collection_name=EVAL_COLLECTION,
+        vector_size=client.vector_size,
+    )
     total = 0
-    for fname, doc_type in DOC_TYPE_MAP.items():
-        path = KNOWLEDGE_DIR / fname
-        if not path.exists():
-            print(f"[warn] 知识文档缺失: {path}")
+    for rel_path, doc_type in doc_map.items():
+        fpath = ROOT / "template" / "knowledge" / rel_path
+        if not fpath.exists():
+            print(f"[WARN] 文档不存在，跳过：{fpath}")
             continue
-        text = path.read_text(encoding="utf-8")
-        strategy = get_chunking_strategy(doc_type, "markdown")
-        chunks = strategy.chunk(text, doc_type=doc_type, source=fname)
-        points = []
-        for ch in chunks:
-            points.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "vector": {"bm25": build_sparse_vector(ch.content)},
-                    "payload": {
-                        "content": ch.content,
-                        "doc_type": ch.doc_type,
-                        "heading_path": ch.heading_path,
-                        "metadata": {"source": fname, "heading_path": ch.heading_path},
-                    },
-                }
-            )
-        if points:
-            client.upsert(points)
-            total += len(points)
-        print(f"[ingest] {fname}: {len(chunks)} 块 / {len(text)} 字")
+        doc_id = abs(hash(rel_path)) % (10**9)
+        # 先清同文档旧向量，保证幂等
+        try:
+            client.delete_by_doc_id(doc_id)
+        except Exception:
+            pass
+        n = svc.ingest_markdown_file(
+            fpath, doc_type=doc_type, source=fpath.name, doc_id=doc_id
+        )
+        total += n
+        print(f"[INGEST] {rel_path} ({doc_type}) -> {n} 块")
+    mode = "dense+bm25" if embedding_client else "bm25-only"
+    print(f"[INGEST] 共入库 {total} 块（{mode}）")
     return total
 
 
 # --------------------------------------------------------------------------- #
-# 评估
+# 检索策略构造
 # --------------------------------------------------------------------------- #
-def run_eval(client, top_k: int, min_score: float) -> dict:
-    strategy = BM25Strategy(client=client, min_score_threshold=min_score, top_k=top_k)
+def build_strategies(client, cfg):
+    """按配置构造三种策略；embedding 缺失时 semantic/hybrid 不可用。"""
+    emb = build_embedding_client()
+    strategies: dict[str, object] = {}
+    threshold = cfg.min_score_threshold
+    top_k = cfg.top_k
 
-    rows: list[dict] = []
-    agg = {"facts": 0, "h1": 0, "h3": 0, "h5": 0}
+    strategies["bm25"] = BM25Strategy(
+        client=client, min_score_threshold=threshold, top_k=top_k
+    )
 
-    for case in CASES:
-        docs = strategy.retrieve(case["query"])  # 已按分数降序，且经阈值过滤
-        contents = [d.content for d in docs]
-        facts = case["must_contain"]
-        hit1 = sum(1 for f in facts if f in "".join(contents[:1]))
-        hit3 = sum(1 for f in facts if f in "".join(contents[:3]))
-        hit5 = sum(1 for f in facts if f in "".join(contents[:5]))
+    if emb is None:
+        print("[STRATEGY] 未配置 embedding，跳过 semantic / hybrid")
+        return strategies
 
-        agg["facts"] += len(facts)
-        agg["h1"] += hit1
-        agg["h3"] += hit3
-        agg["h5"] += hit5
+    sem = SemanticStrategy(
+        client=client, embedding_client=emb,
+        min_score_threshold=threshold, top_k=top_k,
+    )
+    strategies["semantic"] = sem
+    strategies["hybrid"] = HybridStrategy(
+        strategies=[
+            BM25Strategy(client=client, min_score_threshold=threshold, top_k=top_k),
+            sem,
+        ],
+        min_score_threshold=threshold,
+        top_k=top_k,
+        rrf_k=cfg.rrf_k,
+    )
+    return strategies
 
-        top_source = ""
-        if docs:
-            md = docs[0].metadata or {}
-            top_source = f"{md.get('source', '?')} / {'>'.join(md.get('heading_path', []) or [])}"
-        rows.append(
-            {
-                "id": case["id"],
-                "category": case["category"],
-                "query": case["query"],
-                "facts": len(facts),
-                "hit5": hit5,
-                "recall5": round(hit5 / len(facts), 4) if facts else 1.0,
-                "retrieved": len(docs),
-                "top_source": top_source,
-            }
-        )
-    return {"rows": rows, "agg": agg}
+
+def dedup(docs):
+    """复制 RagRetrieveTool._dedup：按内容去重，保留分数最高者。"""
+    best: dict[str, object] = {}
+    for d in docs:
+        key = (d.content or "").strip()
+        if not key:
+            continue
+        if key not in best or d.score > best[key].score:
+            best[key] = d
+    return list(best.values())
 
 
 # --------------------------------------------------------------------------- #
-# 报告
+# 指标
 # --------------------------------------------------------------------------- #
-def build_report(result: dict, top_k: int, chunks: int) -> str:
-    rows = result["rows"]
-    agg = result["agg"]
-    r1 = agg["h1"] / agg["facts"] if agg["facts"] else 0
-    r3 = agg["h3"] / agg["facts"] if agg["facts"] else 0
-    r5 = agg["h5"] / agg["facts"] if agg["facts"] else 0
-
-    # 按类别聚合
-    by_cat: dict[str, dict] = {}
-    for r in rows:
-        c = by_cat.setdefault(r["category"], {"facts": 0, "h5": 0, "n": 0, "fail": 0})
-        c["facts"] += r["facts"]
-        c["h5"] += r["hit5"]
-        c["n"] += 1
-        if r["recall5"] < 1.0:
-            c["fail"] += 1
-
-    lines: list[str] = []
-    lines.append("# RAG 检索质量评估报告（BM25 腿）\n")
-    lines.append(f"- 检索策略：`bm25`（当前 `rag.retrieval_strategy` 配置）")
-    lines.append(f"- 入库块数：{chunks}（来自 `template/knowledge` 8 篇文档）")
-    lines.append(f"- top_k：{top_k}；BM25 阈值：{get_rag_config_service().config.min_score_threshold}")
-    lines.append(f"- 用例数：{len(rows)}；无需 embedding / LLM，端到端命中本地 Qdrant\n")
-    lines.append("## 一、总体召回\n")
-    lines.append("| 指标 | 数值 |")
-    lines.append("| --- | --- |")
-    lines.append(f"| recall@1 | **{r1*100:.2f}%** |")
-    lines.append(f"| recall@3 | **{r3*100:.2f}%** |")
-    lines.append(f"| recall@5 | **{r5*100:.2f}%** |")
-    lines.append(f"| 关键事实总数 / 命中@5 | {agg['facts']} / {agg['h5']} |")
-    lines.append("")
-    lines.append("## 二、按知识文档（类别）\n")
-    lines.append("| 文档 | 用例数 | 事实数 | 命中@5 | recall@5 | 未满分用例 |")
-    lines.append("| --- | --- | --- | --- | --- | --- |")
-    for cat, c in by_cat.items():
-        rc = c["h5"] / c["facts"] if c["facts"] else 0
-        lines.append(
-            f"| {cat} | {c['n']} | {c['facts']} | {c['h5']} | {rc*100:.2f}% | {c['fail']} |"
-        )
-    lines.append("")
-    lines.append("## 三、逐用例明细\n")
-    lines.append("| id | 文档 | query | 事实数 | 命中@5 | recall@5 | 召回块数 | 首块来源 |")
-    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
-    for r in rows:
-        lines.append(
-            f"| {r['id']} | {r['category']} | {r['query']} | {r['facts']} | "
-            f"{r['hit5']} | {r['recall5']*100:.0f}% | {r['retrieved']} | {r['top_source']} |"
-        )
-    lines.append("")
-    lines.append("## 四、说明与后续\n")
-    lines.append("- 本评估仅覆盖 BM25 腿：当前 `embedding.api_key` 为空、策略为 `bm25`。")
-    lines.append("- 中文按字切分（MVP 分词），口语化同义问法召回依赖字重叠，长尾问法可能漏召。")
-    lines.append("- 若启用 semantic / hybrid，需先填 `embedding.api_key` 并重新入库稠密向量；")
-    lines.append("  届时本脚本可扩展为对 semantic / hybrid 策略分别评估（替换 `BM25Strategy`）。")
-    return "\n".join(lines)
+def _doc_source(doc) -> str:
+    meta = doc.metadata or {}
+    src = meta.get("source") or (meta.get("metadata") or {}).get("source") or ""
+    return src
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--top-k", type=int, default=None)
-    ap.add_argument("--no-ingest", action="store_true", help="复用已存在的 eval 集合，跳过入库")
-    ap.add_argument("--report", type=str, default=str(ROOT / "eval" / "rag" / "rag_eval_report.md"))
-    args = ap.parse_args()
+def compute_metrics(docs, expected_doc: str, must_contain: list[str], k: int) -> dict:
+    """对单条 case 的前 k 个召回块计算指标。"""
+    top = docs[:k]
+    gold_name = Path(expected_doc).name
 
-    cfg = get_rag_config_service().config
-    top_k = args.top_k or cfg.top_k
-    min_score = cfg.min_score_threshold
-
-    client = get_qdrant_client()
-
-    if args.no_ingest:
-        client.collection_name = EVAL_COLLECTION
-        chunks = -1
-        print(f"[skip] 复用集合 {EVAL_COLLECTION}")
+    # Recall@k：事实点覆盖率
+    if must_contain:
+        fact_hit = [
+            any(fact in (d.content or "") for d in top) for fact in must_contain
+        ]
+        recall_at_k = sum(fact_hit) / len(must_contain)
     else:
-        chunks = ingest_knowledge(client, EVAL_COLLECTION)
-        print(f"[ingest] 共入库 {chunks} 块 -> {EVAL_COLLECTION}")
+        recall_at_k = 1.0
 
-    result = run_eval(client, top_k=top_k, min_score=min_score)
-    report = build_report(result, top_k=top_k, chunks=chunks)
+    # 文档级相关判定：必须同时命中金标文档「且」包含至少一个事实点，
+    # 避免「来自金标文档但无关小节」虚高 context_recall / MRR。
+    def is_gold(d) -> bool:
+        if not (_doc_source(d) and Path(_doc_source(d)).name == gold_name):
+            return False
+        return any(fact in (d.content or "") for fact in (must_contain or []))
 
-    Path(args.report).write_text(report, encoding="utf-8")
-    print("\n" + report)
-    print(f"\n[done] 报告已写入 {args.report}")
+    # context_recall：前 k 中是否出现「金标文档且相关」的块
+    context_recall = 1.0 if any(is_gold(d) for d in top) else 0.0
+
+    # context_precision：前 k 中相关块占比
+    relevant = sum(1 for d in top if is_gold(d))
+    context_precision = (relevant / len(top)) if top else 0.0
+
+    # MRR：首个「金标文档且相关」块的排名倒数
+    mrr = 0.0
+    for rank, d in enumerate(top, start=1):
+        if is_gold(d):
+            mrr = 1.0 / rank
+            break
+
+    return {
+        "recall_at_k": round(recall_at_k, 4),
+        "context_recall": context_recall,
+        "context_precision": round(context_precision, 4),
+        "mrr": round(mrr, 4),
+        "retrieved_sources": [
+            Path(_doc_source(d)).name for d in top if _doc_source(d)
+        ],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# 主流程
+# --------------------------------------------------------------------------- #
+def main() -> None:
+    parser = argparse.ArgumentParser(description="RAG 检索评测执行器")
+    parser.add_argument("--cases", default=str(Path(__file__).resolve().parent / "rag_eval_cases.json"))
+    parser.add_argument("--knowledge-dir", default=str(KNOWLEDGE_MD_DIR))
+    parser.add_argument("--k", type=int, default=None, help="评估截断 k（默认取 rag.top_k）")
+    parser.add_argument(
+        "--strategies", default="bm25,semantic,hybrid",
+        help="启用的策略，逗号分隔；未配 embedding 时 semantic/hybrid 自动跳过",
+    )
+    parser.add_argument("--limit", type=int, default=None, help="仅评前 N 条 case")
+    parser.add_argument("--no-ingest", action="store_true", help="复用已入库数据，不再重新入库")
+    args = parser.parse_args()
+
+    cases_path = Path(args.cases)
+    if not cases_path.exists():
+        print(f"[ERR] 评测集不存在：{cases_path}（请先运行 gen_cases.py）")
+        sys.exit(1)
+    cases = json.loads(cases_path.read_text(encoding="utf-8"))
+    if args.limit:
+        cases = cases[: args.limit]
+
+    cfg = get_rag_config_service().get_config()
+    k = args.k or cfg.top_k
+
+    # 构建 client（独立评测集合，不污染生产）
+    client = get_qdrant_client()
+    client.collection_name = EVAL_COLLECTION
+    # vector_size 已在 get_qdrant_client 内按配置设定
+
+    # 文档 -> doc_type 映射（从 cases 去重）
+    doc_map: dict[str, str] = {}
+    for c in cases:
+        doc_map[c["expected_doc"]] = c.get("doc_type", "faq")
+
+    if not args.no_ingest:
+        reset_collection(client)
+        ingest_corpus(client, doc_map)
+    else:
+        print("[INGEST] --no-ingest：复用已有评测集合数据")
+
+    # 构造策略
+    all_strategies = build_strategies(client, cfg)
+    wanted = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    active = {name: s for name, s in all_strategies.items() if name in wanted}
+    if not active:
+        print("[ERR] 没有可用的检索策略（检查 embedding 配置或 --strategies）")
+        sys.exit(1)
+    print(f"[EVAL] 策略={list(active)} k={k} cases={len(cases)}")
+
+    # 跑评测
+    per_strategy: dict[str, dict] = {}
+    t0 = time.time()
+    for name, strat in active.items():
+        print(f"\n=== 策略：{name} ===")
+        case_results = []
+        agg = defaultdict(list)
+        for c in cases:
+            try:
+                docs = strat.retrieve(c["query"], user_id=None)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [ERR] {c['id']} {c['query']!r}: {exc!r}")
+                continue
+            docs = dedup(docs)
+            m = compute_metrics(docs, c["expected_doc"], c.get("must_contain", []), k)
+            m["id"] = c["id"]
+            m["query"] = c["query"]
+            m["expected_doc"] = c["expected_doc"]
+            case_results.append(m)
+            for key in ("recall_at_k", "context_recall", "context_precision", "mrr"):
+                agg[key].append(m[key])
+
+        # 按 doc_type 聚合，便于看哪类文档弱
+        by_type: dict[str, defaultdict] = defaultdict(lambda: defaultdict(list))
+        for c, m in zip(cases, case_results):
+            dt = c.get("doc_type", "faq")
+            by_type[dt]["n"].append(1)
+            for key in ("recall_at_k", "context_recall", "context_precision", "mrr"):
+                by_type[dt][key].append(m[key])
+
+        summary = {
+            key: round(sum(v) / len(v), 4) if v else 0.0
+            for key, v in agg.items()
+        }
+        summary["n"] = len(case_results)
+        summary["by_doc_type"] = {
+            t: {key: round(sum(v) / len(v), 4) if v else 0.0 for key, v in metric.items()}
+            for t, metric in by_type.items()
+        }
+        # 修正 by_doc_type 中 n 为计数（上面 dict 里 n 是 [1,1,...]，需取长度）
+        for t, metric in summary["by_doc_type"].items():
+            metric["n"] = len(by_type[t].get("n", []))
+        per_strategy[name] = {"summary": summary, "cases": case_results}
+        print(f"  Recall@{k}={summary['recall_at_k']}  "
+              f"ctx_recall={summary['context_recall']}  "
+              f"ctx_precision={summary['context_precision']}  "
+              f"MRR={summary['mrr']}  (n={summary['n']})")
+
+    elapsed = time.time() - t0
+
+    # 输出
+    out_dir = Path(__file__).resolve().parent
+    results = {
+        "config": {
+            "k": k,
+            "retrieval_strategy": cfg.retrieval_strategy,
+            "min_score_threshold": cfg.min_score_threshold,
+            "rrf_k": cfg.rrf_k,
+            "collection": EVAL_COLLECTION,
+            "elapsed_sec": round(elapsed, 2),
+        },
+        "strategies": per_strategy,
+    }
+    res_path = out_dir / "rag_eval_results.json"
+    res_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n[OK] 结果 -> {res_path}")
+
+    _write_report(out_dir / "rag_eval_report.md", results, k)
+
+
+def _write_report(path: Path, results: dict, k: int) -> None:
+    cfg = results["config"]
+    lines = [
+        "# RAG 检索评测报告",
+        "",
+        f"> 生成时间无关；k={k}，集合 `{cfg['collection']}`，"
+        f"耗时 {cfg['elapsed_sec']}s，阈值={cfg['min_score_threshold']}，rrf_k={cfg['rrf_k']}",
+        "",
+        "## 策略总览",
+        "",
+        "| 策略 | n | Recall@k | context_recall | context_precision | MRR |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name, blk in results["strategies"].items():
+        s = blk["summary"]
+        lines.append(
+            f"| {name} | {s['n']} | {s['recall_at_k']} | {s['context_recall']} | "
+            f"{s['context_precision']} | {s['mrr']} |"
+        )
+    lines += ["", "## 指标说明", ""]
+    lines += [
+        "- **Recall@k**：金标事实点（must_contain）在前 k 个召回块中的覆盖率。",
+        "- **context_recall**：金标文档（expected_doc）是否出现在前 k 个召回块（0/1 均值）。",
+        "- **context_precision**：前 k 个召回块中相关块占比（命中金标文档或含事实点）。",
+        "- **MRR**：首个命中金标文档块的排名倒数。",
+        "",
+        "## 分 doc_type 明细（Recall@k）",
+        "",
+        "| 策略 | doc_type | n | Recall@k | context_recall | MRR |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name, blk in results["strategies"].items():
+        s = blk["summary"]
+        by_type = s.get("by_doc_type", {})
+        for dt, m in by_type.items():
+            lines.append(
+                f"| {name} | {dt} | {m.get('n', '-')} | {m.get('recall_at_k', 0)} | "
+                f"{m.get('context_recall', 0)} | {m.get('mrr', 0)} |"
+            )
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"[OK] 报告 -> {path}")
 
 
 if __name__ == "__main__":

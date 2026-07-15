@@ -57,6 +57,50 @@ class TestMarkdownStrategy:
         assert all(c.heading_path == ["合同", "长条款"] for c in chunks)
 
 
+class TestMarkdownQaWithinHeading:
+    def test_qa_pairs_under_heading_split_by_pair(self):
+        # 标题下的 Q/A 问答对：每对一块，且带上所属标题路径
+        text = (
+            "# 帮助中心\n"
+            "## 退货政策\n"
+            "Q: 多久发货？\nA: 一般 48 小时内发货。\n"
+            "Q: 支持七天无理由吗？\nA: 支持，自签收起 7 日内。"
+        )
+        chunks = MarkdownChunkingStrategy().chunk(text, doc_type="faq", source="faq.md")
+        qa_chunks = [c for c in chunks if c.content.startswith("问题：")]
+        assert len(qa_chunks) == 2
+        assert qa_chunks[0].content == "问题：多久发货？\n回答：一般 48 小时内发货。"
+        assert qa_chunks[1].content == "问题：支持七天无理由吗？\n回答：支持，自签收起 7 日内。"
+        assert all(c.heading_path == ["帮助中心", "退货政策"] for c in qa_chunks)
+
+    def test_no_qa_falls_back_to_recursive(self):
+        # 无问答对的普通正文：按原递归字符方式切，不出现「问题：」前缀
+        text = "# 说明\n## 概述\n这是一段普通说明文字，没有问答对，应当走递归字符切分兜底。"
+        chunks = MarkdownChunkingStrategy().chunk(text, doc_type="policy", source="p.md")
+        assert chunks
+        assert all(not c.content.startswith("问题：") for c in chunks)
+        assert all(c.heading_path == ["说明", "概述"] for c in chunks)
+
+    def test_mixed_block_keeps_prose_and_qa(self):
+        # 标题块内同时有正文与问答对：问答对各自成块，正文仍递归切，内容不丢
+        text = (
+            "## 配送说明\n"
+            "下单前请确认收货地址。\n"
+            "Q: 多久发货？\nA: 48 小时内。"
+        )
+        chunks = MarkdownChunkingStrategy().chunk(text, doc_type="faq", source="ship.md")
+        qa = [c for c in chunks if c.content.startswith("问题：")]
+        prose = [c for c in chunks if not c.content.startswith("问题：")]
+        assert len(qa) == 1
+        assert qa[0].content == "问题：多久发货？\n回答：48 小时内。"
+        assert prose  # 问答对前的中文正文仍被保留并递归切块
+        # 标题路径一致
+        assert all(c.heading_path == ["配送说明"] for c in chunks)
+        # 内容拼接能覆盖原始正文（不丢字）
+        joined = "".join(c.content for c in chunks)
+        assert "确认收货地址" in joined
+
+
 # --------------------------------------------------------------------------- #
 # JSON（当前能力）
 # --------------------------------------------------------------------------- #

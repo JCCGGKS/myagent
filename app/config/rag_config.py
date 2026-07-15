@@ -20,8 +20,26 @@ def _resolve_config_path() -> Path:
     return CONFIG_DIR / f"llm_config.{env_name}.yml"
 
 
+class EmbeddingConfig(BaseModel):
+    """向量化模型（语义/混合检索依赖）独立配置。
+
+    与 agent 的 llm（app/config/llm.py）解耦，各自拥有独立的
+    base_url / api_key / model。vector_size 须与嵌入模型实际输出维度一致，
+    且须与 qdrant.vector_size 匹配。
+    """
+
+    base_url: str = ""
+    api_key: str = ""
+    model: str = "text-embedding-v4"
+    vector_size: int = Field(default=1536, ge=1)
+
+
 class RerankConfig(BaseModel):
+    """重排序模型独立配置（与 embedding 解耦，各自独立 base_url / api_key / model）。"""
+
     enabled: bool = False
+    base_url: str = ""
+    api_key: str = ""
     model: str = ""
 
 
@@ -42,6 +60,8 @@ class RagConfig(BaseModel):
     # RRF 融合常数 k（仅 hybrid 策略生效），分越小权重越大。
     rrf_k: int = Field(default=60, ge=1)
     rerank: RerankConfig = RerankConfig()
+    # 向量化模型配置（与 rerank / agent llm 各自独立）
+    embedding: EmbeddingConfig = EmbeddingConfig()
 
 
 class RagConfigService:
@@ -85,10 +105,10 @@ def _load_rag_config() -> RagConfig:
 
 
 def _apply_patch(model: BaseModel, patch: dict[str, object]) -> None:
-    """将扁平/嵌套的 patch 应用到 pydantic model（仅支持一层嵌套）。"""
+    """将扁平/嵌套的 patch 应用到 pydantic model（rerank / embedding 支持一层嵌套）。"""
     for key, value in patch.items():
-        if key == "rerank" and isinstance(value, dict):
-            sub = model.rerank
+        if key in ("rerank", "embedding") and isinstance(value, dict):
+            sub = getattr(model, key)
             for sub_key, sub_value in value.items():
                 if sub_value is not None and hasattr(sub, sub_key):
                     setattr(sub, sub_key, sub_value)
@@ -144,10 +164,12 @@ def load_rag_config_raw() -> dict[str, object]:
 
 
 def load_embedding_config_raw() -> dict[str, object]:
-    """读取当前环境配置文件中的顶层 `embedding` 原始段（dict）。
+    """读取当前环境配置文件中的 `rag.embedding` 原始段（dict）。
 
-    与 `rag` 同级，属于基础设施/密钥配置，不由前端管理。包含
-    model / api_key / dimensions。无配置时返回空 dict。
+    优先读取 `rag.embedding`（与 rerank 同级，统一在 rag 段管理）；
+    若 rag 段内无 embedding，则回退读取顶层 `embedding` 段（历史位置，
+    兼容旧配置）。包含 base_url / api_key / model / vector_size。
+    无配置时返回空 dict。
     """
     path = _resolve_config_path()
     if not path.exists():
@@ -156,6 +178,11 @@ def load_embedding_config_raw() -> dict[str, object]:
         file_data = load_yaml_file(path)
     except Exception:
         return {}
-    if isinstance(file_data, dict) and isinstance(file_data.get("embedding"), dict):
+    if not isinstance(file_data, dict):
+        return {}
+    rag_section = file_data.get("rag")
+    if isinstance(rag_section, dict) and isinstance(rag_section.get("embedding"), dict):
+        return dict(rag_section["embedding"])
+    if isinstance(file_data.get("embedding"), dict):
         return dict(file_data["embedding"])
     return {}

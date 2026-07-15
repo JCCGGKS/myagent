@@ -1,0 +1,281 @@
+[
+  {
+    "expected_doc": "md/product_kb_pack.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 399 元",
+      "知识库增强包依赖智能客服机器人 Pro 使用",
+      "一经激活不支持无理由退款"
+    ],
+    "query": "知识库增强包价格",
+    "id": "rag_0001"
+  },
+  {
+    "expected_doc": "md/after_sale.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "标准退换货流程",
+      "质量问题退换货的往返运费由商家承担",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "质量问题的退货运费谁出",
+    "id": "rag_0002"
+  },
+  {
+    "expected_doc": "md/product_robot_pro.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 1999 元",
+      "50 路并发",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "智能客服机器人 Pro 多少钱",
+    "id": "rag_0003"
+  },
+  {
+    "expected_doc": "md/product_kb_pack.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 399 元",
+      "知识库增强包依赖智能客服机器人 Pro 使用",
+      "一经激活不支持无理由退款"
+    ],
+    "query": "增强包要配合什么才能用",
+    "id": "rag_0004"
+  },
+  {
+    "expected_doc": "md/product_robot_pro.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 1999 元",
+      "50 路并发",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "这个机器人能同时接多少路会话",
+    "id": "rag_0005"
+  },
+  {
+    "expected_doc": "md/membership_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "普通会员、银卡、金卡三档",
+      "创建服务单并接入人工客服",
+      "优惠不折现、不补发"
+    ],
+    "query": "会员分几档",
+    "id": "rag_0006"
+  },
+  {
+    "expected_doc": "md/logistics_shipping.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "订单实付满 99 元包邮",
+      "基础运费 8 元",
+      "跨省：3-5 天",
+      "物流停滞超过 72 小时未更新"
+    ],
+    "query": "寄快递基础运费怎么算",
+    "id": "rag_0007"
+  },
+  {
+    "expected_doc": "md/after_sale.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "标准退换货流程",
+      "质量问题退换货的往返运费由商家承担",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "智能客服机器人 Pro 保修多久",
+    "id": "rag_0008"
+  },
+  {
+    "expected_doc": "md/refund_policy.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "七天无理由退货退款",
+      "退款将原路退回至原支付账户",
+      "到账时间以支付渠道为准"
+    ],
+    "query": "七天无理由怎么退款",
+    "id": "rag_0009"
+  },
+  {
+    "expected_doc": "md/logistics_shipping.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "订单实付满 99 元包邮",
+      "基础运费 8 元",
+      "跨省：3-5 天",
+      "物流停滞超过 72 小时未更新"
+    ],
+    "query": "下单满多少包邮",
+    "id": "rag_0010"
+  },
+  {
+    "expected_doc": "md/order_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "未发货",
+      "修改地址",
+      "已发货",
+      "不支持直接取消"
+    ],
+    "query": "怎么取消还没付款的订单",
+    "id": "rag_0011"
+  },
+  {
+    "expected_doc": "md/membership_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "普通会员、银卡、金卡三档",
+      "创建服务单并接入人工客服",
+      "优惠不折现、不补发"
+    ],
+    "query": "退款后优惠券会退给我吗",
+    "id": "rag_0012"
+  },
+  {
+    "expected_doc": "md/refund_policy.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "七天无理由退货退款",
+      "退款将原路退回至原支付账户",
+      "到账时间以支付渠道为准"
+    ],
+    "query": "钱什么时候退回来",
+    "id": "rag_0013"
+  },
+  {
+    "expected_doc": "md/invoice_rule.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "电子普通发票",
+      "增值税专用发票",
+      "企业税号",
+      "已发货",
+      "已完成",
+      "方可申请发票"
+    ],
+    "query": "还没发货能先开发票吗",
+    "id": "rag_0014"
+  },
+  {
+    "expected_doc": "md/after_sale.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "标准退换货流程",
+      "质量问题退换货的往返运费由商家承担",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "退换货具体怎么操作",
+    "id": "rag_0015"
+  },
+  {
+    "expected_doc": "md/product_kb_pack.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 399 元",
+      "知识库增强包依赖智能客服机器人 Pro 使用",
+      "一经激活不支持无理由退款"
+    ],
+    "query": "买了增强包还能退吗",
+    "id": "rag_0016"
+  },
+  {
+    "expected_doc": "md/order_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "未发货",
+      "修改地址",
+      "已发货",
+      "不支持直接取消"
+    ],
+    "query": "想改一下收货地址",
+    "id": "rag_0017"
+  },
+  {
+    "expected_doc": "md/membership_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "普通会员、银卡、金卡三档",
+      "创建服务单并接入人工客服",
+      "优惠不折现、不补发"
+    ],
+    "query": "怎么联系人工客服",
+    "id": "rag_0018"
+  },
+  {
+    "expected_doc": "md/invoice_rule.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "电子普通发票",
+      "增值税专用发票",
+      "企业税号",
+      "已发货",
+      "已完成",
+      "方可申请发票"
+    ],
+    "query": "开增值税专用发票需要什么信息",
+    "id": "rag_0019"
+  },
+  {
+    "expected_doc": "md/refund_policy.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "七天无理由退货退款",
+      "退款将原路退回至原支付账户",
+      "到账时间以支付渠道为准"
+    ],
+    "query": "退款是原路返回到付款账户吗",
+    "id": "rag_0020"
+  },
+  {
+    "expected_doc": "md/invoice_rule.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "电子普通发票",
+      "增值税专用发票",
+      "企业税号",
+      "已发货",
+      "已完成",
+      "方可申请发票"
+    ],
+    "query": "怎么开发票",
+    "id": "rag_0021"
+  },
+  {
+    "expected_doc": "md/product_robot_pro.md",
+    "doc_type": "product",
+    "must_contain": [
+      "售价 1999 元",
+      "50 路并发",
+      "整机一年质保，主要部件两年"
+    ],
+    "query": "Pro 版保修期多长",
+    "id": "rag_0022"
+  },
+  {
+    "expected_doc": "md/order_faq.md",
+    "doc_type": "faq",
+    "must_contain": [
+      "未发货",
+      "修改地址",
+      "已发货",
+      "不支持直接取消"
+    ],
+    "query": "订单显示已发货是什么意思",
+    "id": "rag_0023"
+  },
+  {
+    "expected_doc": "md/logistics_shipping.md",
+    "doc_type": "policy",
+    "must_contain": [
+      "订单实付满 99 元包邮",
+      "基础运费 8 元",
+      "跨省：3-5 天",
+      "物流停滞超过 72 小时未更新"
+    ],
+    "query": "我的快递好几天没动了怎么办",
+    "id": "rag_0024"
+  }
+]

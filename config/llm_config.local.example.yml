@@ -53,13 +53,30 @@ rag:
   # RRF 融合常数 k（仅 hybrid 策略生效），默认 60
   rrf_k: 60
 
-  # Rerank 配置
+  # Rerank 配置（与 embedding 各自独立 base_url / api_key / model）
   rerank:
     # 是否启用 Rerank
     enabled: false
 
+    # 重排网关地址（缺省 DashScope rerank 服务）
+    base_url: "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+
+    # DashScope API Key（独立配置，不再复用 embedding 的 key）
+    api_key: ""
+
     # Rerank 模型名称（启用时必填）
     model: ""
+
+  # 向量化模型配置（语义/混合检索依赖；与 agent llm / rerank 各自独立）
+  embedding:
+    # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
+    base_url: ""
+    # API Key
+    api_key: ""
+    # 嵌入模型名称（如 DashScope text-embedding-v4）
+    model: "text-embedding-v4"
+    # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
+    vector_size: 1536
 
 # 图态快照（checkpointer）配置：仅在使用 Redis saver 时生效
 # （REDIS_URL / AGENT_REDIS_URL 已配置；否则回退 MemorySaver，TTL 无意义）。
@@ -131,13 +148,6 @@ smtp:
   from_addr: "no-reply@myagent.local"
   # 是否使用 TLS
   use_tls: true
-
-# Embedding 配置（基础设施，不由前端控制；rag 段由前端 PUT /rag/config 管理）
-embedding:
-  # 嵌入模型名称（OpenAI 兼容网关，如 DashScope text-embedding-v4）
-  model: text-embedding-v4
-  # API Key（rerank 复用同一 Key 进行网关鉴权）
-  api_key: ""
 
 # Qdrant 配置
 qdrant:

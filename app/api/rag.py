@@ -160,7 +160,9 @@ async def knowledge_upload(
     current_user = request.state.user
     """知识库文件上传接口（需登录，写入 user_id 到元数据）。
 
-    文件名与后缀合法性由前端校验（仅支持 .md / .markdown / .json）。
+    文件名与后缀合法性、后缀与 doc_type 一致性由前端校验
+    （支持 .md / .markdown / .json / .word / .excel / .csv / .pdf / .ppt）；
+    后端按所选文档类型路由到对应分块策略，未知格式回退 DefaultTextStrategy。
     """
 
     raw_bytes = await file.read()

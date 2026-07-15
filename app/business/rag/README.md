@@ -24,15 +24,15 @@
 入口在 `app/api/rag.py:knowledge_upload`，把前端上传的文件驱动走完 1→3 阶段，并维护 `knowledge_files` 元信息状态（`app/dao/knowledge_file.py`）。链路：
 
 1. **落元信息（PROCESSING）**：`file_dao.create(user_id, filename, file_size, doc_type, status=PROCESSING)`；返回 `record["id"]` 作为 `doc_id`，透传后续入库，用于按文档删向量。
-2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段配置 `chunk_size`/`chunk_overlap` 等分块参数、按顶层配置构造 `EmbeddingClient` 与 `QdrantClient`，分块委托 `get_chunking_strategy(doc_type, doc_format)` 选择策略。
-3. **向量化前置校验**：`embedding_client is None`（缺 `embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
-4. **分块 + 向量化 + 批量入库**：`.json` → `ingest_json_records`；`.md/.markdown` → `ingest_markdown_text`；二者汇聚到 `_ingest_chunks`：批量算 dense、逐块算 BM25 sparse，一次性 upsert 命名向量 `{dense, bm25}`（payload 含 `user_id` / `doc_id`）。
+2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段配置 `chunk_size`/`chunk_overlap` 等分块参数、按 `rag.embedding` 段构造 `EmbeddingClient` 与 `QdrantClient`，分块委托 `get_chunking_strategy(doc_type, doc_format)` 选择策略。
+3. **向量化前置校验**：`embedding_client is None`（缺 `rag.embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
+4. **分块 + 向量化 + 批量入库**：`.json` → `ingest_json_records`；其它文本（含 `.md/.markdown/.word/.excel/.csv/.pdf/.ppt`）经 `ingest_text(doc_type=doc_type, doc_format=doc_type, ...)` 按所选文档类型取分块策略；二者汇聚到 `_ingest_chunks`：批量算 dense、逐块算 BM25 sparse，一次性 upsert 命名向量 `{dense, bm25}`（payload 含 `user_id` / `doc_id`）。
 5. **状态变更**：
    - 成功 → `update_status(doc_id, SUCCESS, chunk_count=实际写入块数)`；
    - 异常 → `update_status(doc_id, ERROR, error_message=str(exc))` 并重抛。
 6. **返回结果**：序列化的文件记录（含 `status` / `chunk_count` / 文件名等）。
 
-> 文件名与后缀合法性、后缀与 `doc_type` 一致性由前端校验（仅支持 `.md/.markdown/.json`），后端不再做这两类校验。
+> 文件名与后缀合法性、后缀与 `doc_type` 一致性由前端校验（支持 `.md/.markdown/.json/.word/.excel/.csv/.pdf/.ppt`），后端不再做这两类校验；后端 `ingest_text` 按上传时选定的文档类型（`doc_format`）路由到对应分块策略，未知格式回退 `DefaultTextStrategy`。
 
 ---
 
@@ -45,11 +45,12 @@
 
 - `Chunk`（`chunking/models.py`）：`chunk_no / content / heading_path / doc_type / chunk_type / metadata`；`chunk_type` ∈ `text | table | clause`。
 - 分块策略完全按 `doc_format`（文件后缀）选择；未知格式回退 `DefaultTextStrategy`（递归字符全量切）。`doc_type` 仅作内容类型元信息记录，不参与策略选择——FAQ 的 JSON / Markdown 文件分别由 `JsonChunkingStrategy` / `MarkdownChunkingStrategy` 处理。
+- **Markdown 切块三级逻辑**（用户预期落地）：先按标题结构切分（`_parse_heading_blocks`）→ 每块内若检出 `Q:/问：` 形式问答对则按问答对逐对切块（合成 `问题：…\n回答：…` 自包含块）→ 否则块内正文仍按 `RecursiveSplitter` 递归字符切（与改造前行为一致，不丢内容）。即「结构为主、问答优先、字符兜底」。
 - 策略清单（`chunking/`，共 6 个）：
 
   | 策略类 | 命中键 | `chunk_type` | 说明 |
   |---|---|---|---|
-  | `MarkdownChunkingStrategy` | `markdown` | `text` | 解析 `#`~`######` 标题树 → `structure_chunk`，继承 `heading_path`；超长块由 `RecursiveSplitter` 降级 |
+  | `MarkdownChunkingStrategy` | `markdown` | `text` | 先按 `#`~`######` 标题树切结构（`structure_chunk`，继承 `heading_path`）；标题块内检出 `Q:/问：` 问答对则每对一块（合成 `问题：…\n回答：…`），否则块内正文由 `RecursiveSplitter` 递归字符切 |
   | `WordChunkingStrategy` | `word` | `text` | 复用 `structure_chunk`（docx→文本由 parser 层负责） |
   | `JsonChunkingStrategy` | `json` | `text` | 通用 JSON 记录：每对一块，字段经 `source` 透传（FAQ 的 `{question,answer}` 也按记录切块） |
   | `ExcelCsvChunkingStrategy` | `excel`/`csv` | `table` | 行级 + 重建表头上下文（`列名=值`）+ 表概要块；带 `table_id`/`caption`/`header`/`row_index` |
@@ -69,7 +70,7 @@
 ### 稠密向量（EmbeddingClient）
 - 封装 `openai.OpenAI`（OpenAI 兼容协议），可对接 DashScope / OpenAI 等网关。
 - `embed()` 批量 / `embed_one()` 单条。
-- `build_embedding_client()`：从顶层 `embedding` 段（model / api_key）+ `llm.base_url` 构建，缺 `api_key` 返回 `None`。
+- `build_embedding_client()`：从 `rag.embedding` 段（base_url / api_key / model / vector_size）构建，**独立**于 agent 的 `llm.base_url`，缺 `api_key` 返回 `None`。
 - 向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 
 ### 稀疏向量（BM25）
@@ -204,10 +205,10 @@
 - 按 `content` 去重，保留同内容中分数最高的一份。
 
 #### Rerank（_rerank，仅启用时）
-- 启用 `rag.rerank.enabled=true` 时，调用 DashScope rerank 接口（`DASHSCOPE_RERANK_URL`，默认模型 `gated-rerank`）对召回结果精排。
+- 启用 `rag.rerank.enabled=true` 时，调用 rerank 接口对召回结果精排；网关地址、Key、模型均来自 `rag.rerank`（base_url / api_key / model），**独立**于 embedding（不再复用 embedding 的 api_key），缺省 `base_url=DASHSCOPE_RERANK_URL`、缺省 `model=gated-rerank`。
 - `rerank(query, documents)`：返回 `[(原索引, 相关性分数)]` 降序。
 - **调用失败不抛异常，降级为原始顺序**，保证链路不中断。
-- `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `embedding.api_key` 时返回 `None`。
+- `build_rerank_client()`：`rag.rerank.enabled=false` 或缺 `rag.rerank.api_key` 时返回 `None`。
 - **未启用 rerank 时，融合（RRF）结束即返回，不再做额外调序**——结果顺序由检索策略的融合分数决定。
 
 #### 工具调用接口
@@ -253,12 +254,12 @@ qdrant:                             # 与 rag 同级
 | 参数 | 来源 | 生效阶段 |
 |---|---|---|
 | `chunk_size` / `chunk_overlap` / `min_chunk_size` | `rag` 段 | 1.分块 |
-| `embedding.model` / `api_key` | 顶层 `embedding` | 2.向量化 |
+| `rag.embedding.base_url` / `api_key` / `model` / `vector_size` | `rag.embedding`（独立，不与 agent llm 共用） | 2.向量化 |
 | `qdrant.vector_size` / `distance` / `collection_name` | 顶层 `qdrant` | 2.向量化 / 3.入库 |
 | `top_k` | `rag.top_k` | 4.检索 / 5.召回 / 7.重排序 |
 | `min_score_threshold` | `rag.min_score_threshold` | 4.检索 / 5.召回 / 6.融合 |
 | `rrf_k` | `rag.rrf_k` | 6.融合 |
-| `rerank.enabled` / `model` | `rag.rerank` | 7.重排序 |
+| `rerank.enabled` / `base_url` / `api_key` / `model` | `rag.rerank`（独立，不与 embedding 共用） | 7.重排序 |
 
 修改 `rag` 段参数后，下次检索/入库即生效（运行时通过 `RagConfigService` 读最新值）。
 
