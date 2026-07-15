@@ -7,6 +7,9 @@ import type { KnowledgeFileItem } from "@/types/chat";
 
 const store = useChatStore();
 const fileInput = ref<HTMLInputElement | null>(null);
+const updateFileInput = ref<HTMLInputElement | null>(null);
+// 正在执行“更新”的目标文件（点击更新按钮时记录，文件选择后清空）
+const updateTarget = ref<KnowledgeFileItem | null>(null);
 const dragOver = ref(false);
 const docType = ref<string>("markdown");
 const showConfigModal = ref(false);
@@ -41,6 +44,14 @@ function isValidExtension(fileName: string): boolean {
 
 const uploading = ref(false);
 const isUploading = computed(() => uploading.value);
+// 当前正在更新的文件 id（来自 store），用于行内“更新中”状态
+const updatingId = computed(() => store.updatingId);
+// 更新文件选择框的 accept：取目标文件自身的文档类型允许后缀
+const updateAccept = computed(() => {
+  const dt = updateTarget.value?.doc_type;
+  const opt = DOC_TYPE_OPTIONS.find((o) => o.value === dt);
+  return opt ? opt.extensions.join(",") : allowedExtensions.value;
+});
 
 // 当前所选文档类型对应的允许后缀（用于拖拽区 accept 与提示文案）
 const allowedExtensions = computed(() => {
@@ -311,6 +322,39 @@ async function onRemove(id: number) {
     showError("删除失败", error instanceof Error ? error.message : String(error));
   }
 }
+
+// 点击“更新”：记录目标文件并弹出文件选择框（沿用该文件记录自身的 doc_type）
+function onUpdateClick(item: KnowledgeFileItem) {
+  updateTarget.value = item;
+  updateFileInput.value?.click();
+}
+
+function onUpdateFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  const item = updateTarget.value;
+  updateTarget.value = null;
+  if (!file || !item) return;
+
+  if (!isExtensionAllowed(file.name, item.doc_type)) {
+    const typeLabel = docTypeShort(item.doc_type);
+    showError(
+      "文件类型不支持",
+      `所选文件后缀与「${typeLabel}」类型不一致，请上传与原文档类型匹配的文件。`,
+    );
+    return;
+  }
+
+  store
+    .updateKnowledgeFile(item.id, file, item.doc_type)
+    .then(() =>
+      showInfo("更新成功", `已更新「${item.filename}」的内容并重建向量。`, "success"),
+    )
+    .catch((error) =>
+      showError("更新失败", error instanceof Error ? error.message : String(error)),
+    );
+}
 </script>
 
 <template>
@@ -354,6 +398,13 @@ async function onRemove(id: number) {
         multiple
         hidden
         @change="onFileChange"
+      />
+      <input
+        ref="updateFileInput"
+        type="file"
+        :accept="updateAccept"
+        hidden
+        @change="onUpdateFileChange"
       />
       <p class="kb-dropzone-text">拖拽文件到此处上传</p>
       <p class="kb-dropzone-hint">支持 {{ allowedExtensions }}</p>
@@ -558,13 +609,25 @@ async function onRemove(id: number) {
             </td>
             <td>{{ formatTime(item.created_at) }}</td>
             <td>
-              <button
-                class="kb-remove"
-                type="button"
-                @click="onRemove(item.id)"
-              >
-                删除
-              </button>
+              <div class="kb-row-actions">
+                <button
+                  class="kb-update"
+                  type="button"
+                  :disabled="uploadingId === item.id"
+                  @click="onUpdateClick(item)"
+                >
+                  更新
+                </button>
+                <button
+                  class="kb-remove"
+                  type="button"
+                  :disabled="uploadingId === item.id"
+                  @click="onRemove(item.id)"
+                >
+                  删除
+                </button>
+              </div>
+              <span v-if="uploadingId === item.id" class="kb-updating-tip">更新中…</span>
             </td>
           </tr>
           <tr v-if="!store.knowledgeFiles.length">
@@ -793,8 +856,14 @@ async function onRemove(id: number) {
 }
 
 .kb-col-actions {
-  width: 72px;
+  width: 116px;
   text-align: right;
+}
+
+.kb-row-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .kb-cell-name {
@@ -856,6 +925,29 @@ async function onRemove(id: number) {
   color: #dc2626;
   cursor: pointer;
   font-size: 13px;
+}
+
+.kb-update {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.kb-update:hover:not(:disabled) {
+  border-color: #2563eb;
+  background: #f8faff;
+  color: #1d4ed8;
+}
+
+.kb-update:disabled,
+.kb-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .kb-error-message {

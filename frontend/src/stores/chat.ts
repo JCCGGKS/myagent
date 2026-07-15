@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
-import { postChat, uploadKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession, isExtensionAllowed, DOC_TYPE_OPTIONS } from "@/lib/api";
+import { postChat, uploadKnowledgeFile, updateKnowledgeFile as updateKnowledgeFileApi, getKnowledgeFiles, deleteKnowledgeFile, getSessionList, getSessionMessages, updateSession, deleteSession, isExtensionAllowed, DOC_TYPE_OPTIONS } from "@/lib/api";
 import { ChatSSEClient } from "@/lib/sse";
 import {
   clearSessionIdFromStorage,
@@ -100,6 +100,7 @@ export const useChatStore = defineStore("chat", () => {
   const renamingSessionId = ref<string | null>(null);
   const statusText = ref("等待发送");
   const pending = ref(false);
+  const updatingId = ref<number | null>(null);
   const requestStart = ref(0);
   const responseStats = ref({ count: 0, totalMs: 0, lastMs: 0 });
   const backendReady = ref<boolean | null>(null);
@@ -273,6 +274,20 @@ export const useChatStore = defineStore("chat", () => {
     await deleteKnowledgeFile(id);
     knowledgeFiles.value = knowledgeFiles.value.filter((file) => file.id !== id);
     statusText.value = "已删除知识库文件";
+  }
+
+  // 更新已上传文件：删除旧向量 + 重建 + 刷新上传时间。沿用该文件自身记录的类型（doc_type）
+  // 作为表单字段传入后端；异常向上抛出由调用方（面板）汇总提示。
+  async function updateKnowledgeFile(id: number, file: File, docType: string) {
+    updatingId.value = id;
+    try {
+      const result = await updateKnowledgeFileApi(id, file, docType);
+      await fetchKnowledgeFiles();
+      statusText.value = "已更新知识库文件";
+      return result;
+    } finally {
+      updatingId.value = null;
+    }
   }
 
   function startRenameSession(id: string) {
@@ -616,6 +631,8 @@ export const useChatStore = defineStore("chat", () => {
     resumeInterruptedTurn,
     knowledgeFiles,
     removeKnowledgeFile,
+    updateKnowledgeFile,
+    updatingId,
     fetchKnowledgeFiles,
     removeSession,
     renameSessionDirect,
