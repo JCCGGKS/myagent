@@ -31,8 +31,8 @@ def _build_embedding_client() -> Any:
     embedding_client = build_embedding_client()
     if embedding_client is None:
         raise RuntimeError(
-            "未配置 rag.embedding.api_key，无法进行语义/混合检索。"
-            "请在 config/llm_config.{env}.yml 的 rag.embedding 段配置 base_url/api_key/model。"
+            "未配置 embedding.api_key，无法进行语义/混合检索。"
+            "请在 config/llm_config.{env}.yml 的顶层 embedding 段配置 base_url/api_key/model。"
         )
     return embedding_client
 

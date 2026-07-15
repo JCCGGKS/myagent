@@ -64,17 +64,6 @@ rag:
     # Rerank 模型名称（启用时必填）
     model: ""
 
-  # 向量化模型配置（语义/混合检索依赖；与 agent llm / rerank 各自独立）
-  embedding:
-    # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
-    base_url: ""
-    # API Key
-    api_key: ""
-    # 嵌入模型名称（如 DashScope text-embedding-v4）
-    model: "text-embedding-v4"
-    # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
-    vector_size: 1536
-
 # Redis 配置
 redis:
   # 连接地址（Docker Compose 内用服务名 redis）
@@ -137,7 +126,17 @@ smtp:
   # 是否使用 TLS
   use_tls: true
 
-# Embedding 配置（基础设施，不由前端控制；rag 段由前端 PUT /rag/config 管理）
+# Embedding 配置（基础设施，顶层独立配置块，与 llm / qdrant 同级；不由前端 PUT /rag/config 管理）
+embedding:
+  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
+  base_url: ""
+  # API Key
+  api_key: ""
+  # 嵌入模型名称（如 DashScope text-embedding-v4）
+  model: "text-embedding-v4"
+  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
+  vector_size: 1536
+
 # Qdrant 配置
 qdrant:
   # 连接地址（Docker Compose 内用服务名 qdrant）

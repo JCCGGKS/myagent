@@ -24,8 +24,8 @@
 入口在 `app/api/rag.py:knowledge_upload`，把前端上传的文件驱动走完 1→3 阶段，并维护 `knowledge_files` 元信息状态（`app/dao/knowledge_file.py`）。链路：
 
 1. **落元信息（PROCESSING）**：`file_dao.create(user_id, filename, file_size, doc_type, status=PROCESSING)`；返回 `record["id"]` 作为 `doc_id`，透传后续入库，用于按文档删向量。
-2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段配置 `chunk_size`/`chunk_overlap` 等分块参数、按 `rag.embedding` 段构造 `EmbeddingClient` 与 `QdrantClient`，分块委托 `get_chunking_strategy(doc_type, doc_format)` 选择策略。
-3. **向量化前置校验**：`embedding_client is None`（缺 `rag.embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
+2. **构建入库服务**：`_build_ingestion_service()` 按 `rag` 段配置 `chunk_size`/`chunk_overlap` 等分块参数、按顶层 `embedding` 段构造 `EmbeddingClient` 与 `QdrantClient`，分块委托 `get_chunking_strategy(doc_type, doc_format)` 选择策略。
+3. **向量化前置校验**：`embedding_client is None`（缺顶层 `embedding.api_key`）→ 立即 `update_status(doc_id, ERROR, ...)` 并返回 400，**不再往下走**。避免「成功但 0 向量」的假状态。
 4. **分块 + 向量化 + 批量入库**：`.json` → `ingest_json_records`；其它文本（含 `.md/.markdown/.word/.excel/.csv/.pdf/.ppt`）经 `ingest_text(doc_type=doc_type, doc_format=doc_type, ...)` 按所选文档类型取分块策略；二者汇聚到 `_ingest_chunks`：批量算 dense、逐块算 BM25 sparse，一次性 upsert 命名向量 `{dense, bm25}`（payload 含 `user_id` / `doc_id`）。
 5. **状态变更**：
    - 成功 → `update_status(doc_id, SUCCESS, chunk_count=实际写入块数)`；
@@ -70,7 +70,7 @@
 ### 稠密向量（EmbeddingClient）
 - 封装 `openai.OpenAI`（OpenAI 兼容协议），可对接 DashScope / OpenAI 等网关。
 - `embed()` 批量 / `embed_one()` 单条。
-- `build_embedding_client()`：从 `rag.embedding` 段（base_url / api_key / model / vector_size）构建，**独立**于 agent 的 `llm.base_url`，缺 `api_key` 返回 `None`。
+- `build_embedding_client()`：从顶层独立 `embedding` 段（base_url / api_key / model / vector_size）构建，**独立**于 agent 的 `llm.base_url`，缺 `api_key` 返回 `None`。
 - 向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 
 ### 稀疏向量（BM25）
@@ -254,7 +254,7 @@ qdrant:                             # 与 rag 同级
 | 参数 | 来源 | 生效阶段 |
 |---|---|---|
 | `chunk_size` / `chunk_overlap` / `min_chunk_size` | `rag` 段 | 1.分块 |
-| `rag.embedding.base_url` / `api_key` / `model` / `vector_size` | `rag.embedding`（独立，不与 agent llm 共用） | 2.向量化 |
+| `embedding.base_url` / `api_key` / `model` / `vector_size` | 顶层 `embedding`（独立配置块，与 llm / qdrant 同级，不与 agent llm 共用） | 2.向量化 |
 | `qdrant.vector_size` / `distance` / `collection_name` | 顶层 `qdrant` | 2.向量化 / 3.入库 |
 | `top_k` | `rag.top_k` | 4.检索 / 5.召回 / 7.重排序 |
 | `min_score_threshold` | `rag.min_score_threshold` | 4.检索 / 5.召回 / 6.融合 |

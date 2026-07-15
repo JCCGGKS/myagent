@@ -21,11 +21,11 @@ def _resolve_config_path() -> Path:
 
 
 class EmbeddingConfig(BaseModel):
-    """向量化模型（语义/混合检索依赖）独立配置。
+    """向量化模型（语义/混合检索依赖）独立配置块（顶层，与 llm / qdrant 同级）。
 
     与 agent 的 llm（app/config/llm.py）解耦，各自拥有独立的
     base_url / api_key / model。vector_size 须与嵌入模型实际输出维度一致，
-    且须与 qdrant.vector_size 匹配。
+    且须与 qdrant.vector_size 匹配。属基础设施配置，不由前端 PUT /rag/config 管理。
     """
 
     base_url: str = ""
@@ -60,8 +60,8 @@ class RagConfig(BaseModel):
     # RRF 融合常数 k（仅 hybrid 策略生效），分越小权重越大。
     rrf_k: int = Field(default=60, ge=1)
     rerank: RerankConfig = RerankConfig()
-    # 向量化模型配置（与 rerank / agent llm 各自独立）
-    embedding: EmbeddingConfig = EmbeddingConfig()
+    # 注：向量化模型配置为顶层独立块 `embedding`（见 EmbeddingConfig），
+    # 与 agent llm / qdrant 同级，不在此 RagConfig 内，不由前端 PUT /rag/config 管理。
 
 
 class RagConfigService:
@@ -105,10 +105,10 @@ def _load_rag_config() -> RagConfig:
 
 
 def _apply_patch(model: BaseModel, patch: dict[str, object]) -> None:
-    """将扁平/嵌套的 patch 应用到 pydantic model（rerank / embedding 支持一层嵌套）。"""
+    """将扁平/嵌套的 patch 应用到 pydantic model（rerank 支持一层嵌套）。"""
     for key, value in patch.items():
-        if key in ("rerank", "embedding") and isinstance(value, dict):
-            sub = getattr(model, key)
+        if key == "rerank" and isinstance(value, dict):
+            sub = model.rerank
             for sub_key, sub_value in value.items():
                 if sub_value is not None and hasattr(sub, sub_key):
                     setattr(sub, sub_key, sub_value)
@@ -164,11 +164,11 @@ def load_rag_config_raw() -> dict[str, object]:
 
 
 def load_embedding_config_raw() -> dict[str, object]:
-    """读取当前环境配置文件中的 `rag.embedding` 原始段（dict）。
+    """读取当前环境配置文件中的顶层 `embedding` 原始段（dict）。
 
-    优先读取 `rag.embedding`（与 rerank 同级，统一在 rag 段管理）；
-    若 rag 段内无 embedding，则回退读取顶层 `embedding` 段（历史位置，
-    兼容旧配置）。包含 base_url / api_key / model / vector_size。
+    `embedding` 为顶层独立配置块（与 `llm` / `qdrant` 同级，不由前端管理），
+    包含 base_url / api_key / model / vector_size。
+    为兼容过渡期旧配置，若顶层无 `embedding` 段，则回退读取 `rag.embedding`。
     无配置时返回空 dict。
     """
     path = _resolve_config_path()
@@ -180,9 +180,9 @@ def load_embedding_config_raw() -> dict[str, object]:
         return {}
     if not isinstance(file_data, dict):
         return {}
+    if isinstance(file_data.get("embedding"), dict):
+        return dict(file_data["embedding"])
     rag_section = file_data.get("rag")
     if isinstance(rag_section, dict) and isinstance(rag_section.get("embedding"), dict):
         return dict(rag_section["embedding"])
-    if isinstance(file_data.get("embedding"), dict):
-        return dict(file_data["embedding"])
     return {}

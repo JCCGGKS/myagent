@@ -13,11 +13,11 @@ logger = get_module_logger("rag")
 
 
 def build_embedding_client() -> EmbeddingClient | None:
-    """从 rag.embedding 配置构建真实 EmbeddingClient（OpenAI 兼容）。
+    """从顶层独立 `embedding` 配置块构建真实 EmbeddingClient（OpenAI 兼容）。
 
     缺失 api_key 时返回 None（调用方据此跳过向量化或报错）。
-    embedding 配置位于 config/llm_config.{env}.yml 的 `rag.embedding` 段
-    （与 `rag.rerank` 同级，独立配置）：
+    embedding 配置位于 config/llm_config.{env}.yml 的顶层 `embedding` 段
+    （与 `llm` / `qdrant` 同级，独立配置块）：
         base_url / api_key / model / vector_size
     不再复用 agent 的 llm.base_url，向量化服务可独立指向不同网关。
     稠密向量维度由 qdrant.vector_size 决定（须与嵌入模型实际输出维度一致）。
@@ -38,7 +38,7 @@ def build_embedding_client() -> EmbeddingClient | None:
 class EmbeddingClient:
     """OpenAI 兼容的 Embedding 封装（可对接 DashScope / OpenAI 等网关）。
 
-    使用前需在 config/llm_config.{env}.yml 的 `rag.embedding` 段配置：
+    使用前需在 config/llm_config.{env}.yml 的顶层 `embedding` 段配置：
         embedding.base_url / embedding.api_key / embedding.model
     稠密向量维度由 qdrant.vector_size 确定，须与嵌入模型实际输出维度一致。
     """
