@@ -2,146 +2,86 @@
 
 - 集合：`customer_service_knowledge`
 - 截断 k：`5`
-- 检索段后端：`all`
-- 耗时：`587.22s`
-
-> 说明：下方「各策略汇总 / 逐 Case 明细」为提交基线（commit `95b2e29`）的原始结果，未改动。
-> 其后的 §9 / §10 为优化分析，因被 rerank 复测脚本覆盖、且未提交，此处按当时的分析笔记重建，
-> 如与你的记忆有出入请指正，后续「重新跑」会再生报告。
+- 检索段后端：`llm`
+- 耗时：`547.97s`
 
 ## 各策略汇总
 
-| 策略 | 样本数 | 失败 | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| bm25 | 18 | 0 | 0.8519 | 0.7009 | 0.4193 | 0.8561 | 0.4193 | 0.5306 | 0.9487 | 0.7151 |
-| semantic | 18 | 0 | 0.8519 | 0.875 | 0.4614 | 0.888 | 0.4614 | 0.5222 | 0.966 | 0.7368 |
-| hybrid | 18 | 0 | 0.8704 | 0.8333 | 0.4799 | 0.8838 | 0.4799 | 0.4537 | 0.9818 | 0.7716 |
+| 策略 | 样本数 | 失败 | context_recall | context_precision | faithfulness | answer_relevancy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| bm25 | 18 | 0 | 0.8704 | 0.8935 | 0.9841 | 0.7424 |
+| semantic | 18 | 0 | 0.8704 | 0.8769 | 0.9921 | 0.7621 |
+| hybrid | 18 | 0 | 0.8704 | 0.8074 | 1.0 | 0.7552 |
 
 ## 逐 Case 明细
 
 ### 策略：bm25
 
-| Case | Query | ExpectedDoc | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 0.4 | 0.75 | 0.4 | 0.4 | 1.0 | 0.8252 |
-| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 0.6 | 1.0 | 0.6 | 0.6 | 0.875 | 0.6717 |
-| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 0.25 | 0.6 | 0.7 | 0.6 | 0.6 | 0.9167 | 0.9749 |
-| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 0.6 | 0.8056 | 0.6 | 0.6 | 1.0 | 0.5948 |
-| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 0.3333 | 0.6 | 0.7556 | 0.6 | 0.6 | 1.0 | 0.9319 |
-| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 1.0 | 0.2 | 1.0 | 0.2 | 0.2 | 1.0 | 0.9952 |
-| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 1.0 | 0.3333 | 0.8333 | 0.3333 | 0.4 | 1.0 | 0.6812 |
-| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 0.1667 | 1.0 | 0.1667 | 1.0 | 1.0 | 0.7991 |
-| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 0.5 | 0.8056 | 0.5 | 0.6 | 1.0 | 0.7441 |
-| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 0.7 | 0.6667 | 0.8042 | 0.6667 | 0.8 | 1.0 | 0.8027 |
-| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 0.4286 | 0.7556 | 0.4286 | 0.6 | 1.0 | 0.7633 |
-| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 1.0 | 0.2857 | 0.8333 | 0.2857 | 0.4 | 1.0 | 0.69 |
-| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 0.5 | 0.1667 | 0.5 | 0.1667 | 0.2 | 1.0 | 0.791 |
-| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 0.1667 | 1.0 | 0.1667 | 0.2 | 1.0 | 0.0 |
-| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 0.5 | 0.5 | 0.8667 | 0.5 | 0.6 | 1.0 | 0.971 |
-| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 0.6667 | 0.0 | 0.5 | 1.0 | 0.5 | 0.6 | 0.7143 | 0.0 |
-| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 0.5 | 1.0 | 0.5 | 0.75 | 1.0 | 0.9363 |
-| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 0.3333 | 0.3333 | 1.0 | 0.3333 | 0.4 | 0.5714 | 0.6985 |
+| Case | Query | ExpectedDoc | context_recall | context_precision | faithfulness | answer_relevancy |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.8252 |
+| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.6565 |
+| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.9749 |
+| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.5948 |
+| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.7828 |
+| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 0.8333 | 1.0 | 0.9952 |
+| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 1.0 | 1.0 | 0.6802 |
+| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 1.0 | 0.5884 |
+| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.8142 |
+| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.6715 |
+| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 1.0 | 0.7616 |
+| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 1.0 | 1.0 | 0.749 |
+| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 1.0 | 1.0 | 0.8037 |
+| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 1.0 | 0.0 |
+| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 1.0 | 1.0 | 0.9113 |
+| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 1.0 | 0.25 | 1.0 | 0.9182 |
+| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 1.0 | 0.9362 |
+| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 1.0 | 0.7143 | 0.7 |
 
 ### 策略：semantic
 
-| Case | Query | ExpectedDoc | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 0.6 | 0.7556 | 0.6 | 0.6 | 0.8462 | 0.8223 |
-| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 0.8 | 0.95 | 0.8 | 0.8 | 0.875 | 0.6489 |
-| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 1.0 | 0.6 | 0.9167 | 0.6 | 0.6 | 1.0 | 0.954 |
-| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 0.8 | 0.8042 | 0.8 | 0.8 | 1.0 | 0.5948 |
-| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 1.0 | 0.4 | 0.75 | 0.4 | 0.4 | 1.0 | 0.9319 |
-| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 1.0 | 0.2 | 1.0 | 0.2 | 0.2 | 1.0 | 0.9952 |
-| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 1.0 | 0.3333 | 0.75 | 0.3333 | 0.4 | 1.0 | 0.6758 |
-| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 0.1667 | 1.0 | 0.1667 | 0.2 | 1.0 | 0.7991 |
-| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 0.6667 | 0.8875 | 0.6667 | 0.8 | 1.0 | 0.8142 |
-| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 0.75 | 0.6667 | 0.8875 | 0.6667 | 0.8 | 1.0 | 0.6365 |
-| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 0.1429 | 1.0 | 0.1429 | 0.2 | 1.0 | 0.7357 |
-| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 1.0 | 0.4286 | 1.0 | 0.4286 | 0.6 | 1.0 | 0.6799 |
-| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 1.0 | 0.1667 | 1.0 | 0.1667 | 0.2 | 1.0 | 0.8643 |
-| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 0.6667 | 1.0 | 0.6667 | 0.8 | 1.0 | 0.6417 |
-| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 1.0 | 0.3333 | 0.8333 | 0.3333 | 0.4 | 1.0 | 0.9113 |
-| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 0.6667 | 0.0 | 0.5 | 0.8667 | 0.5 | 0.6 | 1.0 | 0.0 |
-| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 0.5 | 1.0 | 0.5 | 0.6 | 1.0 | 0.9363 |
-| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 1.0 | 0.3333 | 0.5833 | 0.3333 | 0.4 | 0.6667 | 0.6213 |
+| Case | Query | ExpectedDoc | context_recall | context_precision | faithfulness | answer_relevancy |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.8223 |
+| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.6775 |
+| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 0.7 | 1.0 | 0.9749 |
+| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.5948 |
+| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.9319 |
+| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 0.8333 | 1.0 | 0.8426 |
+| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 1.0 | 1.0 | 0.6812 |
+| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 1.0 | 0.7991 |
+| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.7428 |
+| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.6715 |
+| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 1.0 | 0.7398 |
+| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 1.0 | 1.0 | 0.8079 |
+| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 1.0 | 1.0 | 0.9698 |
+| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 1.0 | 0.0 |
+| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 1.0 | 1.0 | 0.9113 |
+| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 1.0 | 0.25 | 1.0 | 0.9182 |
+| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 1.0 | 0.9363 |
+| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 1.0 | 0.8571 | 0.6954 |
 
 ### 策略：hybrid
 
-| Case | Query | ExpectedDoc | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 0.6 | 0.6667 | 0.6 | 0.5 | 0.9231 | 0.8223 |
-| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.9267 | 1.0 | 0.8333 | 1.0 | 0.6717 |
-| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 0.5 | 0.4 | 1.0 | 0.4 | 0.3333 | 1.0 | 0.9749 |
-| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 0.6 | 0.8056 | 0.6 | 0.5 | 1.0 | 0.5948 |
-| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 1.0 | 0.6 | 0.8333 | 0.6 | 0.5 | 1.0 | 0.9319 |
-| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 1.0 | 0.2 | 1.0 | 0.2 | 0.1667 | 1.0 | 0.9952 |
-| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 1.0 | 0.3333 | 1.0 | 0.3333 | 0.3333 | 1.0 | 0.6651 |
-| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 0.3333 | 0.6667 | 0.3333 | 0.3333 | 1.0 | 0.7991 |
-| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 0.8333 | 0.8767 | 0.8333 | 0.8333 | 1.0 | 0.7596 |
-| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 0.8333 | 0.8333 | 0.9267 | 0.8333 | 0.8333 | 1.0 | 0.869 |
-| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 0.1429 | 1.0 | 0.1429 | 0.1667 | 1.0 | 0.8103 |
-| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 1.0 | 0.4286 | 0.9167 | 0.4286 | 0.5 | 1.0 | 0.6799 |
-| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 1.0 | 0.1667 | 1.0 | 0.1667 | 0.1667 | 1.0 | 0.861 |
-| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 0.3333 | 0.7 | 0.3333 | 0.3333 | 1.0 | 0.0 |
-| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 1.0 | 0.5 | 0.7556 | 0.5 | 0.5 | 1.0 | 0.971 |
-| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 1.0 | 0.1667 | 0.5 | 1.0 | 0.5 | 0.5 | 1.0 | 0.8434 |
-| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 0.5 | 1.0 | 0.5 | 0.5 | 1.0 | 0.9363 |
-| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 0.5 | 0.3333 | 0.8333 | 0.3333 | 0.3333 | 0.75 | 0.7038 |
+| Case | Query | ExpectedDoc | context_recall | context_precision | faithfulness | answer_relevancy |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.8252 |
+| rag_0002 | 退款一般多久能到账？ | md/refund_policy.md | 1.0 | 1.0 | 1.0 | 0.6717 |
+| rag_0003 | 哪些情况不支持无理由退款？ | md/refund_policy.md | 1.0 | 0.7 | 1.0 | 0.9749 |
+| rag_0004 | 退换货的具体流程是什么？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.5948 |
+| rag_0005 | 什么情况算质量问题？ | md/after_sale.md | 1.0 | 1.0 | 1.0 | 0.9319 |
+| rag_0006 | 智能客服机器人 Pro 的质保是多久？ | md/after_sale.md | 1.0 | 0.8333 | 1.0 | 0.8426 |
+| rag_0007 | 运费是怎么算的？满多少包邮？ | md/logistics_shipping.md | 0.6667 | 0.0 | 1.0 | 0.6758 |
+| rag_0008 | 物流停滞了怎么办？ | md/logistics_shipping.md | 1.0 | 1.0 | 1.0 | 0.7991 |
+| rag_0009 | 可以开什么发票？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.7428 |
+| rag_0010 | 开增值税专用发票需要什么？ | md/invoice_rule.md | 1.0 | 1.0 | 1.0 | 0.7475 |
+| rag_0011 | 还没发货能改收货地址吗？ | md/order_faq.md | 1.0 | 1.0 | 1.0 | 0.7831 |
+| rag_0012 | 怎么取消订单？ | md/order_faq.md | 1.0 | 0.75 | 1.0 | 0.6799 |
+| rag_0013 | 智能客服机器人 Pro 卖多少钱？ | md/product_robot_pro.md | 0.6667 | 1.0 | 1.0 | 0.8151 |
+| rag_0014 | Pro 版支持多少路并发？ | md/product_robot_pro.md | 0.0 | 0.0 | 1.0 | 0.0 |
+| rag_0015 | 知识库增强包多少钱？ | md/product_kb_pack.md | 0.6667 | 1.0 | 1.0 | 0.971 |
+| rag_0016 | 知识库增强包能退款吗？ | md/product_kb_pack.md | 1.0 | 0.25 | 1.0 | 0.9182 |
+| rag_0017 | 会员有几档？ | md/membership_faq.md | 0.6667 | 1.0 | 1.0 | 0.9363 |
+| rag_0018 | 会员优惠能折现吗？ | md/membership_faq.md | 1.0 | 1.0 | 1.0 | 0.6842 |
 
 > 指标说明：ContextRecall / ContextPrecision 反映检索质量（白盒），后缀 `_llm` / `_nonllm` / `_id` 表示覆盖计算后端（llm=语义claims；nonllm=字符串相似度；id=文档块ID精确匹配）；Faithfulness 反映回答是否忠于检索内容；AnswerRelevancy 反映回答相关性（黑盒）。分值 0~1，越高越好。
-
-## 结果解读（基线快照）
-
-- **检索召回已达标**：三策略 `context_recall`(llm) 均 ≥ 0.85（hybrid 0.8704 最高），说明金标文档基本能被召回。
-- **精确率分化是主要瓶颈**：bm25 `precision` 仅 0.7009（多 case 命中但排位靠后 / 噪声多），semantic 0.875、hybrid 0.8333 较好。
-- **两个 hard-fail 拉低总体**：
-  - `rag_0014`（Pro 版并发）→ 三策略 `recall=0.0`：金标「50 路并发」未被任何策略召回。
-  - `rag_0016`（知识库增强包退款）→ `precision=0.0~0.25`：召回到了但相关内容排不上去 / 噪声高。
-- **生成端健康**：`faithfulness` 0.95~0.98、`answer_relevancy` 0.71~0.77，幻觉率低。
-
-## §9 优化决策框架：如何根据召回率/精确率定位优化方向
-
-### 9.1 二维决策表
-
-| 召回率 \ 精确率 | 低 | 高 |
-| --- | --- | --- |
-| **低** | 检索器根本没命中 → 查 embedding / 索引 / 切块粒度 | 漏召回 → 补切块粒度 / 降阈值 / 扩 top_k |
-| **高** | 命中但噪声多 → rerank / 升阈值 / 收紧 | 理想态 |
-
-### 9.2 旋钮 → 召回 / 精确 映射
-
-- **切块粒度（`chunk_size` / `overlap` / `min_chunk_size`）**：主要调**召回**。切太粗会漏掉细粒度事实，切太碎会碎片化、稀释精确。由标题结构决定的文档，调 `chunk_size` 在很大区间内无效果。
-- **rerank**：对候选**重排**，只影响**精确率**（把相关块顶到前排），**不增加召回**（候选集不变）。
-- **top_k**：召回覆盖上限；过大稀释精确、过小漏召回。
-- **`min_score_threshold`**：经典坑——bm25 量纲 `0~10`、semantic `0~1`、hybrid RRF 必须 `0.0`，跨策略直套会返回空结果。
-- **RRF 融合（hybrid）**：补召回的另一手段，跨策略融合提升覆盖。
-
-### 9.3 本项目落点（修正「切块切断」假设为证伪）
-
-- 原假设（item5：调 `chunk_size` / `overlap`）：切块把事实切断导致召回低。
-- 实测**证伪**：本集合切块粒度由标题结构决定，`chunk_size` 在 `[160, ∞)` 区间无变化，`overlap` 从不触发；关键事实（robot_pro「50 路并发」、kb_pack「激活后不支持无理由退款」）均在单块内完整存在。
-- 结论：**item5 对本评测集为 no-op**，调切块救不了召回。
-
-### 9.4 一句话顺序
-
-先补召回（切块 / 阈值 / top_k / 融合），再用 rerank 提精确；本集召回已 0.85+，**瓶颈在精确 → rerank 是主杠杆**。
-
-## §10 item5 实测结论（切块粒度 no-op）
-
-### 10.1 集合实测
-
-Qdrant 实际集合 **47 点 / 8 源**，每篇 **5~7 块、20~156 字符**，粒度由标题结构决定（非 `chunk_size` 截断）。
-
-### 10.2 为何无效
-
-- `chunk_size` 在 `[160, ∞)` 区间无变化（`[160, 800]` 同一结果）；
-- `overlap` 仅在「无标点硬切兜底」时触发，本集合不触发；
-- 事实未被切碎：robot_pro「50 路并发」、kb_pack「激活后不支持无理由退款」均在单块内完整存在。
-
-### 10.3 结论
-
-item5 对本评测集为 **no-op**；真实杠杆是 **rerank（提精确）+ 修复两个 hard-fail**（`rag_0014` recall=0.0、`rag_0016` precision=0.25）。
-
-## 后续优化顺序（一句话）
-
-召回已达标 → 开 **hybrid + rerank** 提精确 → 修 `rag_0014` / `rag_0016` 两个 hard-fail → 再复测对照。
