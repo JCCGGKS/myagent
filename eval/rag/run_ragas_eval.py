@@ -265,6 +265,20 @@ def _sample(**kwargs):
     return SingleTurnSample(**kwargs)
 
 
+def _backup_existing_report(out_dir: Path) -> None:
+    """每次写新报告前，先把旧的报告/结果按时间戳备份，避免覆盖丢失历史。
+
+    备份文件命名 `<原名>.<YYYYMMDD_HHMMSS>.bak`，与实时产物同目录。
+    """
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    for name in ("ragas_eval_results.json", "ragas_eval_report.md"):
+        src = out_dir / name
+        if src.exists():
+            dst = out_dir / f"{name}.{ts}.bak"
+            dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"[backup] {name} -> {dst.name}")
+
+
 def _write_markdown_report(results: dict, path: Path) -> None:
     """将评测结果渲染为可读的 Markdown 评估报告（指标列随后端动态生成）。"""
     cfg = results.get("config", {})
@@ -349,6 +363,10 @@ async def main() -> None:
         help="对检索结果施加 rerank（用配置段 rag.rerank 的 model/api_key/base_url）；"
              "无可用 rerank 端点时优雅降级为原始顺序。默认跟随 rag.rerank.enabled。",
     )
+    parser.add_argument(
+        "--no-rerank", action="store_true",
+        help="强制关闭 rerank（即便配置 rag.rerank.enabled=true），用于对照实验。",
+    )
     args = parser.parse_args()
 
     cases_path = Path(args.cases)
@@ -430,9 +448,11 @@ async def main() -> None:
     sem = asyncio.Semaphore(args.concurrency)
 
     # rerank（可选增强）：接进 eval 检索路径，使 item 2 可被度量。
-    # 优先级：--rerank 强制用配置段（需 api_key）；否则跟随 rag.rerank.enabled。
+    # 优先级：--no-rerank 强制关 → --rerank 强制用配置段（需 api_key）→ 否则跟随 rag.rerank.enabled。
     rerank_client = None
-    if args.rerank:
+    if args.no_rerank:
+        print("[rerank] 按 --no-rerank 强制关闭（对照实验）")
+    elif args.rerank:
         rc = cfg.rerank
         if rc.api_key:
             rerank_client = RerankClient(
@@ -516,6 +536,7 @@ async def main() -> None:
 
     elapsed = time.time() - t0
     out_dir = Path(__file__).resolve().parent
+    _backup_existing_report(out_dir)
     results = {
         "config": {
             "k": k,
