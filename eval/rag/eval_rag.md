@@ -171,8 +171,7 @@ python3 eval/rag/run_ragas_eval.py --no-ingest           # 复用已入库数据
 
 ## 8. 项目特有正确性约束（务必遵守）
 
-1. **LLM 裁判必须关闭 thinking**：项目网关有 thinking-mode 约束（qwen3.7-max 需显式
-   `enable_thinking=false`；preview / 05-17 强制 thinking 会 400）。RAGAS 内部多次调 LLM
+1. **LLM 裁判必须关闭 thinking**：RAGAS 内部多次调 LLM
    当裁判，不关 thinking 必超时/报错。**落地第一坑。**
 2. **Embeddings 端点**：`AnswerRelevancy` 需 OpenAI 兼容 embeddings 接口；若项目 embedding
    网关兼容则复用，否则该指标可省（检索段 + Faithfulness 已覆盖主线）。
