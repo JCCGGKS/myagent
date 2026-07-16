@@ -82,10 +82,11 @@ const strategyLabel = computed(() => {
 // 不同策略阈值量纲不同：bm25 0~10（初始 4）、semantic 余弦 0~1（初始 0.0）、
 // hybrid RRF 融合分极小（必须接近 0，初始 0.0）。切换策略时最小匹配度会吸附到该策略默认，
 // 避免「单一全局阈值跨策略直套」导致返回空结果。
-const STRATEGY_DEFAULTS: Record<string, { top_k: number; min_score_threshold: number; rrf_k: number }> = {
-  bm25: { top_k: 5, min_score_threshold: 4.0, rrf_k: 60 },
-  semantic: { top_k: 5, min_score_threshold: 0.0, rrf_k: 60 },
-  hybrid: { top_k: 6, min_score_threshold: 0.0, rrf_k: 60 },
+// rerank 仅 hybrid 有意义（稀疏+语义融合后再精排），故默认开启；bm25 / semantic 不启用。
+const STRATEGY_DEFAULTS: Record<string, { top_k: number; min_score_threshold: number; rrf_k: number; rerank: boolean }> = {
+  bm25: { top_k: 5, min_score_threshold: 4.0, rrf_k: 60, rerank: false },
+  semantic: { top_k: 5, min_score_threshold: 0.0, rrf_k: 60, rerank: false },
+  hybrid: { top_k: 6, min_score_threshold: 0.0, rrf_k: 60, rerank: true },
 };
 
 // 当前检索策略下，哪些配置项是“激活”的（其余置灰）
@@ -143,16 +144,20 @@ const defaultConfig: RagConfig = {
   chunk_overlap: 100,
   min_chunk_size: 50,
   rrf_k: 60,
-  rerank: { enabled: false, model: "" },
+  rerank: { enabled: true, model: "" },
 };
 const ragForm = reactive<RagConfig>(structuredClone(defaultConfig));
 
-// 切换策略时，把最小匹配度吸附到该策略的默认量纲，避免「单一全局阈值跨策略直套」返回空结果。
+// 切换策略时，把最小匹配度吸附到该策略的默认量纲，避免「单一全局阈值跨策略直套」返回空结果；
+// 同时按策略默认同步 rerank 开关（hybrid 默认开启，bm25 / semantic 关闭）。
 watch(
   () => ragForm.retrieval_strategy,
   (next) => {
     const d = STRATEGY_DEFAULTS[next];
-    if (d) ragForm.min_score_threshold = d.min_score_threshold;
+    if (d) {
+      ragForm.min_score_threshold = d.min_score_threshold;
+      ragForm.rerank.enabled = d.rerank;
+    }
   },
 );
 
@@ -212,6 +217,7 @@ function resetRagConfig() {
     ragForm.top_k = d.top_k;
     ragForm.min_score_threshold = d.min_score_threshold;
     ragForm.rrf_k = d.rrf_k;
+    ragForm.rerank.enabled = d.rerank;
   }
   configError.value = "";
 }
@@ -549,7 +555,7 @@ function onUpdateFileChange(event: Event) {
             <div class="kb-card-head">
               <span class="kb-card-title">结果重排 (Rerank)</span>
               <span class="kb-info">ⓘ
-                <span class="kb-tooltip">用更精细的模型对召回结果二次排序，可显著提升相关性，但会增加响应耗时。开启后使用后端默认重排模型。</span>
+                <span class="kb-tooltip">用更精细的模型对召回结果二次排序，可显著提升相关性，但会增加响应耗时。需在后端 rag.rerank 配置 model / base_url（混合检索默认开启）；未配置时自动跳过。</span>
               </span>
             </div>
             <label class="kb-switch">
