@@ -1,0 +1,535 @@
+{
+  "config": {
+    "k": 10,
+    "retrieval_backend": "llm",
+    "collection": "customer_service_knowledge",
+    "elapsed_sec": 688.89
+  },
+  "strategies": {
+    "bm25": {
+      "summary": {
+        "context_recall": 0.8704,
+        "context_precision": 0.8847,
+        "faithfulness": 0.9518,
+        "answer_relevancy": 0.7306,
+        "n": 18,
+        "n_total": 18,
+        "n_failed": 0
+      },
+      "cases": [
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7934,
+          "id": "rag_0001",
+          "query": "七天无理由退货退款怎么申请？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6717,
+          "id": "rag_0002",
+          "query": "退款一般多久能到账？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.7,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9749,
+          "id": "rag_0003",
+          "query": "哪些情况不支持无理由退款？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.5869,
+          "id": "rag_0004",
+          "query": "退换货的具体流程是什么？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9319,
+          "id": "rag_0005",
+          "query": "什么情况算质量问题？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7663,
+          "id": "rag_0006",
+          "query": "智能客服机器人 Pro 的质保是多久？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6812,
+          "id": "rag_0007",
+          "query": "运费是怎么算的？满多少包邮？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7991,
+          "id": "rag_0008",
+          "query": "物流停滞了怎么办？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7441,
+          "id": "rag_0009",
+          "query": "可以开什么发票？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6838,
+          "id": "rag_0010",
+          "query": "开增值税专用发票需要什么？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7592,
+          "id": "rag_0011",
+          "query": "还没发货能改收货地址吗？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6799,
+          "id": "rag_0012",
+          "query": "怎么取消订单？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.791,
+          "id": "rag_0013",
+          "query": "智能客服机器人 Pro 卖多少钱？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 0.0,
+          "context_precision": 0.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.0,
+          "id": "rag_0014",
+          "query": "Pro 版支持多少路并发？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.8517,
+          "id": "rag_0015",
+          "query": "知识库增强包多少钱？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.225,
+          "faithfulness": 0.8,
+          "answer_relevancy": 0.8001,
+          "id": "rag_0016",
+          "query": "知识库增强包能退款吗？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9363,
+          "id": "rag_0017",
+          "query": "会员有几档？",
+          "expected_doc": "md/membership_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 0.3333,
+          "answer_relevancy": 0.7,
+          "id": "rag_0018",
+          "query": "会员优惠能折现吗？",
+          "expected_doc": "md/membership_faq.md"
+        }
+      ]
+    },
+    "semantic": {
+      "summary": {
+        "context_recall": 0.8889,
+        "context_precision": 0.8213,
+        "faithfulness": 0.963,
+        "answer_relevancy": 0.7486,
+        "n": 18,
+        "n_total": 18,
+        "n_failed": 0
+      },
+      "cases": [
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7833,
+          "id": "rag_0001",
+          "query": "七天无理由退货退款怎么申请？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6717,
+          "id": "rag_0002",
+          "query": "退款一般多久能到账？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.7,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9749,
+          "id": "rag_0003",
+          "query": "哪些情况不支持无理由退款？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.5948,
+          "id": "rag_0004",
+          "query": "退换货的具体流程是什么？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9319,
+          "id": "rag_0005",
+          "query": "什么情况算质量问题？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.8333,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7663,
+          "id": "rag_0006",
+          "query": "智能客服机器人 Pro 的质保是多久？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 0.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6812,
+          "id": "rag_0007",
+          "query": "运费是怎么算的？满多少包邮？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7991,
+          "id": "rag_0008",
+          "query": "物流停滞了怎么办？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7428,
+          "id": "rag_0009",
+          "query": "可以开什么发票？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.8751,
+          "id": "rag_0010",
+          "query": "开增值税专用发票需要什么？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.756,
+          "id": "rag_0011",
+          "query": "还没发货能改收货地址吗？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6889,
+          "id": "rag_0012",
+          "query": "怎么取消订单？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.81,
+          "id": "rag_0013",
+          "query": "智能客服机器人 Pro 卖多少钱？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 0.0,
+          "context_precision": 0.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.0,
+          "id": "rag_0014",
+          "query": "Pro 版支持多少路并发？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.971,
+          "id": "rag_0015",
+          "query": "知识库增强包多少钱？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.25,
+          "faithfulness": 0.3333,
+          "answer_relevancy": 0.8001,
+          "id": "rag_0016",
+          "query": "知识库增强包能退款吗？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9363,
+          "id": "rag_0017",
+          "query": "会员有几档？",
+          "expected_doc": "md/membership_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6922,
+          "id": "rag_0018",
+          "query": "会员优惠能折现吗？",
+          "expected_doc": "md/membership_faq.md"
+        }
+      ]
+    },
+    "hybrid": {
+      "summary": {
+        "context_recall": 0.8889,
+        "context_precision": 0.8213,
+        "faithfulness": 0.9537,
+        "answer_relevancy": 0.7397,
+        "n": 18,
+        "n_total": 18,
+        "n_failed": 0
+      },
+      "cases": [
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7934,
+          "id": "rag_0001",
+          "query": "七天无理由退货退款怎么申请？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.664,
+          "id": "rag_0002",
+          "query": "退款一般多久能到账？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.7,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9749,
+          "id": "rag_0003",
+          "query": "哪些情况不支持无理由退款？",
+          "expected_doc": "md/refund_policy.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6045,
+          "id": "rag_0004",
+          "query": "退换货的具体流程是什么？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9319,
+          "id": "rag_0005",
+          "query": "什么情况算质量问题？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.8333,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7663,
+          "id": "rag_0006",
+          "query": "智能客服机器人 Pro 的质保是多久？",
+          "expected_doc": "md/after_sale.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 0.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.6812,
+          "id": "rag_0007",
+          "query": "运费是怎么算的？满多少包邮？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7991,
+          "id": "rag_0008",
+          "query": "物流停滞了怎么办？",
+          "expected_doc": "md/logistics_shipping.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7441,
+          "id": "rag_0009",
+          "query": "可以开什么发票？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.663,
+          "id": "rag_0010",
+          "query": "开增值税专用发票需要什么？",
+          "expected_doc": "md/invoice_rule.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.7398,
+          "id": "rag_0011",
+          "query": "还没发货能改收货地址吗？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.69,
+          "id": "rag_0012",
+          "query": "怎么取消订单？",
+          "expected_doc": "md/order_faq.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.861,
+          "id": "rag_0013",
+          "query": "智能客服机器人 Pro 卖多少钱？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 0.0,
+          "context_precision": 0.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.0,
+          "id": "rag_0014",
+          "query": "Pro 版支持多少路并发？",
+          "expected_doc": "md/product_robot_pro.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9709,
+          "id": "rag_0015",
+          "query": "知识库增强包多少钱？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 0.25,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.8001,
+          "id": "rag_0016",
+          "query": "知识库增强包能退款吗？",
+          "expected_doc": "md/product_kb_pack.md"
+        },
+        {
+          "context_recall": 0.6667,
+          "context_precision": 1.0,
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.9363,
+          "id": "rag_0017",
+          "query": "会员有几档？",
+          "expected_doc": "md/membership_faq.md"
+        },
+        {
+          "context_recall": 1.0,
+          "context_precision": 1.0,
+          "faithfulness": 0.1667,
+          "answer_relevancy": 0.6938,
+          "id": "rag_0018",
+          "query": "会员优惠能折现吗？",
+          "expected_doc": "md/membership_faq.md"
+        }
+      ]
+    }
+  }
+}
