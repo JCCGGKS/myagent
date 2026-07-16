@@ -1,0 +1,22 @@
+# RAGAS 评测报告
+
+- 集合：`customer_service_knowledge`
+- 截断 k：`5`
+- 检索段后端：`all`
+- 耗时：`180.77s`
+
+## 各策略汇总
+
+| 策略 | 样本数 | 失败 | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| bm25 | 1 | 0 | 1.0 | 1.0 | 0.4 | 0.75 | 0.4 | 0.4 | 1.0 | 0.8252 |
+
+## 逐 Case 明细
+
+### 策略：bm25
+
+| Case | Query | ExpectedDoc | context_recall | context_precision | context_recall_nonllm | context_precision_nonllm | context_recall_id | context_precision_id | faithfulness | answer_relevancy |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| rag_0001 | 七天无理由退货退款怎么申请？ | md/refund_policy.md | 1.0 | 1.0 | 0.4 | 0.75 | 0.4 | 0.4 | 1.0 | 0.8252 |
+
+> 指标说明：ContextRecall / ContextPrecision 反映检索质量（白盒），后缀 `_llm` / `_nonllm` / `_id` 表示覆盖计算后端（llm=语义claims；nonllm=字符串相似度；id=文档块ID精确匹配）；Faithfulness 反映回答是否忠于检索内容；AnswerRelevancy 反映回答相关性（黑盒）。分值 0~1，越高越好。
