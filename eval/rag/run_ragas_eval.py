@@ -382,7 +382,12 @@ async def main() -> None:
 
     # LLM client（judge + 生成，共用）→ 强制 thinking off
     llm_cfg = load_llm_config()
-    client = AsyncOpenAI(base_url=llm_cfg.base_url, api_key=llm_cfg.api_key)
+    # timeout=60：单次调用卡死（如网关瞬时 stall）快速失败，避免无限挂起；
+    # max_retries=5：吸收网关瞬时 ConnectError/抖动，提升批量评测在弱网下的通过率。
+    client = AsyncOpenAI(
+        base_url=llm_cfg.base_url, api_key=llm_cfg.api_key,
+        timeout=60, max_retries=5,
+    )
     _patch_thinking_off(client, enable=False)
     # ragas 结构化输出（如 Faithfulness 的 statements 长 JSON）易触达默认 max_tokens 上限而截断，
     # 显式抬高到 8192，避免 InstructorRetryException（max_tokens length limit）。
@@ -399,6 +404,7 @@ async def main() -> None:
         emb_client = AsyncOpenAI(
             base_url=emb_cfg.get("base_url", "") or None,
             api_key=emb_cfg["api_key"],
+            timeout=60, max_retries=5,
         )
         emb_model = emb_cfg.get("model", "text-embedding-v4")
         emb = embedding_factory("openai", model=emb_model, client=emb_client)
