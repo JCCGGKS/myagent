@@ -272,7 +272,7 @@
     "query": "智能客服机器人 Pro 卖多少钱？",
     "expected_doc": "md/product_robot_pro.md",
     "doc_type": "product",
-    "reference": "智能客服机器人 Pro 售价 1999 元，支持 50 路并发，整机一年质保。",
+    "reference": "智能客服机器人 Pro 售价 1999 元。",
     "reference_contexts": [
       "智能客服机器人 Pro 是面向企业的智能客服解决方案，售价 1999 元。",
       "- 部署方式：SaaS 云端，无需本地部署；\n- 并发上限：标准版支持 50 路并发；\n- 语言支持：中文及主流外语；\n- 接口：提供开放 API 与 Webhook。",
@@ -295,7 +295,7 @@
     "query": "Pro 版支持多少路并发？",
     "expected_doc": "md/product_robot_pro.md",
     "doc_type": "product",
-    "reference": "智能客服机器人 Pro 支持 50 路并发。",
+    "reference": "智能客服机器人标准版支持 50 路并发。",
     "reference_contexts": [
       "智能客服机器人 Pro 是面向企业的智能客服解决方案，售价 1999 元。",
       "- 部署方式：SaaS 云端，无需本地部署；\n- 并发上限：标准版支持 50 路并发；\n- 语言支持：中文及主流外语；\n- 接口：提供开放 API 与 Webhook。",
