@@ -41,11 +41,27 @@ await Faithfulness(llm=llm).ascore(
 ### 2.1 检索质量（Context）
 
 - **Context Recall（上下文召回率）**：标准答案里的要点，有多少被检索到的 contexts
-  覆盖。*必须*有 `reference`（把 reference 拆成 claim，逐条判断是否被 contexts 支撑）。
-  `Recall = 被支撑的 claim 数 / reference 总 claim 数`。**衡量漏检**。
+  覆盖。**衡量漏检**。三后端差异仅在「用什么单位 + 什么方法衡量覆盖」（见 §3），语义敏感度
+  LLM > 字符串 > ID，速度/确定性反向：
+  - **LLM 后端（claims）**：需 `reference`。① LLM 把 `reference` 拆成若干独立 claim；
+    ② 逐条判定是否可从 `retrieved_contexts` 推断（attributed=1/0）；③
+    `Recall = 被支撑 claim 数 / 总 claim 数`。值域 0~1。例：金标写「Pro 支持 50 路」、
+    文档写「标准版支持 50 路」→ claim 对不上 → recall=0（本评测 rag_0014 修前即此）。
+  - **NonLLM 后端（字符串相似度）**：需 `reference_contexts`（金标切块文本）。用 rapidfuzz
+    把每条金标块与 `retrieved_contexts` 做字符串/编辑距离比对，相似度 ≥ 阈值即算命中；
+    `Recall = 命中金标块数 / 金标块总数`。零 LLM、可复现，只认字面（认不出改写）。
+  - **ID 后端（块 ID 精确匹配）**：需 `reference_context_ids`（金标块 ID）+ `retrieved_ids`
+    （检索返回的块携带的 doc ID）。直接取两集合交集，
+    `Recall = |命中 ID 数| / |金标 ID 数|`。零 LLM、确定、最快；仅在「检索 chunk ID 能精确
+    对应 gold doc ID」时最准，粒度对不上则失效。
+  - 注：ContextPrecision 同理也分这三后端（LLM / 字符串 / ID），只是把「覆盖金标」换成
+    「顶部块是否对答案有用」（且吃排序，见下）。
 - **Context Precision（上下文精确率）**：相关 chunk 是否排在前面（看重排质量），
-  用 precision@k 加权：`Precision@K = Σ(Precision@k × vₖ) / 相关项总数`，
-  `vₖ` 为第 k 位相关性 0/1。**衡量噪声/排序**。无关块若排到第 1 位，分数明显下掉。
+  用 precision@k 加权：**相关块在越靠前位置贡献越大**（位置折扣 1/i）。
+  `ContextPrecision = avg over 相关位 i of (前 i 个块中相关数 / i)`，
+  `i` 为该相关块在 `retrieved_contexts` 中的排名（1 起）。**衡量噪声/排序**。
+  - 无关块排到第 1 位 / 相关块被挤到 #3 → 顶部全判无用、1/i 折扣使贡献骤降 →
+    分数趋近 0（本评测 rag_0007 开 rerank 后 precision 1.0→0.0 即此机制）。
   - 无 `reference` 时用 **ContextUtilization**（拿 `response` 反推）。
 - 其他：Context Entities Recall、Noise Sensitivity，以及 Non-LLM / ID-Based 变体。
 
@@ -54,10 +70,16 @@ await Faithfulness(llm=llm).ascore(
 - **Faithfulness（忠实度）**：回答是否「不胡说」——所有 claim 能否被
   `retrieved_contexts` 支撑。防幻觉核心指标。
   `Faithfulness = 被上下文支撑的 claim 数 / 回答总 claim 数`。
-  可用 Vectara HHEM 小模型替代 LLM 做第二步校验（生产友好，零 API 调用）。
+  - **计算步骤（LLM 后端）**：① LLM 把 `response` 拆成 statements；② 逐条判定能否
+    从 `retrieved_contexts` 推断；③ 取可归因占比。值域 0~1，越高越不幻觉。
+  - 可用 Vectara HHEM 小模型替代 LLM 做第二步校验（生产友好，零 API 调用）。
 - **Answer/Response Relevancy（切题度）**：回答是否切题（不评对错，只评是否答到
-  点上）。靠 **embedding**：LLM 从回答反推 N 个问题，算其与原始问题的余弦相似度均值。
+  点上）。靠 **embedding**：**LLM 从 `response` 反推 N 个「这个问题可能是什么」的伪
+  问题**，再用 embedding 把这些伪问题与原始 `user_input` 算余弦相似度，取均值。
   `Score = (1/N) Σ cos(E_gi, E_o)`。*需要 embeddings*。
+  - 值域 0~1。短答案/否定句（如「不支持退款」「标准版支持 50 路」）生成的伪问题弱，
+    容易偏低；答案讲的对象与问题不一致（如答案讲「标准版」、问题问「Pro 版」）→
+    语义不匹配 → 趋近 0（本评测 rag_0014）。
 - **Answer Correctness**：需 `reference`。
 - Nvidia 三件套：Answer Accuracy / Context Relevance / Response Groundedness。
 
@@ -120,3 +142,27 @@ await AnswerRelevancy(llm=llm, embeddings=emb).ascore(
 - 异步 `.ascore()`，同步 `.score()`。
 - 旧版：`from ragas.metrics import LLMContextRecall` + `SingleTurnSample` +
   `.single_turn_ascore(sample)`，新项目勿用。
+
+---
+
+## 6. 本仓库调用装配（eval/rag/run_ragas_eval.py）
+
+评测脚本用 collections-based 异步 API，在 `judge()` 内一次性产出全部指标：
+
+```python
+# 检索段（白盒）—— 三种后端可选，由 --retrieval-backend 控制
+_llm()    → ContextRecall(llm) + ContextPrecision(llm)        # 语义 claims
+_nonllm() → NonLLMContextRecall + NonLLMContextPrecisionWithReference  # 字符串相似度
+_id()     → IDBasedContextRecall + IDBasedContextPrecision    # 块 ID 匹配
+# 生成段（黑盒）—— 仅 LLM 后端，无 nonllm/id 变体
+Faithfulness(llm).ascore(user_input, response, retrieved_contexts)
+AnswerRelevancy(llm, embeddings).ascore(user_input, response)
+```
+
+- `--retrieval-backend all` 跑全部三种后端；`llm` 只跑 LLM 后端（report_02~06 口径）。
+- 所有 LLM 裁判调用走打过补丁的 `AsyncOpenAI` 客户端（`_patch_thinking_off` 强制
+  `enable_thinking=False`，规避网关 400/超时）；judge 与生成共用 `qwen3.7-plus`。
+- 生成段指标**只有 LLM 后端**，不存在 nonllm/id 变体（见 §3）。
+- 指标分工速记：召回/精确率评「检索到的块」对不对、全不全（白盒，吃 `retrieved_contexts`，
+  精确率额外吃**排序**、位置权重 1/i）；忠实度/相关性评「生成的答案」编没编、切没切题
+  （黑盒，吃 `response`；相关性靠「从答案反推问题再比原问题」的 embedding 相似度）。
