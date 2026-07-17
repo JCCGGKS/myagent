@@ -66,11 +66,6 @@ class ConversationState(BaseModel):
     # 索引而非对象，避免与 ``tool_results`` 重复序列化；与 ``tool_results`` 一并于
     # ``input_normalizer`` 重置。
     tool_cache: dict[str, int] = Field(default_factory=dict)
-    # 副作用工具跨 turn 防连点日志：本会话内已执行的副作用调用 (工具名, 归一化参数, ts)，
-    # 用于短窗口内重复提交（如用户连点「退款/改地址」）直接拒执行，避免双退/重复转人工等
-    # 资损。随图态持久化（跨 turn 生效），但**不在 input_normalizer 重置**（需跨轮保留）。
-    # 每条：{"tool": 规范名, "key": 调用指纹, "ts": epoch 秒}。
-    side_effect_log: list[dict[str, Any]] = Field(default_factory=list)
     handoff: bool = False
     handoff_reason: str = ""
     pending_intents: list[PendingIntent] = Field(default_factory=list)

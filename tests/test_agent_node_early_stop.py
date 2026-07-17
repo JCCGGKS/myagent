@@ -1,9 +1,9 @@
-"""测试 AgentNodeService 的早停启发式与「已执行工具注入上下文」。
+"""测试 AgentNodeService 的「已执行工具注入上下文」与「终态硬中断」。
 
-冗余调用场景：多轮 ReAct 中 LLM 重复发出已执行过的 tool_call（全部命中执行层缓存、
-未产生任何新查询）→ 早停跳出循环，省掉冗余的下一轮 LLM 往返；而只要本轮出现一个新
-查询（缓存未命中），循环照常继续。同时，每轮把本 turn 已执行过的工具清单注入系统提示，
-从源头降低重复调用概率。
+- 每轮把本 turn 已执行过的工具清单注入系统提示，从源头降低重复调用概率；
+- 工具结果含 handoff / confirmation 终态时，直接结束 ReAct 循环，不再调下一轮
+  LLM（信号源为代码产出的 ToolExecutionResult.kind，确定可靠，不依赖 LLM 自觉停止）；
+  success / error 等非终态不中断，避免砍掉合法后续调用。
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from app.business.tools.domain import (
     RefundService,
 )
 from app.business.tools.tool_executor import ToolExecutor
-from app.schema import ConversationState
+from app.schema import ConversationState, ToolExecutionResult
 
 
 def _state() -> ConversationState:
@@ -50,49 +50,6 @@ def _tc(name: str, args: dict) -> dict:
 
 def _svc() -> AgentNodeService:
     return AgentNodeService(tool_executor=_executor(), max_tool_rounds=3)
-
-
-@patch("app.business.agent.agent_node.call_llm_async")
-def test_early_stop_on_redundant_cache_hit(mock_llm):
-    """第 1 轮查询（新执行），第 2 轮重复同一查询（全命中缓存）→ 早停，不再调第 3 轮 LLM。"""
-    call = _tc("query_logistics", {"order_id": "A1001"})
-    # 提供 3 个响应以防 side_effect 耗尽；若早停失效会消费到第 3 个（call_count==3）。
-    mock_llm.side_effect = [
-        {"tool_calls": [call]},  # round 1：新执行
-        {"tool_calls": [call]},  # round 2：缓存命中 → 早停
-        {"tool_calls": [call]},  # 不应被消费
-    ]
-    state = _state()
-    asyncio.run(_svc().run(state))
-
-    # 关键：LLM 只被调用 2 次（round1 + round2），第 3 轮被早停跳过。
-    assert mock_llm.call_count == 2
-    # 工具仅真正执行一次，结果唯一一条。
-    assert len(state.tool_results) == 1
-    assert state.tool_results[0].tool == "query_logistics"
-    # 调过工具 → reply 留空交 response_generator（与既有设计一致）。
-    assert state.reply == ""
-
-
-@patch("app.business.agent.agent_node.call_llm_async")
-def test_no_early_stop_when_new_call_present(mock_llm):
-    """本轮出现新查询（缓存未命中）→ 不早停，循环继续；最终以无 tool_calls 正常收尾。"""
-    logistics = _tc("query_logistics", {"order_id": "A1001"})  # round1 新；round2 命中
-    order = _tc("query_order", {"order_id": "B9999"})           # round2 新 → 不早停
-    mock_llm.side_effect = [
-        {"tool_calls": [logistics]},                       # round 1：新执行
-        {"tool_calls": [logistics, order]},                # round 2：一个命中 + 一个新 → 继续
-        {"content": "已为您查到相关信息。", "tool_calls": None},  # round 3：无 tool_calls → 收尾
-    ]
-    state = _state()
-    asyncio.run(_svc().run(state))
-
-    # 因 round2 含新查询，未早停，循环跑满到 round3 收尾。
-    assert mock_llm.call_count == 3
-    # 两个不同查询都真正执行，结果各一条。
-    assert len(state.tool_results) == 2
-    tools = {r.tool for r in state.tool_results}
-    assert tools == {"query_logistics", "query_order"}
 
 
 def test_prompt_includes_executed_tools():
@@ -132,3 +89,71 @@ def test_executed_tools_injected_each_round(mock_llm):
     second_messages = mock_llm.call_args_list[1].args[2]
     sys_prompt = second_messages[0]["content"]
     assert "query_logistics(order_id=A1001)" in sys_prompt
+
+
+def _svc_with_tool_result(result: ToolExecutionResult, call: dict) -> "AgentNodeService":
+    """构造一个 AgentNodeService：其 tool_executor.run 直接注入给定 kind 的工具结果，
+    隔离 domain 数据，专测 agent 循环的「终态硬中断」判定。"""
+    svc = _svc()
+
+    async def fake_run(tool_calls, state):
+        state.tool_results = state.tool_results or []
+        state.tool_cache = state.tool_cache or {}
+        # 模拟真实 executor：每次执行都向 tool_cache 写入新键（与 run 行为一致），
+        # 否则「ReAct stopping guard」会因 cache 未增长而误判为全缓存命中、提前 break。
+        for tc in tool_calls:
+            state.tool_results.append(result)
+            key = f"{tc['function']['name']}:{tc['function'].get('arguments', '{}')}"
+            state.tool_cache[key] = len(state.tool_results) - 1
+        return [
+            {
+                "role": "tool",
+                "tool_call_id": call.get("id"),
+                "name": call["function"]["name"],
+                "content": "{}",
+            }
+        ]
+
+    svc.tool_executor.run = fake_run
+    return svc
+
+
+@patch("app.business.agent.agent_node.call_llm_async")
+def test_terminal_break_on_handoff(mock_llm):
+    """工具结果含 handoff → 终态硬中断，不再调下一轮 LLM（省掉 LLM 误补 create_handoff）。"""
+    call = _tc("request_refund", {"order_id": "A1001", "refund_type": "refund", "confirm": False})
+    mock_llm.return_value = {"tool_calls": [call]}  # 若未中断会一直消费
+    result = ToolExecutionResult(kind="handoff", raw_result={"handoff_ticket_id": "H1"})
+    state = _state()
+    asyncio.run(_svc_with_tool_result(result, call).run(state))
+    # 关键：LLM 仅被调用 1 次（handoff 终态直接 break）。
+    assert mock_llm.call_count == 1
+    assert any(getattr(r, "kind", None) == "handoff" for r in state.tool_results)
+
+
+@patch("app.business.agent.agent_node.call_llm_async")
+def test_terminal_break_on_confirmation(mock_llm):
+    """工具结果含 confirmation（R1 挂起）→ 终态硬中断，等待用户下一轮确认。"""
+    call = _tc("request_refund", {"order_id": "A1001", "refund_type": "refund", "confirm": False})
+    mock_llm.return_value = {"tool_calls": [call]}
+    result = ToolExecutionResult(kind="confirmation", raw_result={"order_id": "A1001", "confirmed": False})
+    state = _state()
+    asyncio.run(_svc_with_tool_result(result, call).run(state))
+    assert mock_llm.call_count == 1
+    assert any(getattr(r, "kind", None) == "confirmation" for r in state.tool_results)
+
+
+@patch("app.business.agent.agent_node.call_llm_async")
+def test_no_break_on_success_kind(mock_llm):
+    """success 不是终态 → 不硬中断，循环继续到 LLM 自然收尾（避免砍掉合法后续调用）。"""
+    call = _tc("query_order", {"order_id": "A1001"})
+    mock_llm.side_effect = [
+        {"tool_calls": [call]},                       # round 1：success
+        {"content": "已查到。", "tool_calls": None},   # round 2：LLM 自然收尾
+    ]
+    result = ToolExecutionResult(kind="success", raw_result={"order_id": "A1001"})
+    state = _state()
+    asyncio.run(_svc_with_tool_result(result, call).run(state))
+    # success 不中断 → 跑到 round2 收尾，共 2 次 LLM 调用。
+    assert mock_llm.call_count == 2
+

@@ -81,21 +81,36 @@ class AgentNodeService:
                             "tool_calls": [tool_call],
                         }
                     )
-                # 执行层缓存大小（本 turn 已执行过的 (工具,参数) 数量）在执行前快照，
-                # 用于早停判定：本轮若没有任何新执行，说明模型在重复已做过的调用、空转。
-                cache_size_before = len(state.tool_cache)
+                cache_before = len(state.tool_cache or {})
                 tool_messages = await self.tool_executor.run(response["tool_calls"], state)
                 messages.extend(tool_messages)
-                # 早停启发式：本轮所有工具调用均命中本 turn 执行缓存（全是已执行过的
-                # 重复调用、未产生任何新查询）→ 模型在空转，直接结束循环交由
-                # response_generator 生成，省掉冗余的下一轮 LLM 往返（缓存已保证结果不丢、不重）。
-                if len(state.tool_cache) == cache_size_before:
+                # 终态硬中断：本轮工具结果含 handoff / confirmation → 本 turn 动作已闭环
+                # （转人工单已建 / R1 挂起待用户确认），无需再调下一轮 LLM，直接结束循环
+                # 交由 response_generator 生成。信号源是代码产出的 ToolExecutionResult.kind，
+                # 确定可靠，不依赖 LLM 自觉停止（避免其收尾判断失误导致的冗余轮次）。
+                if any(
+                    getattr(r, "kind", None) in ("handoff", "confirmation")
+                    for r in state.tool_results
+                ):
                     logger.info(
-                        _tagged("agent", "early-stop: redundant tool calls all hit cache, break loop session=%s"),
+                        _tagged("agent", "terminal tool result (handoff/confirmation), break loop session=%s"),
                         state.session_id,
                     )
                     break
-                # 否则继续循环，让 LLM 根据（新）工具结果决定下一步
+                # ReAct stopping guard（治本，不依赖模型自觉停）：本轮 LLM 提出的工具调用
+                # 全部已被本 turn 执行过——tool_cache 本轮未新增任何键（即全是执行层缓存命中
+                # 或批次内去重），说明模型在前几轮已取得全部所需信息、却未发出收尾信号。
+                # 此时再调 LLM 只会空转重发相同工具，直接结束循环，交由 response_generator
+                # 基于已有 tool_results 生成回复。net-new 判定天然兼容 R1 二次确认：
+                # request_refund(confirm=false) 与 (confirm=true) 是不同参数 → 不同缓存键
+                # → 视为新调用、继续循环，不被误停。
+                if len(state.tool_cache or {}) == cache_before:
+                    logger.info(
+                        _tagged("agent", "no net-new tool execution this round (all cached), stop loop session=%s"),
+                        state.session_id,
+                    )
+                    break
+                # 否则本轮确有新增工具执行，继续循环让 LLM 根据结果决定下一步
                 continue
 
             # 无 tool_calls：调度节点只做决策/工具调用，其 content 输出是内部决策旁白，
