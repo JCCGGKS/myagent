@@ -63,20 +63,6 @@ class EmotionState(BaseModel):
     confidence: float = 0.0
 
 
-class ExtraIntent(BaseModel):
-    """单轮识别出的「次要意图」（多意图场景）。
-
-    主意图走 ``IntentResult`` 顶层字段，其余意图压入 ``IntentResult.extra_intents``，
-    由多轮裁决层（DialoguePolicy）排队到 ``state.pending_intents``（见计划 Phase 3）。
-    """
-
-    main_intent: MainIntentCode
-    sub_intent: SubIntentCode
-    confidence: float = 0.0
-    slots: dict[str, str] = Field(default_factory=dict)
-    reason: str = ""
-
-
 class IntentResult(BaseModel):
     # 过渡字段：当前语义等同 action，Phase 4 将改为 actions[] 列表（见 intent-recognition-plan.md）。
     sub_intent: SubIntentCode
@@ -90,5 +76,3 @@ class IntentResult(BaseModel):
     is_intent_shift: bool = False
     emotion: EmotionState = Field(default_factory=EmotionState)
     handoff_reason: str = ""
-    # 多意图场景：除主意图外的其余意图（Phase 3 由 DialoguePolicy 排队到 pending_intents）。
-    extra_intents: list[ExtraIntent] = Field(default_factory=list)

@@ -217,15 +217,17 @@ Layer 3  分类后辅助判定（不改路由）
 - `_detect_emotion()`：判负/正面情绪，写 `state.emotion` + `negative_streak`（保留上一轮负面记忆，轻微衰减）；情绪只塑形生成（§2.7），不进意图分类。
 - `HandoffClarificationPolicy.decide()`：依据 `needs_clarification` / `handoff` / 意图类型 / `negative_streak` 产出 `current_action`，连续追问超阈值（默认 3）强制转人工。
 
-### 3.6 多意图识别（当前实现盲区）
+### 3.6 多意图识别（规划中，当前未实现）
 
-现有 `main_intent` 为单值，假设每轮只有一个意图；用户常一次性说多个（「查订单 A1001 物流，另外我要退款」）。方案：
+现有 `main_intent` 为单值，假设每轮只有一个意图；用户常一次性说多个（「查订单 A1001 物流，另外我要退款」）。
 
-1. **先判清「多意图」还是「单意图多动作」**：「查物流并改地址」= 一个 `logistics` 意图 + 多 action；「查物流 + 退款」= 两个 `main_intent`。LLM 联合输出支持 `intents: [...]` 列表区分两类。
-2. **激活一个 + 排队其余**：`intents` 长度 1 → 正常流；长度 >1 → 取最高优先级/置信度为 **active**，其余压入 `pending_intents` 队列（保留各自已抽槽）；active 走到终态 → 从队列 pop 下一个，**共享槽可继承**（如退款复用同一 `order_id`）；多意图置信度接近难定先后 → 反问「先处理哪个？」。
+> ⚠️ 早期曾按「单 Agent 串行队列」实现（`pending_intents` + `_handle_pending_intents` 续办激活），但经验证：规则层「首命中即返回」会短路掉 LLM 兜底（唯一会产出多意图数组的路径），导致 `pending_intents` 永远为空，**实际并未真正并发处理多意图**。该实现已于 2026-07-17 撤销，**后续改由 multi-agent 架构实现**（每个意图一个子 Agent 并发处理、共享槽继承），不再保留串行队列。
+
+设计方向（待 multi-agent 落地时复用）：
+
+1. **先判清「多意图」还是「单意图多动作」**：「查物流并改地址」= 一个 `logistics` 意图 + 多 action；「查物流 + 退款」= 两个 `main_intent`。
+2. **并发处理**：每个独立 `main_intent` 派发给对应子 Agent，共享槽（如 `order_id`）由编排层统一继承。
 3. **前端配套**：会话面板显示「待处理意图」列表，逐个点亮。
-
-代价：状态模型增 `pending_intents` 字段，但 `main_intent`/`slots` 单值假设不变，改造成本低。
 
 ### 3.7 多 action 识别（单意图内并列动作）
 
@@ -245,7 +247,7 @@ Layer 3  分类后辅助判定（不改路由）
 
 **落地到状态模型**：`state.action` 单值 → `state.actions: [...]` + `state.active_action_index`；当前 action 终态 → 推进下一个、共享槽自动带入；`missing_slots` 标到具体 action 上。
 
-> 多意图（`pending_intents` 队列）与多 action（`actions` 队列）是**正交的两级队列**，状态机逻辑可复用「激活一个、排队其余、终态推进」。
+> 多意图（后续由并发 multi-agent 实现）与多 action（`actions` 队列）是**正交的两级**，状态机逻辑可复用「激活一个、排队其余、终态推进」。
 
 ### 3.8 调优入口（改配置而非代码）
 
@@ -257,10 +259,10 @@ Layer 3  分类后辅助判定（不改路由）
 
 | 维度 | 当前实现 | 目标架构 | 状态 |
 |---|---|---|---|
-| 单轮分类 | 规则 + LLM 兜底 | 规则 + LLM 联合产出（意图+动作+槽一次调用） | ✅ LLM 已联合产出 slots/extra_intents（Phase 1） |
+| 单轮分类 | 规则 + LLM 兜底 | 规则 + LLM 联合产出（意图+动作+槽一次调用） | ✅ LLM 已联合产出 slots（Phase 1） |
 | 多轮覆盖 | 嵌在 `StateTrackerService` | 独立 `DialoguePolicy` 裁决层 | ✅ 已抽离（Phase 2） |
 | 称谓 | 「三级回退」 | 单轮两层 + 多轮覆盖层 | ✅ 已更正（§3 开头） |
-| 多意图 | 不支持（`main_intent` 单值） | `pending_intents` 队列 | ✅ 已落地：入队 + 续办激活 + 新消息守卫 + 续办提示；前端 StatsPanel 展示待补（依赖前端 WIP） |
+| 多意图 | 不支持（`main_intent` 单值） | 并发 multi-agent（各意图子 Agent，共享槽继承） | ⬜ 已撤销早期串行队列实现，改由 multi-agent 落地（见 §3.6） |
 | 多 action | 不支持（`sub_intent`/`action` 单值） | `actions[]` + `active_action_index` | ⬜ 真实盲区，Phase 4 |
 | `slot_followup` | 硬编码 4 子意图 + 仅 `order_id` | 通用化为「缺槽优先补齐」 | ⬜ 覆盖窄，Phase 2 未动（待 Phase 4 顺带） |
 | `overwritable` | YAML 声明但 `routing.py` 从未读取 | 删除 | ✅ 已删除（Phase 0） |

@@ -10,7 +10,6 @@ from app.schema import IntentResult
 from app.schema.intent import (
     MAIN_INTENT_CODES,
     SUB_INTENT_CODES,
-    ExtraIntent,
     MainIntentCode,
     SubIntentCode,
 )
@@ -29,19 +28,6 @@ VALID_MAIN = set(MAIN_INTENT_CODES)
 VALID_SUB = set(SUB_INTENT_CODES)
 
 
-class LLMIntentItem(BaseModel):
-    """单条意图的结构化输出（用于多意图场景的 intents 列表项）。"""
-
-    model_config = {"populate_by_name": True}
-
-    main_intent: MainIntentCode = "unrecognize"
-    sub_intent: SubIntentCode = "unrecognize.unknown"
-    slots: dict[str, str] = Field(default_factory=dict)
-    confidence: float = 0.8
-    needs_clarification: bool = False
-    reason: str = ""
-
-
 class LLMIntentDecision(BaseModel):
     model_config = {"populate_by_name": True}
 
@@ -53,37 +39,19 @@ class LLMIntentDecision(BaseModel):
     reason: str = ""
     slots: dict[str, str] = Field(default_factory=dict)
 
-    # 多意图场景：除主意图（intents[0]）外的其余意图（Phase 3 排队到 pending_intents）。
-    intents: list[LLMIntentItem] = Field(default_factory=list)
-
     @model_validator(mode="before")
     @classmethod
     def _normalize(cls, values: object) -> object:
         if not isinstance(values, dict):
             return values
 
-        # 主意图已显式提供（如由 _classify_with_chat_completions 预归一化）：
-        # 仅做单条 sanitize，保留已传入的 intents 列表原样。
+        # 单意图归一化：仅做单条 sanitize。
         if values.get("main_intent") in VALID_MAIN:
             single = _normalize_one(values)
             for key in ("main_intent", "sub_intent", "confidence", "needs_clarification", "reason", "slots"):
                 if key in single:
                     values[key] = single[key]
             return values
-
-        # 否则尝试从 "intents" 列表推导主意图
-        if isinstance(values.get("intents"), list) and values["intents"]:
-            items = [_normalize_one(it) for it in values["intents"] if isinstance(it, dict)]
-            if items:
-                values["intents"] = items
-                primary = items[0]
-                values["main_intent"] = primary["main_intent"]
-                values["sub_intent"] = primary["sub_intent"]
-                values["confidence"] = primary.get("confidence", 0.8)
-                values["slots"] = primary.get("slots", {})
-                values.setdefault("needs_clarification", False)
-                values.setdefault("reason", "")
-                return values
 
         return _normalize_one(values)
 
@@ -195,19 +163,9 @@ class LLMIntentFallbackService:
             return None
 
         logger.info(
-            _tagged("intent", "LLM fallback success: intent=%s.%s confidence=%.2f extras=%d"),
-            parsed.main_intent, parsed.sub_intent, parsed.confidence, len(parsed.intents),
+            _tagged("intent", "LLM fallback success: intent=%s.%s confidence=%.2f"),
+            parsed.main_intent, parsed.sub_intent, parsed.confidence,
         )
-        extra_intents = [
-            ExtraIntent(
-                main_intent=e.main_intent,
-                sub_intent=e.sub_intent,
-                confidence=e.confidence,
-                slots=e.slots,
-                reason=e.reason,
-            )
-            for e in parsed.intents
-        ]
         return IntentResult(
             main_intent=parsed.main_intent,
             sub_intent=parsed.sub_intent,
@@ -215,7 +173,6 @@ class LLMIntentFallbackService:
             slots=parsed.slots,
             needs_clarification=parsed.needs_clarification,
             route_source="llm_fallback",
-            extra_intents=extra_intents,
         )
 
     async def _classify_with_chat_completions(self, prompt: str) -> LLMIntentDecision | None:
@@ -256,18 +213,8 @@ class LLMIntentFallbackService:
             logger.warning(_tagged("intent", "chat.completions JSON decode error: %s raw=%s"), repr(exc), content[:200])
             return None
 
-        # 多意图：intents 列表优先；否则按单意图字段归一化
-        raw_intents = data.get("intents")
-        if isinstance(raw_intents, list) and raw_intents:
-            intents_norm = [_normalize_one(it) for it in raw_intents if isinstance(it, dict)]
-            if not intents_norm:
-                logger.warning(_tagged("intent", "chat.completions intents list empty/invalid"))
-                return None
-            primary = intents_norm[0]
-            extra_llm = [LLMIntentItem(**it) for it in intents_norm[1:]]
-        else:
-            primary = _normalize_one(data)
-            extra_llm = []
+        # 单意图：按 main_intent / sub_intent 字段归一化
+        primary = _normalize_one(data)
 
         if primary["main_intent"] not in VALID_MAIN:
             logger.warning(_tagged("intent", "LLM returned invalid main_intent=%s, discarding"), primary["main_intent"])
@@ -277,8 +224,8 @@ class LLMIntentFallbackService:
             return None
 
         try:
-            parsed = LLMIntentDecision(**primary, intents=extra_llm)
-            logger.debug(_tagged("intent", "chat.completions success: %s intents=%d"), content[:100], len(extra_llm) + 1)
+            parsed = LLMIntentDecision(**primary)
+            logger.debug(_tagged("intent", "chat.completions success: %s"), content[:100])
             return parsed
         except Exception as exc:
             logger.warning(_tagged("intent", "LLMIntentDecision construction error: %s primary=%s"), repr(exc), primary)

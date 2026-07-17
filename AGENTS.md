@@ -236,7 +236,6 @@ curl -X POST http://127.0.0.1:8000/chat \
 - `test_tool_executor.py` — 工具执行
 - `test_auth_services.py` — 认证（异步 sqlite 内存库 + `SqlUserDAO`）
 - `test_confirmation.py` / `test_confirmation_guard.py` — R1 二次确认信号与 guard
-- `test_multi_intent.py` — 多意图/主意图切换
 
 提交前跑 `pytest tests/`；新增能力在对应文件补用例。
 

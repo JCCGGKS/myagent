@@ -28,20 +28,6 @@ class ToolExecutionResult(BaseModel):
     sanitized_result: dict[str, Any] | None = None  # 脱敏副本（经 sanitize_tool_result 处理），跨信任边界的安全版本，绝不直接等于 raw_result
 
 
-class PendingIntent(BaseModel):
-    """多意图场景中，排队等待处理的次要意图（见计划 Phase 3）。
-
-    由 ``IntentResult.extra_intents`` 经多轮裁决层（DialoguePolicy / route）入队，
-    用户确认后续办时被激活为 active 意图。
-    """
-
-    main_intent: MainIntentCode
-    sub_intent: SubIntentCode
-    slots: dict[str, str] = Field(default_factory=dict)
-    confidence: float = 0.0
-    reason: str = ""
-
-
 class ConversationState(BaseModel):
     session_id: str
     user_id: int
@@ -68,7 +54,6 @@ class ConversationState(BaseModel):
     tool_cache: dict[str, int] = Field(default_factory=dict)
     handoff: bool = False
     handoff_reason: str = ""
-    pending_intents: list[PendingIntent] = Field(default_factory=list)
     intent_clarification_count: int = 0
     # R1 二次确认挂起态：发出 confirmation 后、用户确认前，记录待确认操作的负载，
     # 供下一轮「确认/取消」信号确定性拦截（不依赖 LLM 回忆）。结构示例：

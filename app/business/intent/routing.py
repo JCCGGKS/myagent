@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.schema import ConversationState, IntentResult, PendingIntent
+from app.schema import ConversationState, IntentResult
 from app.business.tools.domain import extract_order_id
 from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.business.intent.policy import DialoguePolicy
@@ -135,9 +135,6 @@ class IntentRouterService:
         if order_id and not intent.slots.get("order_id"):
             intent.slots["order_id"] = order_id
 
-        # 多意图排队与续办（Phase 3）：入队次要意图 / 激活队首（继续信号）/ 去重
-        self._handle_pending_intents(state, message, intent)
-
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unrecognize", "unsupported_biz", intent.main_intent}
         logger.debug(
@@ -153,70 +150,6 @@ class IntentRouterService:
             return None
         logger.debug(_tagged("intent", "LLM fallback classify session=%s"), state.session_id)
         return await self.llm_fallback_service.classify(message, state)
-
-    # 续办信号关键词（Phase 3）：用户未给出明确新意图、但希望处理下一个待办
-    _CONTINUE_SIGNALS = ("继续", "下一个", "接着", "还有呢", "处理下一个", "再处理", "然后呢", "下一个吧")
-
-    def _is_continue_signal(self, lowered_message: str) -> bool:
-        return any(sig in lowered_message for sig in self._CONTINUE_SIGNALS)
-
-    def _handle_pending_intents(
-        self, state: ConversationState, message: str, intent: IntentResult
-    ) -> None:
-        """多意图排队与续办（Phase 3）。原地修改 ``state.pending_intents`` 与 ``intent``。
-
-        - 用户显式说出某待处理意图 → 该意图出队（已被激活为当前意图）。
-        - 本轮为新的多意图 → 次要意图入队（去重）。
-        - 有待处理意图且无明确新意图、命中「继续」信号 → 激活队首为当前意图。
-        """
-        lowered = message.casefold()
-
-        # 1) 去重：当前意图恰好是某个待处理意图 → 出队
-        for idx, p in enumerate(list(state.pending_intents)):
-            if p.main_intent == intent.main_intent and p.sub_intent == intent.sub_intent:
-                state.pending_intents.pop(idx)
-                break
-
-        # 2) 新多意图：将次要意图入队（同一 main+sub 不重复入队）
-        #    守卫：上一轮仍在澄清中（needs_clarification）时，本轮回复优先视作填槽，不新开意图。
-        if intent.extra_intents and not state.needs_clarification:
-            for extra in intent.extra_intents:
-                if any(
-                    p.main_intent == extra.main_intent and p.sub_intent == extra.sub_intent
-                    for p in state.pending_intents
-                ):
-                    continue
-                state.pending_intents.append(
-                    PendingIntent(
-                        main_intent=extra.main_intent,
-                        sub_intent=extra.sub_intent,
-                        slots=extra.slots,
-                        confidence=extra.confidence,
-                        reason=extra.reason,
-                    )
-                )
-                logger.info(
-                    _tagged("intent", "Pending enqueue main=%s sub=%s session=%s"),
-                    extra.main_intent, extra.sub_intent, state.session_id,
-                )
-        # 3) 续办触发：有待处理 + 未识别新意图 + 继续信号 → 激活队首
-        elif (
-            state.pending_intents
-            and not state.needs_clarification
-            and intent.main_intent == "unrecognize"
-            and self._is_continue_signal(lowered)
-        ):
-            nxt = state.pending_intents.pop(0)
-            intent.main_intent = nxt.main_intent
-            intent.sub_intent = nxt.sub_intent
-            intent.slots = dict(nxt.slots)
-            intent.confidence = nxt.confidence
-            intent.needs_clarification = False
-            intent.route_source = "pending_advance"
-            logger.info(
-                _tagged("intent", "Pending advance main=%s sub=%s queue_left=%d session=%s"),
-                nxt.main_intent, nxt.sub_intent, len(state.pending_intents), state.session_id,
-            )
 
     def _rule_matches(
         self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any

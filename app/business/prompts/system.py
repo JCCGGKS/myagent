@@ -16,7 +16,7 @@ _EMPTY_VALUES = (None, "", {}, [])
 # - 澄清节点需要意图（定追问口径）+ 缺失槽位（问什么）+ 情绪（定语气）来生成追问；
 # - 最终回复节点只需用户情绪来定回复语气（数据已由 tool_result 携带），不需要意图/槽位等；
 # 白名单之外的字段（session_id / user_id / channel / action_history /
-# running_summary / recent_messages / pending_intents / 计数器 / reply 等）
+# running_summary / recent_messages / 计数器 / reply 等）
 # 一律不进入提示词，也不被任何节点透传。
 AGENT_FIELDS = (
     "slots",

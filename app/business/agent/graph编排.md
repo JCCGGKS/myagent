@@ -162,7 +162,7 @@ START → input_normalizer → confirmation_guard → intent_router → state_tr
 | `clarification_node` | `ClarificationService.generate` 产出追问/澄清话术 | `reply` / `needs_clarification` |
 | `agent_node` | `AgentNodeService.run` 走 LLM function-calling 调业务工具 | `tool_results` / `pending_confirmation`(退款确认) |
 | `handoff_node` | `tool_executor.create_handoff` 构造转人工负载 | `handoff=True` / `handoff_reason` |
-| `response_generator` | `ResponseService.generate` —— **`state.reply` 唯一写入方**。已设 `reply` 则早返回;否则按 `tool_results` 模板或 LLM 生成。末尾附加多意图续办提示 | `reply` / `action_history` |
+| `response_generator` | `ResponseService.generate` —— **`state.reply` 唯一写入方**。已设 `reply` 则早返回;否则按 `tool_results` 模板或 LLM 生成 | `reply` / `action_history` |
 | `context_compressor` | `ContextService.compress` 维护 `recent_messages` 窗口 + `running_summary`,防快照膨胀 | `recent_messages` / `running_summary` / `summary` |
 
 ### 7.3 状态字段(ConversationState,`app/schema/state.py`)
@@ -190,7 +190,6 @@ START → input_normalizer → confirmation_guard → intent_router → state_tr
 | `tool_results` | list[ToolExecutionResult] | `[]` | 每项 `kind`: `success` / `error` / `confirmation` / `handoff`(模板回复用) |
 | `handoff` | bool | `False` | `True` / `False`(是否转人工) |
 | `handoff_reason` | str | `""` | 转人工原因文本 |
-| `pending_intents` | list[PendingIntent] | `[]` | 多意图排队项(待续办次要意图) |
 | `pending_confirmation` | dict \| None | `None` | R1 二次确认挂起负载,如 `{tool, order_id, refund_type, reason}`,或 `None` |
 | `reply` | str | `""` | 本轮助手回复文本(`response_generator` 为唯一写入方) |
 

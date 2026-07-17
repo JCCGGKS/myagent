@@ -16,7 +16,7 @@ LLM 提示词**定义与构造**层：集中存放各节点的 system / user 提
   - `AGENT_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 缺失槽位 / 当前动作`（调度节点决策调工具用，**不含情绪**，因为它不生成面向用户的文本）。
   - `CLARIFICATION_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 缺失槽位 / 当前动作 / 情绪`（澄清节点生成追问用，借情绪定语气）。
   - `RESPONSE_FIELDS`：`当前意图 / 阶段 / 已填槽位 / 已确认槽位 / 情绪 / 是否需要澄清`（最终回复节点组织友好回复用，**不含当前动作 / 缺失槽位**，因为回复是收尾）。
-  - 白名单之外的字段（`session_id` / `user_id` / `channel` / `action_history` / `running_summary` / `recent_messages` / `pending_intents` / 各类计数器 / `reply` 等）**一律不进入任何提示词**。
+  - 白名单之外的字段（`session_id` / `user_id` / `channel` / `action_history` / `running_summary` / `recent_messages` / 各类计数器 / `reply` 等）**一律不进入任何提示词**。
 - `build_prompt_context(state, fields)`：**上下文隔离**入口。从状态对象按给定白名单抽取非空字段，得到只属于该节点的「提示词可见」切片。
 - `_render_base_context(ctx)`：把隔离后的切片渲染成公共片段（意图/阶段/槽位/情绪等，按 ctx 中实际存在的字段渲染）。
 - `build_agent_system_prompt(state)`：Agent 调度节点提示——只做决策与工具调用，不输出最终回复；`tools=` 参数另发工具 schema，提示词不罗列。

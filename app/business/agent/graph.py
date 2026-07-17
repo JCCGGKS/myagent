@@ -640,10 +640,6 @@ class CustomerServiceAgent:
         state: ConversationState = payload["state"]
         logger.debug(_tag("response", "session=%s"), state.session_id)
         payload["state"] = await self.response_service.generate(state)
-        # 多意图续办提示：有待处理意图时，在回复末尾提示用户可继续（Phase 3）
-        if state.pending_intents and not state.handoff:
-            names = "、".join(p.main_intent for p in state.pending_intents)
-            state.reply = f"{state.reply}\n\n（还有「{names}」待处理，需要的话我可以继续处理。）"
         logger.debug(_tag("response", "reply=%r session=%s"), state.reply[:80] if state.reply else "", state.session_id)
         return payload
 
@@ -673,9 +669,5 @@ class CustomerServiceAgent:
             "slots": state.slots,
             "missing_slots": state.missing_slots,
             "needs_clarification": state.needs_clarification,
-            "pending_intents": [
-                {"main_intent": p.main_intent, "sub_intent": p.sub_intent, "slots": p.slots}
-                for p in state.pending_intents
-            ],
             "summary": state.summary,
         }

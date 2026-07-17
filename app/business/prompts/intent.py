@@ -6,11 +6,8 @@ from app.schema.intent import MAIN_INTENT_CODES, SUB_INTENT_CODES
 
 LLM_INTENT_SYSTEM_PROMPT = (
     "你是客服意图分类器。"
-    "只能从给定的主意图和子意图中选择。"
-    "如果用户一句话包含多个独立诉求（例如「查订单 A1001 物流，另外我要退款」），"
-    "返回 \"intents\" 列表：每项独立给出 main_intent / sub_intent / slots / confidence，"
-    "第一项为主意图，其余为次要意图；若只有一个诉求，可只返回单个 main_intent / sub_intent（或 intents 长度为 1）。"
-    "能从文本抽取的实体（如 order_id 订单号，通常以字母+数字出现，如 A1001、SF123）请填入对应 intent 的 slots.order_id。"
+    "只能从给定的主意图和子意图中选择一个。"
+    "能从文本抽取的实体（如 order_id 订单号，通常以字母+数字出现，如 A1001、SF123）请填入 slots.order_id。"
     "如果用户表达不明确、超出当前系统能力，返回 unrecognize.unknown。"
     "不要编造不存在的意图或实体。"
     "输出必须是合法 JSON。"
@@ -75,7 +72,6 @@ def build_llm_intent_user_prompt(
   · 明确说赔偿/赔付 -> complaint.compensate
 - 超出业务范围：招聘、加盟等 -> unsupported_biz.out_of_scope
 - 其它未覆盖能力或无法稳定判断 -> unrecognize.unknown
-- 若一句话含多个独立诉求，返回 intents 列表（每项含独立的 main_intent / sub_intent / slots），不要把多个诉求合并成一个。
 
 示例：
 - 「改一下收货地址」 -> order_query.modify_address

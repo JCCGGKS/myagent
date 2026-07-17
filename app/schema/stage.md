@@ -1,6 +1,6 @@
 # ConversationState 字段职责梳理
 
-`app/schema/state.py` 中 `ConversationState` 的当前字段（共 24 个）。已移除的冗余字段：`candidate_intents` / `risk_level` / `topic_changed` / `latest_action_name` / `latest_action_result` / `current_form_name` / `current_form_slot_states` / `archived_states` / `clarification_count`。
+`app/schema/state.py` 中 `ConversationState` 的当前字段。已移除的冗余字段：`candidate_intents` / `risk_level` / `topic_changed` / `latest_action_name` / `latest_action_result` / `current_form_name` / `current_form_slot_states` / `archived_states` / `clarification_count` / `pending_intents`（多意图续办，原 Phase 3 设计，后续改由 multi-agent 实现）。
 
 说明：每个字段标注「写入位置 → 读取位置 → 职责」，便于判断是否存在重复或死状态。
 
@@ -22,7 +22,7 @@
 ## 情绪与澄清
 
 - `emotion: EmotionState` — 情绪与置信度。`routing.py` 读取参与置信度决策（`state.emotion.primary == "negative"` 时下调 confidence）。
-- `needs_clarification: bool` — 是否需澄清。控制进入 clarification 节点；前端 snapshot 展示；`routing.py` 多意图守卫判断。
+- `needs_clarification: bool` — 是否需澄清。控制进入 clarification 节点；前端 snapshot 展示。
 - `intent_clarification_count: int` — 意图澄清轮次计数（仅「真·听不懂」的 unrecognize 澄清计入）。达 `handoff_threshold` 且非自助意图时转人工（`routing.py` 阈值判断）；解析成功的一轮清零，语义为「连续澄清失败次数」。
 
 ## 执行流
@@ -39,17 +39,15 @@
 - `tool_result: ToolExecutionResult | None` — 最近一次工具执行结果（仅工具类动作有）。前端 `tool_result` 事件 + `prompts/system.py` 拼 prompt。`graph.py` 每轮开头清空。
 - `reply: str` — 最终回复文本。各节点（`clarification` / `response` / `agent_node` / `graph` 续办提示）写入；`message.py` 落库、`graph.py` final 事件下发、前端渲染。每轮开头清空。
 
-## 转人工与多意图
+## 转人工
 
-- `handoff: bool` — 是否转人工。`dao/session.py` 决定会话 status（`SESSION_STATUS_HANDOFF`）、`graph.py` 路由与 `pending_intents` 守卫、`routing.py` 阶段赋值。
+- `handoff: bool` — 是否转人工。`dao/session.py` 决定会话 status（`SESSION_STATUS_HANDOFF`）、`graph.py` 路由与 `routing.py` 阶段赋值。
 - `handoff_reason: str` — 转人工原因。`graph.py` 日志、`routing.py` 赋值（含 `clarification_failed`）。
-- `pending_intents: list[PendingIntent]` — 排队待处理的次要意图（多意图续办）。`routing._handle_pending_intents` 入队/激活；`graph.py` 续办提示与守卫读取。
 
 ## 关联模型（内嵌类型）
 
 - `ActionRecord`（`action_history` 元素）：`action_name` / `status` / `summary` / `created_at`。
 - `ToolExecutionResult`（`tool_result` 类型）：`kind` / `raw_result` / `sanitized_result` / `user_facing_summary`。
-- `PendingIntent`（`pending_intents` 元素）：`main_intent` / `sub_intent` / `slots` / `confidence` / `reason`。
 - `IntentResult`（`intent_result` 类型）：意图层完整结果，见 `app/schema/intent.py`。
 
 ## 精简历史
