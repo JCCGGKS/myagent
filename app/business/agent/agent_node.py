@@ -64,6 +64,11 @@ class AgentNodeService:
         for _round in range(self.max_tool_rounds):
             logger.debug(_tagged("agent", "run round=%d session=%s"), _round, state.session_id)
 
+            # 每轮刷新系统提示中的「已执行工具」清单（基于本轮前的 tool_cache），
+            # 让模型看到本 turn 已查过哪些工具与参数，从源头避免重复调用。
+            if messages and messages[0].get("role") == "system":
+                messages[0]["content"] = build_agent_system_prompt(state)
+
             response = await self._call_llm(messages)
 
             if response.get("tool_calls"):
@@ -76,9 +81,21 @@ class AgentNodeService:
                             "tool_calls": [tool_call],
                         }
                     )
+                # 执行层缓存大小（本 turn 已执行过的 (工具,参数) 数量）在执行前快照，
+                # 用于早停判定：本轮若没有任何新执行，说明模型在重复已做过的调用、空转。
+                cache_size_before = len(state.tool_cache)
                 tool_messages = await self.tool_executor.run(response["tool_calls"], state)
                 messages.extend(tool_messages)
-                # 继续循环，让 LLM 根据工具结果决定下一步
+                # 早停启发式：本轮所有工具调用均命中本 turn 执行缓存（全是已执行过的
+                # 重复调用、未产生任何新查询）→ 模型在空转，直接结束循环交由
+                # response_generator 生成，省掉冗余的下一轮 LLM 往返（缓存已保证结果不丢、不重）。
+                if len(state.tool_cache) == cache_size_before:
+                    logger.info(
+                        _tagged("agent", "early-stop: redundant tool calls all hit cache, break loop session=%s"),
+                        state.session_id,
+                    )
+                    break
+                # 否则继续循环，让 LLM 根据（新）工具结果决定下一步
                 continue
 
             # 无 tool_calls：调度节点只做决策/工具调用，其 content 输出是内部决策旁白，

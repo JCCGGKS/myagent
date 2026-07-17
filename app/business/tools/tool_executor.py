@@ -201,6 +201,7 @@ class ToolExecutor:
         retry_base_delay: float = 0.1,
         retry_max_delay: float = 1.0,
         refund_auto_states: frozenset[str] = AUTO_REFUNDABLE_STATUSES,
+        side_effect_dedup_window: float = 60.0,
     ) -> None:
         self.order_service = order_service
         self.logistics_service = logistics_service
@@ -213,6 +214,9 @@ class ToolExecutor:
         self.retry_base_delay = retry_base_delay
         self.retry_max_delay = retry_max_delay
         self.refund_auto_states = refund_auto_states
+        # 副作用工具跨 turn 防连点窗口（秒）：窗口内同一 (工具, 参数) 重复提交直接拒执行，
+        # 避免双退/重复转人工等资损。窗口足够短以不误伤用户主动的再次办理。
+        self.side_effect_dedup_window = side_effect_dedup_window
         # 从单点注册表构建 名称 -> handler 方法 的映射
         self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
 
@@ -255,6 +259,34 @@ class ToolExecutor:
             deduped.append(tc)
         return deduped, dropped
 
+    def _prune_side_effect_log(self, state: ConversationState, now: float) -> None:
+        """剔除超出防连点窗口的副作用调用记录，避免 side_effect_log 无限增长。"""
+        window = self.side_effect_dedup_window
+        kept = [e for e in (state.side_effect_log or []) if now - float(e.get("ts", 0)) <= window]
+        state.side_effect_log = kept
+
+    def _check_side_effect_repeat(self, key: str, state: ConversationState) -> ToolExecutionResult | None:
+        """副作用工具跨 turn 防连点：窗口内已提交过相同 (工具, 参数) 则拒执行。
+
+        返回拒执行的 error 型结果；未命中返回 None。每 turn 内的重复已由 tool_cache 拦截，
+        此处专治「跨 turn 连点」（tool_cache 被 input_normalizer 重置后，新 turn 仍可重复触发）。
+        """
+        now = time.time()
+        self._prune_side_effect_log(state, now)
+        for e in state.side_effect_log:
+            if e.get("key") == key:
+                logger.warning("[tool] side-effect repeat blocked (cross-turn): %s", key)
+                return ToolExecutionResult(
+                    kind="error",
+                    raw_result={"message": "短时间内已提交过相同的操作，系统已为您去重，请勿重复点击。"},
+                )
+        return None
+
+    def _record_side_effect(self, key: str, canonical: str, state: ConversationState) -> None:
+        """副作用工具执行成功后记入 session 级日志，供跨 turn 去重判定。"""
+        state.side_effect_log = state.side_effect_log or []
+        state.side_effect_log.append({"tool": canonical, "key": key, "ts": time.time()})
+
     async def run(
         self, tool_calls: list[dict[str, Any]], state: ConversationState
     ) -> list[dict[str, Any]]:
@@ -286,18 +318,31 @@ class ToolExecutor:
                 logger.info("[tool] cache hit, skip re-execution: %s", canonical)
                 result = state.tool_results[cached_idx]
             else:
-                start = time.perf_counter()
-                # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
-                result = await self._execute_with_retry(name, tc, state, side_effect)
-                # 统一收口：填充产生结果的工具名（handler 不手写），并生成脱敏副本。
-                # handler 只回填 raw_result，sanitized_result 在此集中脱敏，保证不漏。
-                if isinstance(result, ToolExecutionResult):
+                # 跨 turn 防连点（仅副作用工具）：session 级短窗口内重复提交直接拒执行，
+                # 避免双退/重复转人工等资损。每 turn 内的重复已由上方 tool_cache 拦截。
+                refuse = self._check_side_effect_repeat(key, state) if side_effect else None
+                if refuse is not None:
+                    result = refuse
                     result.tool = canonical
                     result.sanitized_result = sanitize_tool_result(result.raw_result)
-                status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
-                observe_tool(canonical, status, time.perf_counter() - start)
-                state.tool_results.append(result)
-                state.tool_cache[key] = len(state.tool_results) - 1
+                    # 拒执行结果仍入 tool_results，交由 response_generator 明确告知用户已去重
+                    state.tool_results.append(result)
+                else:
+                    start = time.perf_counter()
+                    # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
+                    result = await self._execute_with_retry(name, tc, state, side_effect)
+                    # 统一收口：填充产生结果的工具名（handler 不手写），并生成脱敏副本。
+                    # handler 只回填 raw_result，sanitized_result 在此集中脱敏，保证不漏。
+                    if isinstance(result, ToolExecutionResult):
+                        result.tool = canonical
+                        result.sanitized_result = sanitize_tool_result(result.raw_result)
+                    status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
+                    observe_tool(canonical, status, time.perf_counter() - start)
+                    state.tool_results.append(result)
+                    state.tool_cache[key] = len(state.tool_results) - 1
+                    # 副作用工具执行成功后记入 session 级日志，供跨 turn 去重判定
+                    if side_effect:
+                        self._record_side_effect(key, canonical, state)
             tool_messages.append(
                 {
                     "role": "tool",

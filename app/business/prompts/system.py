@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.schema import ConversationState
@@ -73,6 +74,30 @@ def _render_base_context(ctx: dict[str, Any]) -> str:
     return prompt
 
 
+def _render_executed_tools(state: ConversationState) -> str | None:
+    """把本 turn 已执行过的工具 (工具名, 参数) 渲染成可读清单，注入提示词防重复调用。
+
+    数据来自 ``state.tool_cache``（key 形如 ``canonical:{json args}``，value 为
+    tool_results 索引）；仅作展示，不改变去重/缓存语义。无已执行工具时返回 None。
+    """
+    cache = state.tool_cache or {}
+    if not cache:
+        return None
+    items: list[str] = []
+    for key in cache:
+        canonical, _, args_json = key.partition(":")
+        try:
+            args = json.loads(args_json) if args_json else {}
+        except (json.JSONDecodeError, ValueError):
+            args = {}
+        if isinstance(args, dict) and args:
+            arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
+            items.append(f"{canonical}({arg_str})")
+        else:
+            items.append(canonical)
+    return "；".join(items) if items else None
+
+
 def build_agent_system_prompt(state: ConversationState) -> str:
     """Agent 调度节点系统提示（仅工具编排/决策，不生成最终答案）。
 
@@ -94,6 +119,14 @@ def build_agent_system_prompt(state: ConversationState) -> str:
         "\n注意：你只做工具调用决策，绝不向用户输出任何文字，也不要输出分析或推理过程；"
         "最终回复由系统后续环节统一生成。"
     )
+    # 注入本 turn 已执行过的工具清单：给模型显式的「已查过什么」记忆，从源头降低
+    # 重复调用概率（与执行层缓存 + 早停启发式互补：提示词治本、机制兜底）。
+    executed = _render_executed_tools(state)
+    if executed:
+        prompt += (
+            f"\n\n本 turn 你已经调用过以下工具（结果已在上文上下文中，请勿重复调用，"
+            f"直接基于已有结果作答即可）：{executed}"
+        )
     return prompt
 
 
