@@ -62,34 +62,6 @@ routing_rules:
     sub_intent: after_sale_refund.damage_refund
     keywords: [商品损坏, 损坏了, 收到的东西坏了, 坏了要退, 质量问题要退]
     confidence: 0.88
-  - intent: complaint
-    sub_intent: complaint.compensate
-    keywords: [赔偿, 赔付]
-    confidence: 0.92
-    handoff_reason: complaint
-
-  - intent: complaint
-    sub_intent: complaint.service_complaint
-    keywords:
-      - 投诉
-      - 差评
-      - 赔付
-      - 赔偿
-      - 太差了
-      - 不处理
-      - 没用
-      - 气死
-      - 气死我了
-      - 越想越气
-      - 态度
-      - 受不了
-      - "12315"
-      - 消费者协会
-    emotion: negative
-    confidence: 0.95
-    handoff_reason: complaint
-    handoff_reason_emotion: emotion_escalation
-
   - intent: logistics
     sub_intent: logistics.not_received
     keywords:
@@ -189,6 +161,39 @@ routing_rules:
     confidence_with_order: 0.88
     confidence_without_order: 0.8
     needs_clarification_when_no_order: true
+
+  # —— 投诉规则必须置于具体意图（订单/物流/退款）之后：first-match-wins 下，
+  # 若「气死，查一下订单」这类「情绪词 + 具体意图词」命中投诉的「气死」关键词，
+  # 会抢走 order_query，导致后续仅说「A1001」时无法按槽位跟进识别为订单查询。
+  # 放最后可保证：含具体意图词时优先命中具体意图，纯投诉（投诉/差评/12315/气死
+  # 且无订单物流退款词）才回落到投诉。——
+  - intent: complaint
+    sub_intent: complaint.compensate
+    keywords: [赔偿, 赔付]
+    confidence: 0.92
+    handoff_reason: complaint
+
+  - intent: complaint
+    sub_intent: complaint.service_complaint
+    keywords:
+      - 投诉
+      - 差评
+      - 赔付
+      - 赔偿
+      - 太差了
+      - 不处理
+      - 没用
+      - 气死
+      - 气死我了
+      - 越想越气
+      - 态度
+      - 受不了
+      - "12315"
+      - 消费者协会
+    emotion: negative
+    confidence: 0.95
+    handoff_reason: complaint
+    handoff_reason_emotion: emotion_escalation
 
   # —— 纯问候/闲聊兜底（必须置于最后：仅当其它规则均未命中时触发）——
   - intent: unrecognize
