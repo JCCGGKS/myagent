@@ -447,7 +447,7 @@ class ToolExecutor:
         if order is None:
             return ToolExecutionResult(
                 kind="error",
-                raw_result={"message": f"没有查到订单 {order_id}，请确认订单号后重试。"},
+                raw_result={"order_id": order_id, "message": f"没有查到订单 {order_id}，请确认订单号后重试。"},
             )
         return ToolExecutionResult(
             kind="success",
@@ -464,7 +464,7 @@ class ToolExecutor:
         if logistics is None:
             return ToolExecutionResult(
                 kind="error",
-                raw_result={"message": f"没有查到订单 {order_id} 的物流信息，请确认订单号是否正确。"},
+                raw_result={"order_id": order_id, "message": f"没有查到订单 {order_id} 的物流信息，请确认订单号是否正确。"},
             )
         raw = logistics.model_dump()
         # 补充「最近一条物流节点」字段，供生成节点模板（{latest_time}/{latest_status}）直接填值。
