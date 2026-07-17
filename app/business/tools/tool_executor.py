@@ -216,29 +216,88 @@ class ToolExecutor:
         # 从单点注册表构建 名称 -> handler 方法 的映射
         self._handlers = {name: getattr(self, spec["handler"]) for name, spec in TOOLS.items()}
 
+    @staticmethod
+    def _call_key(name: str, tc: dict[str, Any]) -> str:
+        """工具调用去重键：按 (规范工具名, 归一化参数) 生成，忽略参数顺序差异。
+
+        用于「批次内去重」与「执行层缓存（跳过重复执行）」共用，保证同一 (工具, 参数)
+        在本 turn 内只真正执行一次。
+        """
+        canonical = TOOL_ALIASES.get(name, name)
+        try:
+            args = json.loads(tc.get("function", {}).get("arguments") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            args = {}  # 参数非法不并入 key，交由执行层按 error 处理
+        if not isinstance(args, dict):
+            args = {}
+        return f"{canonical}:{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
+
+    @staticmethod
+    def _dedup_tool_calls(tool_calls: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        """批次内去重：按 (规范工具名, 归一化参数) 去重，保证同一次 LLM 响应返回的工具不重复。
+
+        当 LLM 一次响应里吐出多个相同的 tool_call（同一工具 + 相同参数）时，仅保留首个、
+        丢弃其余，避免只读工具被重复执行、副作用工具（退款/转人工/改地址/开票）被重复触发。
+        返回 (去重后的 tool_calls, 被丢弃的重复数)。
+        """
+        seen: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        dropped = 0
+        for tc in tool_calls:
+            key = ToolExecutor._call_key(tc.get("function", {}).get("name", ""), tc)
+            if key in seen:
+                dropped += 1
+                logger.warning(
+                    "[tool] dropped duplicate tool call in batch: %s", key
+                )
+                continue
+            seen.add(key)
+            deduped.append(tc)
+        return deduped, dropped
+
     async def run(
         self, tool_calls: list[dict[str, Any]], state: ConversationState
     ) -> list[dict[str, Any]]:
         tool_messages: list[dict[str, Any]] = []
+        # 批次内去重：同一 (工具名, 参数) 仅执行一次，杜绝重复工具 / 副作用重复触发。
+        tool_calls, dropped = self._dedup_tool_calls(tool_calls)
+        if dropped:
+            logger.info(
+                "[tool] run deduped %d duplicate call(s) session=%s", dropped, state.session_id
+            )
         logger.info("[tool] run start session=%s calls=%d", state.session_id, len(tool_calls))
         # 累积进列表（不在每轮重置，重置由 input_normalizer 完成），
         # 保证多工具 + 多轮 ReAct 跨轮累加、互不覆盖。
         state.tool_results = state.tool_results or []
+        # 执行层缓存：本 turn 内已执行过的相同调用 (工具+参数) 直接复用首次结果，跳过重复执行。
+        # state.tool_cache 存 key -> tool_results 索引（避免重复序列化）；与 tool_results 一并
+        # 在 input_normalizer 重置。这样多轮 ReAct 里 LLM 重复调用同一工具时，既不重复执行
+        # handler（省延迟 / 防副作用工具重复触发），也不会在 state.tool_results 产生重复。
+        state.tool_cache = state.tool_cache or {}
         for tc in tool_calls:
             name = tc["function"]["name"]
             canonical = TOOL_ALIASES.get(name, name)
             spec = TOOLS.get(canonical, {})
             side_effect = spec.get("side_effect", False)
-            start = time.perf_counter()
-            # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
-            result = await self._execute_with_retry(name, tc, state, side_effect)
-            # 统一收口：填充产生结果的工具名（handler 不手写），并生成脱敏副本。
-            # handler 只回填 raw_result，sanitized_result 在此集中脱敏，保证不漏。
-            if isinstance(result, ToolExecutionResult):
-                result.tool = canonical
-                result.sanitized_result = sanitize_tool_result(result.raw_result)
-            status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
-            observe_tool(canonical, status, time.perf_counter() - start)
+            key = self._call_key(name, tc)
+            # 执行层缓存命中：直接复用首次结果，跳过执行（仍回灌 tool 消息给 LLM 本轮可见）。
+            cached_idx = state.tool_cache.get(key)
+            if cached_idx is not None and 0 <= cached_idx < len(state.tool_results):
+                logger.info("[tool] cache hit, skip re-execution: %s", canonical)
+                result = state.tool_results[cached_idx]
+            else:
+                start = time.perf_counter()
+                # 失败隔离 + 失败重试（副作用工具不重试，防重复；业务错误不重试）。
+                result = await self._execute_with_retry(name, tc, state, side_effect)
+                # 统一收口：填充产生结果的工具名（handler 不手写），并生成脱敏副本。
+                # handler 只回填 raw_result，sanitized_result 在此集中脱敏，保证不漏。
+                if isinstance(result, ToolExecutionResult):
+                    result.tool = canonical
+                    result.sanitized_result = sanitize_tool_result(result.raw_result)
+                status = "error" if (isinstance(result, ToolExecutionResult) and result.kind == "error") else "ok"
+                observe_tool(canonical, status, time.perf_counter() - start)
+                state.tool_results.append(result)
+                state.tool_cache[key] = len(state.tool_results) - 1
             tool_messages.append(
                 {
                     "role": "tool",
@@ -250,8 +309,6 @@ class ToolExecutor:
                     ),
                 }
             )
-            if isinstance(result, ToolExecutionResult):
-                state.tool_results.append(result)
         logger.info("[tool] run end session=%s count=%d", state.session_id, len(state.tool_results))
         return tool_messages
 

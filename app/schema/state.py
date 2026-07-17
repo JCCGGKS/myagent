@@ -61,6 +61,11 @@ class ConversationState(BaseModel):
     recent_messages: list[dict[str, str]] = Field(default_factory=list)
     intent_result: IntentResult | None = None
     tool_results: list[ToolExecutionResult] = Field(default_factory=list)
+    # 执行层缓存：本 turn 内已执行过的 (工具名, 归一化参数) → 在 ``tool_results`` 中的索引。
+    # 同签名重复调用直接复用首次结果、跳过重复执行（省延迟、避免副作用工具重复触发）。
+    # 索引而非对象，避免与 ``tool_results`` 重复序列化；与 ``tool_results`` 一并于
+    # ``input_normalizer`` 重置。
+    tool_cache: dict[str, int] = Field(default_factory=dict)
     handoff: bool = False
     handoff_reason: str = ""
     pending_intents: list[PendingIntent] = Field(default_factory=list)

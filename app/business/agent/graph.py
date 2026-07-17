@@ -501,6 +501,7 @@ class CustomerServiceAgent:
         state.reply = ""
         state.intent_result = None
         state.tool_results = []
+        state.tool_cache = {}
         state.handoff = False
         state.handoff_reason = ""
         state.current_action = ""

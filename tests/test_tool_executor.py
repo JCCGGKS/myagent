@@ -787,6 +787,250 @@ class TestToolExecutor:
         err = executor._validate_tool_args("request_refund", {"refund_type": "refund"}, state)
         assert err is None
 
+    def test_run_dedup_identical_tool_calls_in_batch(self):
+        """批次内去重：同一 (工具名, 参数) 重复出现时仅执行一次，不重复触发。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        order_service = _fake_order_service()
+        executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        # 同一 query_order 出现两次（含别名 + 参数顺序不同，应判为重复）
+        tool_calls = [
+            {"id": "call_a", "type": "function",
+             "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'}},
+            {"id": "call_b", "type": "function",
+             "function": {"name": "order_query", "arguments": '{"order_id": "A1001"}'}},
+        ]
+        state = _state()
+        messages = asyncio.run(executor.run(tool_calls, state))
+
+        # 仅一条消息 / 一条结果
+        assert len(messages) == 1
+        assert len(state.tool_results) == 1
+        order_service.get_order_status.assert_called_once()
+        # 保留首个（call_a）
+        assert messages[0]["tool_call_id"] == "call_a"
+        assert messages[0]["name"] == "query_order"
+
+    def test_run_dedup_keeps_distinct_tools_and_args(self):
+        """去重不应误伤：不同工具 / 同工具不同参数都保留。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+
+        # 不同 order_id 返回不同数据，确保结果内容确实不同（否则跨轮去重会正确合并为一条）。
+        order_service = MagicMock()
+
+        def _get(oid: str):
+            if oid == "A1001":
+                return OrderInfo(order_id="A1001", status="已发货", product_name="键盘", amount=199.0)
+            if oid == "B9999":
+                return OrderInfo(order_id="B9999", status="待付款", product_name="鼠标", amount=99.0)
+            return None
+
+        order_service.get_order_status.side_effect = _get
+
+        executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {"id": "call_o", "type": "function",
+             "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'}},
+            {"id": "call_l", "type": "function",
+             "function": {"name": "query_logistics", "arguments": '{"order_id": "A1001"}'}},
+            {"id": "call_o2", "type": "function",
+             "function": {"name": "query_order", "arguments": '{"order_id": "B9999"}'}},
+        ]
+        state = _state()
+        messages = asyncio.run(executor.run(tool_calls, state))
+
+        assert len(messages) == 3
+        assert len(state.tool_results) == 3
+        tools = {r.tool for r in state.tool_results}
+        assert tools == {"query_order", "query_logistics"}
+        # 同工具不同参数都保留：两个 order_id 都被真正查询
+        called_ids = {c.args[0] for c in order_service.get_order_status.call_args_list}
+        assert called_ids == {"A1001", "B9999"}
+
+    def test_run_dedup_blocks_side_effect_replay_in_batch(self):
+        """去重对副作用工具同样生效：同批次内重复 create_handoff 只建单一次。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        handoff_service = _fake_handoff_service()
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=handoff_service,
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        tool_calls = [
+            {"id": "call_h1", "type": "function",
+             "function": {"name": "create_handoff", "arguments": "{}"}},
+            {"id": "call_h2", "type": "function",
+             "function": {"name": "create_handoff", "arguments": "{}"}},
+        ]
+        state = _state(summary="需要人工处理")
+        asyncio.run(executor.run(tool_calls, state))
+
+        handoff_service.create_handoff.assert_called_once()
+
+    def test_dedup_tool_calls_helper(self):
+        """_dedup_tool_calls 纯函数：返回去重列表 + 丢弃计数，参数顺序不同视为同一调用。"""
+        tool_calls = [
+            {"id": "a", "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'}},
+            {"id": "b", "function": {"name": "query_order", "arguments": '{"order_id":"A1001"}'}},
+            {"id": "c", "function": {"name": "query_logistics", "arguments": '{"order_id": "A1001"}'}},
+        ]
+        deduped, dropped = ToolExecutor._dedup_tool_calls(tool_calls)
+        assert dropped == 1
+        assert [tc["id"] for tc in deduped] == ["a", "c"]
+
+    def test_run_cross_round_dedup_accumulated_results(self):
+        """跨轮去重：多轮 ReAct 中 LLM 重复调用同一工具（同订单 → 相同结果）时，
+        state.tool_results 不重复累加，最终回复不会出现两条相同物流信息。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call = {
+            "id": "call_l",
+            "type": "function",
+            "function": {"name": "query_logistics", "arguments": '{"order_id": "A1001"}'},
+        }
+        state = _state()
+        # 第 1 轮
+        asyncio.run(executor.run([call], state))
+        assert len(state.tool_results) == 1
+        # 第 2 轮 LLM 又调了一次（相同订单 → 相同结果）
+        asyncio.run(executor.run([call], state))
+        # 仍只有 1 条，未重复累加
+        assert len(state.tool_results) == 1
+        assert state.tool_results[0].tool == "query_logistics"
+
+    def test_run_cross_round_cache_skips_re_execution(self):
+        """执行层缓存：跨轮重复调用同一工具时，handler 不再被真正执行（缓存命中）。
+
+        这是从「结果层去重」前移到「执行层缓存」的关键收益——既不出重复回复，
+        也不浪费一次工具执行（省延迟、避免副作用工具重复触发）。
+        """
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+        logistics_service = _fake_logistics_service()
+        executor = ToolExecutor(
+            order_service=_fake_order_service(),
+            logistics_service=logistics_service,
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call = {
+            "id": "call_l", "type": "function",
+            "function": {"name": "query_logistics", "arguments": '{"order_id": "A1001"}'},
+        }
+        state = _state()
+        # 第 1 轮执行
+        asyncio.run(executor.run([call], state))
+        # 第 2 轮重复调用（同订单）
+        asyncio.run(executor.run([call], state))
+        # handler 只被真正执行一次：第 2 轮命执行层缓存、跳过执行
+        assert logistics_service.get_logistics.call_count == 1
+        # 缓存已记录该调用
+        assert state.tool_cache
+        # 结果仍只有 1 条，未重复累加
+        assert len(state.tool_results) == 1
+
+    def test_run_cache_key_differs_by_args(self):
+        """缓存按 (工具, 参数) 区分：不同参数视为不同调用，仍各自执行。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+
+        order_service = MagicMock()
+
+        def _get(oid: str):
+            if oid == "A1001":
+                return OrderInfo(order_id="A1001", status="已发货", product_name="键盘", amount=199.0)
+            if oid == "B9999":
+                return OrderInfo(order_id="B9999", status="待付款", product_name="鼠标", amount=99.0)
+            return None
+
+        order_service.get_order_status.side_effect = _get
+
+        executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call_a = {
+            "id": "c_a", "type": "function",
+            "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'},
+        }
+        call_b = {
+            "id": "c_b", "type": "function",
+            "function": {"name": "query_order", "arguments": '{"order_id": "B9999"}'},
+        }
+        state = _state()
+        asyncio.run(executor.run([call_a], state))
+        # 不同参数：缓存未命中，正常执行
+        asyncio.run(executor.run([call_b], state))
+        assert order_service.get_order_status.call_count == 2
+        assert len(state.tool_results) == 2
+
+    def test_run_cross_round_distinct_results_kept(self):
+        """跨轮去重不应误伤：不同订单（结果不同）跨轮调用仍各自保留。"""
+        rag_tool = MagicMock()
+        rag_tool.run.return_value = []
+
+        order_service = MagicMock()
+
+        def _get(oid: str):
+            if oid == "A1001":
+                return OrderInfo(order_id="A1001", status="已发货", product_name="键盘", amount=199.0)
+            if oid == "B9999":
+                return OrderInfo(order_id="B9999", status="待付款", product_name="鼠标", amount=99.0)
+            return None
+
+        order_service.get_order_status.side_effect = _get
+
+        executor = ToolExecutor(
+            order_service=order_service,
+            logistics_service=_fake_logistics_service(),
+            handoff_service=_fake_handoff_service(),
+            refund_service=RefundService(),
+            rag_tool=rag_tool,
+        )
+        call_a = {
+            "id": "c_a",
+            "type": "function",
+            "function": {"name": "query_order", "arguments": '{"order_id": "A1001"}'},
+        }
+        call_b = {
+            "id": "c_b",
+            "type": "function",
+            "function": {"name": "query_order", "arguments": '{"order_id": "B9999"}'},
+        }
+        state = _state()
+        asyncio.run(executor.run([call_a], state))
+        asyncio.run(executor.run([call_b], state))
+        assert len(state.tool_results) == 2
+        order_ids = {r.sanitized_result["order_id"] for r in state.tool_results}
+        assert order_ids == {"A1001", "B9999"}
+
     def test_run_validation_error_blocks_handler_and_not_retried(self):
         """R5：参数非法时 run() 直接返回 error，handler 根本不被执行（自然也不重试）。"""
         rag_tool = MagicMock()
