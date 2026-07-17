@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,6 +12,8 @@ from app.schema.intent import (
     SUB_INTENT_CODES,
     MainIntentCode,
     SubIntentCode,
+    EmotionLabel,
+    EmotionState,
 )
 from app.business.prompts import LLM_INTENT_SYSTEM_PROMPT, build_llm_intent_user_prompt
 from app.utils.module_logger import _tagged, get_module_logger
@@ -26,6 +28,7 @@ logger = get_module_logger("intent")
 # Valid values the router actually uses (derived from the single source of truth)
 VALID_MAIN = set(MAIN_INTENT_CODES)
 VALID_SUB = set(SUB_INTENT_CODES)
+VALID_EMOTIONS = frozenset(get_args(EmotionLabel))
 
 
 class LLMIntentDecision(BaseModel):
@@ -38,6 +41,7 @@ class LLMIntentDecision(BaseModel):
     needs_clarification: bool = False
     reason: str = ""
     slots: dict[str, str] = Field(default_factory=dict)
+    emotion: EmotionLabel = "neutral"
 
     @model_validator(mode="before")
     @classmethod
@@ -96,6 +100,8 @@ def _normalize_one(values: object) -> dict[str, Any]:
     values.setdefault("reason", "")
     raw_slots = values.get("slots")
     values["slots"] = raw_slots if isinstance(raw_slots, dict) else {}
+    emo = values.get("emotion")
+    values["emotion"] = emo if emo in VALID_EMOTIONS else "neutral"
     return values
 
 
@@ -172,6 +178,8 @@ class LLMIntentFallbackService:
             confidence=parsed.confidence,
             slots=parsed.slots,
             needs_clarification=parsed.needs_clarification,
+            # LLM 仅产出情绪标签（字符串），需包成 EmotionState 与 IntentResult 对齐。
+            emotion=EmotionState(primary=parsed.emotion, confidence=0.8),
             route_source="llm_fallback",
         )
 

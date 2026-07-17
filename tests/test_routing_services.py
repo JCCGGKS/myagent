@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, patch
 
-from app.schema import ConversationState, IntentResult
+from app.schema import ConversationState, IntentResult, EmotionState
 from app.business.intent.routing import (
     HandoffClarificationPolicy,
     IntentRouterService,
@@ -229,3 +229,68 @@ class TestRoutingServices:
         result = state_tracker.apply(state, intent)
         assert result.current_main_intent == "order_query"
         assert result.current_sub_intent == "order_query.query_status"
+
+
+class TestEmotionRecognition:
+    """规则 + LLM 双路情绪识别与合并（见 plans/emotion-recognition-soothing-plan.md）。"""
+
+    def test_detect_emotion_negative_keyword(self, router):
+        """规则侧：命中负面关键词 → negative。"""
+        emo = router._detect_emotion("你们这服务太差了，给个差评")
+        assert emo.primary == "negative"
+
+    def test_detect_emotion_neutral_without_keyword(self, router):
+        """规则侧：无情绪关键词 → neutral。"""
+        emo = router._detect_emotion("帮我查一下订单 A1001")
+        assert emo.primary == "neutral"
+
+    def test_detect_emotion_negation_suppresses_negative(self, router):
+        """规则侧：否定前缀消歧——「不生气」不应判 negative。"""
+        emo = router._detect_emotion("我没生气，只是问问")
+        assert emo.primary == "neutral"
+
+    def test_detect_emotion_bu_tai_manyi_falls_to_neutral(self, router):
+        """规则侧：含「不太」于否定集——「不太满意」的「满意」被否定 → 回落 neutral
+        （不误判 positive）；真实负面可由 LLM 路径补。"""
+        emo = router._detect_emotion("我不太满意这次的体验")
+        assert emo.primary == "neutral"
+
+    def test_emotion_hit_respects_negation(self, router):
+        """_emotion_hit：关键词前有否定前缀则不命中。"""
+        assert router._emotion_hit("没投诉", ["投诉"]) is False
+        assert router._emotion_hit("投诉", ["投诉"]) is True
+        assert router._emotion_hit("我要投诉", ["投诉"]) is True
+
+    def test_merge_emotion_rule_priority(self, router):
+        """合并：规则 non-neutral（确定性强）优先于 LLM。"""
+        rule = EmotionState(primary="negative", confidence=0.9)
+        llm = EmotionState(primary="positive", confidence=0.8)
+        assert router._merge_emotion(rule, llm).primary == "negative"
+
+    def test_merge_emotion_llm_fills_blind_spot(self, router):
+        """合并：规则 neutral 但 LLM 给情绪 → 取 LLM（补无关键词盲区）。"""
+        rule = EmotionState(primary="neutral", confidence=0.6)
+        llm = EmotionState(primary="negative", confidence=0.8)
+        assert router._merge_emotion(rule, llm).primary == "negative"
+
+    def test_merge_emotion_both_neutral(self, router):
+        """合并：都 neutral → neutral。"""
+        rule = EmotionState(primary="neutral", confidence=0.6)
+        llm = EmotionState(primary="neutral", confidence=0.8)
+        assert router._merge_emotion(rule, llm).primary == "neutral"
+
+    def test_merge_emotion_no_llm_returns_rule(self, router):
+        """合并：无 LLM 结果 → 取规则。"""
+        rule = EmotionState(primary="positive", confidence=0.85)
+        assert router._merge_emotion(rule, None).primary == "positive"
+
+    def test_route_keeps_negative_from_memory(self, router):
+        """route：本轮合并 neutral 但上一轮 negative → 记忆沿用 negative（衰减）。"""
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+        )
+        # 中性问候，无规则/LLM 命中 → 合并 neutral，应被记忆回退为 negative
+        intent = asyncio.run(router.route(state, "你好"))
+        assert intent.emotion.primary == "negative"
+        assert intent.emotion.confidence <= 0.9

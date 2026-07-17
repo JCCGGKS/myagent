@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.schema import ConversationState, IntentResult
+from app.schema import ConversationState, IntentResult, EmotionState
 from app.business.tools.domain import extract_order_id
 from app.business.intent.schema import IntentRuleRegistry, IntentSchemaRegistry
 from app.business.intent.policy import DialoguePolicy
@@ -53,25 +53,25 @@ class IntentRouterService:
         rules = self.rule_registry.get()
 
         candidate_intents: list[str] = []
-        emotion = self._detect_emotion(lowered, state)
+        rule_emotion = self._detect_emotion(lowered)
+        llm_emotion: EmotionState | None = None
 
         routing_rules = rules.get("routing_rules", [])
-        emotion_keywords = rules.get("emotion_keywords", {})
 
         logger.debug(
-            _tagged("intent", "Routing message session=%s previous_intent=%s order_id=%s emotion=%s"),
-            state.session_id, previous_main_intent, order_id, emotion.primary,
+            _tagged("intent", "Routing message session=%s previous_intent=%s order_id=%s rule_emotion=%s"),
+            state.session_id, previous_main_intent, order_id, rule_emotion.primary,
         )
 
         # 规则层：按 routing_rules 列表顺序（即优先级）匹配，命中第一个即返回
         intent = None
         candidate_intents: list[str] = []
         for rule in routing_rules:
-            matched, keyword_hit, action_hit = self._rule_matches(rule, lowered, order_id, emotion)
+            matched, keyword_hit, action_hit = self._rule_matches(rule, lowered, order_id, rule_emotion)
             if not matched:
                 continue
             intent, candidate_intents = self._build_intent_from_rule(
-                rule, keyword_hit, action_hit, order_id, emotion, previous_main_intent, state
+                rule, keyword_hit, action_hit, order_id, rule_emotion, previous_main_intent, state
             )
             break
 
@@ -84,7 +84,7 @@ class IntentRouterService:
                 confidence=0.86,
                 slots={"order_id": order_id},
                 route_source="slot_followup",
-                emotion=emotion,
+                emotion=rule_emotion,
             )
             candidate_intents = [main_intent]
 
@@ -92,6 +92,7 @@ class IntentRouterService:
         if intent is None:
             llm_intent = await self._route_with_llm_fallback(message, state)
             if llm_intent is not None:
+                llm_emotion = llm_intent.emotion
                 # 合并规则层已抽出的实体，避免 LLM 漏抽订单号
                 if order_id:
                     llm_intent.slots.setdefault("order_id", order_id)
@@ -104,7 +105,7 @@ class IntentRouterService:
                     confidence=0.2,
                     route_source="fallback",
                     needs_clarification=True,
-                    emotion=emotion,
+                    emotion=rule_emotion,
                 )
                 candidate_intents = ["unrecognize", previous_main_intent]
 
@@ -121,6 +122,7 @@ class IntentRouterService:
         if intent.route_source == "rule" and intent.confidence < self.override_threshold:
             llm_intent = await self._route_with_llm_fallback(message, state)
             if llm_intent is not None:
+                llm_emotion = llm_intent.emotion
                 logger.info(
                     _tagged("intent", "Rule result overridden by LLM: %s.%s -> %s.%s session=%s"),
                     intent.main_intent, intent.sub_intent,
@@ -135,11 +137,19 @@ class IntentRouterService:
         if order_id and not intent.slots.get("order_id"):
             intent.slots["order_id"] = order_id
 
+        # 情绪合并（规则 + LLM 双路）+ 负面记忆回退：LLM 无结果取规则；规则非 neutral
+        # 优先（关键词确定性强）；规则 neutral 但 LLM 给出情绪则补盲区；都 neutral 取 neutral。
+        # 合并后仍 neutral 且上一轮为 negative → 沿用负面（轻微衰减），避免多轮愤怒断档。
+        merged = self._merge_emotion(rule_emotion, llm_emotion)
+        if merged.primary == "neutral" and state.emotion.primary == "negative":
+            merged = EmotionState(primary="negative", confidence=max(merged.confidence, state.emotion.confidence - 0.05))
+        intent.emotion = merged
+
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unrecognize", "unsupported_biz", intent.main_intent}
         logger.debug(
-            _tagged("intent", "Routing result intent=%s.%s shift=%s session=%s"),
-            intent.main_intent, intent.sub_intent, intent.is_intent_shift, state.session_id,
+            _tagged("intent", "Routing result intent=%s.%s shift=%s emotion=%s session=%s"),
+            intent.main_intent, intent.sub_intent, intent.is_intent_shift, merged.primary, state.session_id,
         )
         return intent
 
@@ -221,27 +231,57 @@ class IntentRouterService:
         logger.info(_tagged("intent", "Routed intent=%s.%s source=rule session=%s"), main, sub, state.session_id)
         return intent, [main, previous_main_intent]
 
-    def _detect_emotion(self, lowered_message: str, state: ConversationState):
-        from app.schema import EmotionState
+    def _detect_emotion(self, lowered_message: str) -> EmotionState:
+        """规则侧情绪识别（关键词，含否定词消歧）。
 
+        仅产出「本轮文本」的规则情绪，不含多轮记忆——记忆回退统一在
+        ``_merge_emotion`` 里处理，避免规则与 LLM 合并后再叠加记忆导致逻辑分散。
+        """
         rules = self.rule_registry.get()
         emotion_keywords = rules.get("emotion_keywords", {})
         primary = "neutral"
         confidence = 0.6
 
-        if self._contains_any(lowered_message, emotion_keywords.get("negative", [])):
+        if self._emotion_hit(lowered_message, emotion_keywords.get("negative", [])):
             primary = "negative"
             confidence = 0.9
-        elif self._contains_any(lowered_message, emotion_keywords.get("positive", [])):
+        elif self._emotion_hit(lowered_message, emotion_keywords.get("positive", [])):
             primary = "positive"
             confidence = 0.85
 
-        # 上一轮为负面且本轮未显式识别，保留负面记忆（轻微衰减）
-        if state.emotion.primary == "negative" and primary == "neutral":
-            primary = "negative"
-            confidence = max(confidence, state.emotion.confidence - 0.05)
-
         return EmotionState(primary=primary, confidence=confidence)
+
+    # 否定前缀：出现在情绪关键词前（≤2 字）时，该关键词视为被否定（如「不生气」「没投诉」）。
+    # 含「不太」：让「不太满意」「不太生气」因关键词被否定而回落 neutral（不误判 positive/negative），
+    # 真实负面由 LLM 路径补（见 plans/emotion-recognition-soothing-plan.md 1.2）。
+    _NEGATION_PREFIXES = ("不", "没", "别", "未", "无", "莫", "甭", "不用", "不要", "没有", "未能", "不太")
+
+    def _emotion_hit(self, text: str, keywords: list[str]) -> bool:
+        """否定词感知的关键词命中：关键词命中且前方无否定前缀才算命中。"""
+        for kw in keywords:
+            idx = text.find(kw)
+            while idx != -1:
+                before = text[max(0, idx - 2):idx]
+                if not any(before.endswith(neg) for neg in self._NEGATION_PREFIXES):
+                    return True
+                idx = text.find(kw, idx + 1)
+        return False
+
+    def _merge_emotion(self, rule_emotion: EmotionState, llm_emotion: EmotionState | None) -> EmotionState:
+        """规则 + LLM 双路情绪合并：
+
+        - LLM 无结果 → 取规则；
+        - 规则已识别非 neutral（关键词确定性强）→ 优先取规则；
+        - 规则 neutral 但 LLM 给出情绪 → 取 LLM（补「无关键词但语义负面」盲区，如「你们这服务我真服了」）；
+        - 都 neutral → neutral。
+        """
+        if llm_emotion is None:
+            return rule_emotion
+        if rule_emotion.primary != "neutral":
+            return rule_emotion
+        if llm_emotion.primary != "neutral":
+            return llm_emotion
+        return rule_emotion
 
     def _contains_any(self, text: str, keywords: list[str]) -> bool:
         return any(keyword.casefold() in text for keyword in keywords)

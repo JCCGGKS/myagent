@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.config import LLMConfig
-from app.schema import ConversationState, ToolExecutionResult
+from app.schema import ConversationState, EmotionState, ToolExecutionResult
 from app.business.dialog import ClarificationService, ResponseService
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
@@ -302,4 +302,110 @@ class TestDialogServices:
         assert sanitized["status"] == "已发货"
         # 副本而非同一对象
         assert sanitized is not raw
+
+
+class TestEmotionSoothing:
+    """先安抚后回答：negative 情绪回复确定性加安抚前缀（见 plans/emotion-recognition-soothing-plan.md）。"""
+
+    PREFIX = "非常抱歉给你带来不好的体验，"
+
+    def _service_with_prefix(self, prefix: str | None = PREFIX):
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.return_value = None
+        prompt_registry.get_empathy_prefix.return_value = prefix
+        llm_client = AsyncMock()
+        llm_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="这是回复正文。"))]
+        )
+        return ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+
+    def test_negative_adds_empathy_prefix_llm_fallback(self):
+        """negative + LLM 兜底答案 → reply 以安抚前缀开头。"""
+        service = self._service_with_prefix()
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply.startswith(self.PREFIX)
+        assert "这是回复正文。" in result.reply
+
+    def test_negative_adds_empathy_prefix_template(self):
+        """negative + 模板答案 → reply 以安抚前缀开头（模板路径也覆盖）。"""
+        prompt_registry = MagicMock()
+        prompt_registry.get.return_value = {}
+        prompt_registry.get_tool_template.return_value = "订单 {order_id} 状态：{status}。"
+        prompt_registry.get_empathy_prefix.return_value = self.PREFIX
+        llm_client = AsyncMock()
+        service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+            tool_results=[ToolExecutionResult(
+                tool="query_order", kind="success",
+                raw_result={"order_id": "A1001", "status": "已发货"},
+                sanitized_result={"order_id": "A1001", "status": "已发货"},
+            )],
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply.startswith(self.PREFIX)
+        assert "订单 A1001 状态：已发货。" in result.reply
+
+    def test_preset_reply_also_soothed(self):
+        """negative + 其它节点预置回复（early-return 路径）→ 也加前缀（澄清也要先安抚）。"""
+        service = self._service_with_prefix()
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+            reply="请提供订单号",
+        )
+        result = asyncio.run(service.generate(state))
+        assert result.reply.startswith(self.PREFIX)
+        assert "请提供订单号" in result.reply
+
+    def test_positive_not_soothed(self):
+        """positive → 不加前缀。"""
+        service = self._service_with_prefix()
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="positive", confidence=0.85),
+        )
+        result = asyncio.run(service.generate(state))
+        assert not result.reply.startswith(self.PREFIX)
+        assert result.reply == "这是回复正文。"
+
+    def test_neutral_not_soothed(self):
+        """neutral → 不加前缀。"""
+        service = self._service_with_prefix()
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="neutral", confidence=0.6),
+        )
+        result = asyncio.run(service.generate(state))
+        assert not result.reply.startswith(self.PREFIX)
+
+    def test_idempotent_no_duplicate_prefix(self):
+        """已含前缀的 reply 不重复拼接（幂等）。"""
+        service = self._service_with_prefix()
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+            reply=self.PREFIX + "请提供订单号",
+        )
+        result = asyncio.run(service.generate(state))
+        # 仅一个前缀，不重复
+        assert result.reply.count(self.PREFIX) == 1
+        assert result.reply == self.PREFIX + "请提供订单号"
+
+    def test_missing_prefix_config_skips(self):
+        """yml 未配 empathy_prefix → 不加前缀（不硬依赖）。"""
+        service = self._service_with_prefix(prefix=None)
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+        )
+        result = asyncio.run(service.generate(state))
+        assert not result.reply.startswith(self.PREFIX)
+
 

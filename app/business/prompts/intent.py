@@ -8,6 +8,8 @@ LLM_INTENT_SYSTEM_PROMPT = (
     "你是客服意图分类器。"
     "只能从给定的主意图和子意图中选择一个。"
     "能从文本抽取的实体（如 order_id 订单号，通常以字母+数字出现，如 A1001、SF123）请填入 slots.order_id。"
+    "同时判断用户情绪，输出 emotion 字段，取值只能是 neutral / positive / negative"
+    "（无明显情绪→neutral；投诉/差评/发火/着急/担心→negative；感谢/满意→positive）。"
     "如果用户表达不明确、超出当前系统能力，返回 unrecognize.unknown。"
     "不要编造不存在的意图或实体。"
     "输出必须是合法 JSON。"
@@ -43,8 +45,10 @@ def build_llm_intent_user_prompt(
     if state is not None:
         previous_sub_intent = state.current_sub_intent
     main_lines, sub_lines = _build_intent_lists()
-    return f"""
+    return     f"""
 请对下面的客服用户输入做意图分类，只能输出给定 schema。
+除 main_intent / sub_intent / slots / confidence / needs_clarification 外，
+还需输出 emotion（neutral / positive / negative）。
 
 可选主意图：
 {main_lines}

@@ -4,6 +4,11 @@ response_prompts:
   complaint_ack: "非常抱歉给你带来不好的体验，我会尽快为你处理这个问题。"
   unsupported_biz: "这个问题超出了我的服务范围，建议你联系相关部门或拨打官方客服热线咨询。"
 
+# 先安抚后回答：情绪为 negative 时，所有面向用户的回复（工具答案/LLM 兜底/澄清/直答）
+# 确定性地以对应安抚前缀开头。positive/neutral 不配置即不加前缀。
+empathy_prefix:
+  negative: "非常抱歉给你带来不好的体验，"
+
 # 工具结果 → 用户话术（按 tool → kind 组织）。占位符取自 tool_result.sanitized_result。
 # 决策层只产结构化数据，所有面向用户的文案集中在此配置，改措辞只改本段、不动代码。
 tool_response_templates:
