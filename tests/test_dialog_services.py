@@ -10,6 +10,10 @@ from app.schema import ConversationState, EmotionState, ToolExecutionResult
 from app.business.dialog import ClarificationService, ResponseService
 from app.business.agent.agent_node import AgentNodeService
 from app.business.tools.tool_executor import ToolExecutor
+from app.business.prompts import (
+    build_clarification_system_prompt,
+    build_response_system_prompt,
+)
 
 
 @pytest.fixture
@@ -305,38 +309,41 @@ class TestDialogServices:
 
 
 class TestEmotionSoothing:
-    """先安抚后回答：negative 情绪回复确定性加安抚前缀（见 plans/emotion-recognition-soothing-plan.md）。"""
+    """情绪安抚已改为「系统提示内联」而非「reply 前缀拼接」。
+
+    见 b34e290：移除集中式 empathy_prefix 机制（ResponseService 不再给回复加前缀），
+    改为在澄清/回复系统提示中内联情绪感知指令（negative 先简短安抚再回答/追问）。
+    因此 ResponseService 不再对 reply 做任何前缀处理，以下用例守护「服务层不重复安抚」。
+    """
 
     PREFIX = "非常抱歉给你带来不好的体验，"
 
-    def _service_with_prefix(self, prefix: str | None = PREFIX):
+    def _service(self):
         prompt_registry = MagicMock()
         prompt_registry.get.return_value = {}
         prompt_registry.get_tool_template.return_value = None
-        prompt_registry.get_empathy_prefix.return_value = prefix
         llm_client = AsyncMock()
         llm_client.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(content="这是回复正文。"))]
         )
         return ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
 
-    def test_negative_adds_empathy_prefix_llm_fallback(self):
-        """negative + LLM 兜底答案 → reply 以安抚前缀开头。"""
-        service = self._service_with_prefix()
+    def test_negative_reply_not_prepended_llm_fallback(self):
+        """negative + LLM 兜底答案 → reply 不再被服务层加安抚前缀（安抚在系统提示内联）。"""
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="negative", confidence=0.9),
         )
         result = asyncio.run(service.generate(state))
-        assert result.reply.startswith(self.PREFIX)
-        assert "这是回复正文。" in result.reply
+        assert not result.reply.startswith(self.PREFIX)
+        assert result.reply == "这是回复正文。"
 
-    def test_negative_adds_empathy_prefix_template(self):
-        """negative + 模板答案 → reply 以安抚前缀开头（模板路径也覆盖）。"""
+    def test_negative_reply_not_prepended_template(self):
+        """negative + 模板答案 → reply 同样不被服务层加前缀（模板路径覆盖）。"""
         prompt_registry = MagicMock()
         prompt_registry.get.return_value = {}
         prompt_registry.get_tool_template.return_value = "订单 {order_id} 状态：{status}。"
-        prompt_registry.get_empathy_prefix.return_value = self.PREFIX
         llm_client = AsyncMock()
         service = ResponseService(prompt_registry=prompt_registry, llm_client=llm_client, llm_model="fake-model")
         state = ConversationState(
@@ -349,24 +356,24 @@ class TestEmotionSoothing:
             )],
         )
         result = asyncio.run(service.generate(state))
-        assert result.reply.startswith(self.PREFIX)
-        assert "订单 A1001 状态：已发货。" in result.reply
+        assert not result.reply.startswith(self.PREFIX)
+        assert result.reply == "订单 A1001 状态：已发货。"
 
-    def test_preset_reply_also_soothed(self):
-        """negative + 其它节点预置回复（early-return 路径）→ 也加前缀（澄清也要先安抚）。"""
-        service = self._service_with_prefix()
+    def test_preset_reply_preserved_negative(self):
+        """negative + 其它节点预置回复（early-return 路径）→ 原样保留，不额外加前缀。"""
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="negative", confidence=0.9),
             reply="请提供订单号",
         )
         result = asyncio.run(service.generate(state))
-        assert result.reply.startswith(self.PREFIX)
-        assert "请提供订单号" in result.reply
+        assert not result.reply.startswith(self.PREFIX)
+        assert result.reply == "请提供订单号"
 
     def test_positive_not_soothed(self):
-        """positive → 不加前缀。"""
-        service = self._service_with_prefix()
+        """positive → 服务层不加前缀（安抚在提示词）。"""
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="positive", confidence=0.85),
@@ -377,7 +384,7 @@ class TestEmotionSoothing:
 
     def test_neutral_not_soothed(self):
         """neutral → 不加前缀。"""
-        service = self._service_with_prefix()
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="neutral", confidence=0.6),
@@ -385,27 +392,74 @@ class TestEmotionSoothing:
         result = asyncio.run(service.generate(state))
         assert not result.reply.startswith(self.PREFIX)
 
-    def test_idempotent_no_duplicate_prefix(self):
-        """已含前缀的 reply 不重复拼接（幂等）。"""
-        service = self._service_with_prefix()
+    def test_preset_reply_preserved_idempotent(self):
+        """已含安抚文案的预置 reply 不重复拼接（原样保留，服务层不二次处理）。"""
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="negative", confidence=0.9),
             reply=self.PREFIX + "请提供订单号",
         )
         result = asyncio.run(service.generate(state))
-        # 仅一个前缀，不重复
-        assert result.reply.count(self.PREFIX) == 1
         assert result.reply == self.PREFIX + "请提供订单号"
 
     def test_missing_prefix_config_skips(self):
-        """yml 未配 empathy_prefix → 不加前缀（不硬依赖）。"""
-        service = self._service_with_prefix(prefix=None)
+        """未配 empathy_prefix → 不加前缀（服务层本就不处理前缀）。"""
+        service = self._service()
         state = ConversationState(
             session_id="test-session", user_id=1, channel="web",
             emotion=EmotionState(primary="negative", confidence=0.9),
         )
         result = asyncio.run(service.generate(state))
         assert not result.reply.startswith(self.PREFIX)
+
+
+class TestEmotionInSystemPrompt:
+    """情绪安抚改由系统提示内联（见 b34e290）。
+
+    ResponseService 不再拼接前缀，而是 `build_clarification_system_prompt` /
+    `build_response_system_prompt` 在 emotion.primary == "negative" 时注入「先安抚再回答」
+    的指令。以下用例守护这一新机制确实生效、且中性/正向时不会误注入负向安抚。
+    """
+
+    def test_clarification_negative_injects_soothing(self):
+        """澄清提示在 negative 时内联安抚指令（b34e290 新增的负向分支）。"""
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            missing_slots=["order_id"],
+            emotion=EmotionState(primary="negative", confidence=0.9),
+        )
+        prompt = build_clarification_system_prompt(state)
+        assert "negative" in prompt
+        assert "共情安抚" in prompt
+
+    def test_clarification_neutral_no_soothing(self):
+        """澄清提示在 neutral 时不注入负向安抚指令（仅 negative 分支内联）。"""
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            missing_slots=["order_id"],
+            emotion=EmotionState(primary="neutral", confidence=0.6),
+        )
+        prompt = build_clarification_system_prompt(state)
+        assert "negative" not in prompt
+        assert "共情安抚" not in prompt
+
+    def test_response_negative_wires_emotion_context(self):
+        """回复提示在 negative 时把情绪透传到上下文（用户情绪：negative）。"""
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="negative", confidence=0.9),
+        )
+        prompt = build_response_system_prompt(state)
+        assert "用户情绪：negative" in prompt
+
+    def test_response_neutral_no_emotion_context(self):
+        """回复提示在 neutral 时不渲染情绪上下文行（仅非中性才透传）。"""
+        state = ConversationState(
+            session_id="test-session", user_id=1, channel="web",
+            emotion=EmotionState(primary="neutral", confidence=0.6),
+        )
+        prompt = build_response_system_prompt(state)
+        assert "用户情绪：" not in prompt
 
 
