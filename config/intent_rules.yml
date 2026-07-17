@@ -190,10 +190,8 @@ routing_rules:
       - 受不了
       - "12315"
       - 消费者协会
-    emotion: negative
     confidence: 0.95
     handoff_reason: complaint
-    handoff_reason_emotion: emotion_escalation
 
   # —— 纯问候/闲聊兜底（必须置于最后：仅当其它规则均未命中时触发）——
   - intent: unrecognize

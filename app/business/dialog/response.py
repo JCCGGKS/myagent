@@ -42,10 +42,6 @@ class ResponsePromptRegistry:
         """按 tool + kind 取工具结果的话术模板；无匹配返回 None（走 LLM 兜底）。"""
         return self._data.get("tool_response_templates", {}).get(tool, {}).get(kind)
 
-    def get_empathy_prefix(self, emotion: str) -> str | None:
-        """取指定情绪的安抚前缀；未配置（如 positive/neutral）返回 None。"""
-        return self._data.get("empathy_prefix", {}).get(emotion)
-
     def _load(self) -> dict:
         data = load_yaml_file(self.prompt_path)
         if "response_prompts" not in data or not isinstance(data["response_prompts"], dict):
@@ -79,7 +75,6 @@ class ResponseService:
         # 其他节点（澄清/直答）已设回复则尊重，直接返回（去冗余）。
         logger.info(_tagged("response", "generate start session=%s has_reply=%s n_tool=%s"), state.session_id, bool(state.reply), len(state.tool_results))
         if state.reply:
-            self._apply_empathy_prefix(state)
             return state
 
         # 决策层只产 tool_results（结构化列表），不写 reply；本节点按 yml 模板填值产出 reply。
@@ -89,7 +84,6 @@ class ResponseService:
                 piece = self._try_template(results[0])
                 if piece is not None:
                     state.reply = piece
-                    self._apply_empathy_prefix(state)
                     if not state.action_history or state.action_history[-1].action_name != "response_generator":
                         state.action_history.append(build_action_record("response_generator", piece))
                     logger.info(_tagged("response", "generate end session=%s source=template tool=%s kind=%s"), state.session_id, results[0].tool, results[0].kind)
@@ -108,7 +102,6 @@ class ResponseService:
                         parts.append(piece)
                 if not has_rag_docs and parts:
                     state.reply = "\n".join(parts)
-                    self._apply_empathy_prefix(state)
                     if not state.action_history or state.action_history[-1].action_name != "response_generator":
                         state.action_history.append(build_action_record("response_generator", state.reply))
                     logger.info(_tagged("response", "generate end session=%s source=template_multi n=%d"), state.session_id, len(parts))
@@ -126,7 +119,6 @@ class ResponseService:
         reply = await self._call_llm(llm_messages, state)
 
         state.reply = reply
-        self._apply_empathy_prefix(state)
         if not state.action_history or state.action_history[-1].action_name != "response_generator":
             state.action_history.append(build_action_record("response_generator", reply))
         logger.info(_tagged("response", "generate end session=%s source=llm"), state.session_id)
@@ -151,24 +143,6 @@ class ResponseService:
         if result.tool == "rag_retrieve" and not data.get("count"):
             return None
         return _safe_format(tpl, data)
-
-    def _apply_empathy_prefix(self, state: ConversationState) -> None:
-        """negative 情绪时在回复前追加安抚前缀（先安抚后回答）。
-
-        仅对 negative 生效（positive/neutral 不加，避免冗余）；自带幂等（已加前缀不重复）。
-        前缀来自 ``empathy_prefix.negative`` 配置，缺配置则跳过（不硬依赖）。
-        """
-        if state.emotion.primary != "negative":
-            return
-        prefix = self.prompt_registry.get_empathy_prefix("negative")
-        if not prefix:
-            return
-        reply = state.reply or ""
-        if reply.startswith(prefix):
-            return
-        # 前缀以中文标点结尾时直接拼接；否则补一个空格，避免黏连。
-        sep = "" if (prefix[-1] in "，。！？、,.;:") else " "
-        state.reply = prefix + sep + reply
 
     def _build_messages(self, state: ConversationState) -> list[dict]:
         """构造 messages（包含历史消息）。

@@ -20,6 +20,9 @@ _SLOT_FOLLOWUP_SUB_INTENTS = {
     "after_sale_refund.consult_policy",
 }
 
+# 需要 order_id 的主意图（槽位继承适用）：本轮未给单号但 state 已持有 → 抑制澄清。
+_ORDER_NEEDING_INTENTS = {"order_query", "logistics", "after_sale_refund"}
+
 
 class IntentRouterService:
     @classmethod
@@ -67,7 +70,7 @@ class IntentRouterService:
         intent = None
         candidate_intents: list[str] = []
         for rule in routing_rules:
-            matched, keyword_hit, action_hit = self._rule_matches(rule, lowered, order_id, rule_emotion)
+            matched, keyword_hit, action_hit = self._rule_matches(rule, lowered, order_id)
             if not matched:
                 continue
             intent, candidate_intents = self._build_intent_from_rule(
@@ -147,6 +150,18 @@ class IntentRouterService:
 
         intent.candidate_intents = [item for item in candidate_intents if item]
         intent.is_intent_shift = previous_main_intent not in {"unrecognize", "unsupported_biz", intent.main_intent}
+
+        # 槽位继承兜底（覆盖 LLM 路径）：若本轮未给订单号、但 state 已持有继承的
+        # order_id，且意图需要订单，则视为槽位已齐、抑制澄清。否则「怎么还没到 /
+        # 长时间没更新」这类追问会因 LLM 未看到继承订单而 needs_clarification=True，
+        # 反复向用户要单号（见用户反馈「一直问我订单号」）。仅当确实无可用订单号时才澄清。
+        if (
+            intent.main_intent in _ORDER_NEEDING_INTENTS
+            and not intent.slots.get("order_id")
+            and state.slots.get("order_id")
+        ):
+            intent.needs_clarification = False
+
         logger.debug(
             _tagged("intent", "Routing result intent=%s.%s shift=%s emotion=%s session=%s"),
             intent.main_intent, intent.sub_intent, intent.is_intent_shift, merged.primary, state.session_id,
@@ -162,17 +177,15 @@ class IntentRouterService:
         return await self.llm_fallback_service.classify(message, state)
 
     def _rule_matches(
-        self, rule: dict[str, Any], lowered: str, order_id: str | None, emotion: Any
+        self, rule: dict[str, Any], lowered: str, order_id: str | None
     ) -> tuple[bool, bool, bool]:
         """返回 (是否命中, 是否关键词命中, 是否 action 关键词命中)。"""
         keyword_hit = self._contains_any(lowered, rule.get("keywords", []))
-        emotion_required = rule.get("emotion")
-        emotion_hit = bool(emotion_required) and emotion_required == emotion.primary
         action_keywords = rule.get("action_keywords")
         action_hit = bool(action_keywords) and self._contains_any(lowered, action_keywords)
         # action_keywords 也是合法的意图触发词（如「退掉」「我要退款」这类强动作表述可能
         # 不含基础关键词），必须能独立命中规则，否则会漏匹配、退化到兜底、错失 needs_clarification。
-        matched = keyword_hit or emotion_hit or action_hit
+        matched = keyword_hit or action_hit
         return matched, keyword_hit, action_hit
 
     def _build_intent_from_rule(
@@ -200,6 +213,7 @@ class IntentRouterService:
         # 槽位继承：若 state 已持有 order_id（上一轮继承），即使本轮消息未
         # 复述，也不应再追问订单号——否则「澄清后未重置 need 字段」会让
         # LLM 澄清节点再次向用户发问（见回归 test_route_should_not_ask_order_id_when_inherited）。
+        # 仅「本轮消息也无 order_id 且确实无继承订单」的全新查询才需澄清。
         inherited_order = bool(state.slots.get("order_id"))
         if rule.get("needs_order"):
             needs = order_id is None and not inherited_order
@@ -212,7 +226,7 @@ class IntentRouterService:
         else:
             needs = False
 
-        handoff_reason = rule.get("handoff_reason") if keyword_hit else rule.get("handoff_reason_emotion")
+        handoff_reason = rule.get("handoff_reason") if keyword_hit else None
 
         intent_fields: dict[str, Any] = {
             "main_intent": main,
