@@ -27,7 +27,6 @@
 | `recent_messages` | 活动窗口：原样保留的近期消息（上限 `max_recent_messages`） |
 | `running_summary` | 摘要缓冲：窗口外消息折叠后的连贯摘要，已回灌模型 |
 | `summary` | 每轮一句话状态快照（意图/槽位/最近动作），用于状态展示，非叙述缓冲 |
-| `archived_states` | 话题切换时归档的旧任务状态，腾出上下文 |
 
 > `message_history` 字段已移除：原「无界历史」被 `recent_messages + running_summary` 取代，既不参与模型上下文也不落库，仅写不读。
 
@@ -43,7 +42,7 @@
    [系统提示] + [running_summary 前置上下文（若有）] + recent_messages
    ```
    不再发送无界的 `message_history`。
-3. **回复生成节点**（`dialog/dialog.py` `_build_messages`）：与上面结构一致，同样基于 `running_summary + recent_messages`。
+3. **回复生成节点**（`dialog/response.py` `_build_messages`）：与上面结构一致，同样基于 `running_summary + recent_messages`。
 4. **上下文压缩节点**（`agent/graph.py` `context_compressor` → `ContextService.compress`）：
    - 助手回复 append 进 `recent_messages`；
    - 若 `recent_messages` 超过 `max_recent_messages`，溢出部分经 `_fold_summary` 折叠进 `running_summary`；

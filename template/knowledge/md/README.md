@@ -18,7 +18,7 @@
 
 ## 设计要点（便于评估）
 
-- **覆盖 RAG 触发场景**：退款咨询（`refund_service.consult_policy`）、FAQ、售后规则——
+- **覆盖 RAG 触发场景**：退款咨询（`after_sale_refund.consult_policy`）、FAQ、售后规则——
   与 `06.3_知识库设计.md` 第 8 节「检索触发策略」对齐；不覆盖订单 / 物流实时状态
   （那些走工具调用，不进知识库）。
 - **包含答案评测期望事实**：`refund_policy.md` 显式包含「七天无理由退货退款 / 原路退回 /
