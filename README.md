@@ -1,6 +1,6 @@
 # myagent
 
-客服 Agent MVP：基于 `FastAPI` 的对话后端 + `Vue 3 + Vite + TypeScript` 前端。提供 `订单查询 / 物流查询 / 退款咨询 / 转人工 / 问候闲聊` 五条最小闭环能力，采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点。运行链全异步（`async` SSE → `AsyncOpenAI` → LangGraph `astream`/`ainvoke` → DAO 原生 `AsyncSession`）。
+客服 Agent MVP：基于 `FastAPI` 的对话后端 + `Vue 3 + Vite + TypeScript` 前端。提供 `订单查询/改地址/开票 / 物流查询 / 退款与售后 / 投诉处理 / 转人工 / 问候闲聊` 六条最小闭环能力，采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点；并支持规则+LLM 双路情绪识别与「先安抚后作答」。运行链全异步（`async` SSE → `AsyncOpenAI` → LangGraph `astream`/`ainvoke` → DAO 原生 `AsyncSession`）。
 
 ## Quick Start
 
@@ -35,7 +35,8 @@ docker compose up -d mysql redis qdrant
 ```
 
 ## Current Scope
-- 订单状态查询、物流状态查询、退款规则咨询、转人工、问候闲聊
+- 订单状态查询、改地址、开票；物流状态查询；退款/售后（咨询与办理）；投诉处理；转人工；问候闲聊
+- 规则+LLM 双路情绪识别（negative 时确定性先安抚后作答）
 - 多轮槽位补齐；主意图切换后状态冻结与槽位继承
 - 结构化上下文压缩（`running_summary`）与工具调用
 - **R1 二次确认**：退款等高风险的 `request_refund` 动作在工具执行前挂起，待用户下一轮自然语言「确认/取消」再放行（确定性信号识别，不依赖 LLM 回忆）
@@ -44,13 +45,15 @@ docker compose up -d mysql redis qdrant
 - 可观测：Prometheus 指标（`/metrics`）、TraceId 全链路日志、事件日志、`monitoring/`（Prometheus + Grafana）
 - 图态持久化：LangGraph checkpointer（Redis 优先，未配回退内存），多轮断点续跑
 
-后端意图结构（「主意图 + 子意图」，来自 `config/intent_schemas.yml` / `intent_rules.yml`）：
+后端意图结构（「主意图 + 子意图」，来自 `config/intent_schemas.yml` / `intent_rules.yml`，权威枚举见 `app/schema/intent.py`）：
 
-- `order_service` → `order_service.query_status`
-- `logistics_service` → `logistics_service.query_status`
-- `refund_service` → `refund_service.consult_policy` / `refund_service.request_refund`
+- `order_query` → `order_query.query_status` / `order_query.modify_address` / `order_query.apply_invoice`
+- `logistics` → `logistics.not_received` / `logistics.lost_package` / `logistics.delayed`
+- `after_sale_refund` → `after_sale_refund.consult_policy` / `after_sale_refund.request_refund` / `after_sale_refund.no_reason_return` / `after_sale_refund.wrong_goods` / `after_sale_refund.damage_refund`
+- `complaint` → `complaint.compensate` / `complaint.service_complaint`（纯投诉，落 handoff）
 - `handoff_service` → `handoff_service.request_human`
-- `unsupported` → `unsupported.unknown`
+- `unrecognize` → `unrecognize.unknown`
+- `unsupported_biz` → `unsupported_biz.out_of_scope`
 
 ## API Endpoints
 
@@ -60,10 +63,10 @@ docker compose up -d mysql redis qdrant
 对话（需 Token）：
 - `POST /chat` — 非流式 `ChatResponse`
 - `POST /chat/stream` — SSE 流式（Web 首选）
-- `GET /chat/sessions`、`GET /chat/session/{id}/messages`、`PUT /chat/session/{id}`、`DELETE /chat/session/{id}`
+- `GET /chat/sessions`、`GET /chat/session/{id}/messages`、`GET /chat/session/{id}/events`（回放可观测事件流）、`PUT /chat/session/{id}`、`DELETE /chat/session/{id}`
 
 知识库 / RAG（需 Token）：
-- `POST /knowledge/upload`（支持 `.md`/`.markdown`/`.json`/`.word`/`.excel`/`.csv`/`.pdf`/`.ppt`）、`GET /knowledge/files`、`DELETE /knowledge/files/{id}`
+- `POST /knowledge/upload`（支持 `.md`/`.markdown`/`.json`/`.word`/`.excel`/`.csv`/`.pdf`/`.ppt`）、`GET /knowledge/files`、`PUT /knowledge/files/{id}`（更新元信息）、`DELETE /knowledge/files/{id}`
 - `GET /rag/config` / `PUT /rag/config`
 
 可观测（公开）：

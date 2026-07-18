@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Project Overview
-客服 Agent MVP：`FastAPI` 后端 + `Vue 3 + Vite + TypeScript` 前端。后端提供五条最小闭环能力——订单查询、物流查询、退款咨询、转人工、问候闲聊——采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点。运行链为**全异步**（`async` SSE → `AsyncOpenAI` → LangGraph `astream`/`ainvoke` → DAO 原生 `AsyncSession`）。
+客服 Agent MVP：`FastAPI` 后端 + `Vue 3 + Vite + TypeScript` 前端。后端提供六条最小闭环能力——订单查询/改地址/开票、物流查询、退款与售后、投诉处理、转人工、问候闲聊——采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点；并支持规则+LLM 双路情绪识别与「先安抚后作答」。运行链为**全异步**（`async` SSE → `AsyncOpenAI` → LangGraph `astream`/`ainvoke` → DAO 原生 `AsyncSession`）。
 
-退款类操作（如 `refund_service.request_refund`）在 `policy_layer` 产出 `agent_process` 后、工具执行前，先经 `confirmation_guard` 挂起 **R1 二次确认**（写入 `state.pending_confirmation`），待用户下一轮自然语言「确认/取消」再放行或取消，避免误触高风险动作。
+退款类操作（如 `request_refund` 工具，对应 `after_sale_refund.request_refund` 意图）在 `policy_layer` 产出 `agent_process` 后、工具执行前，先经 `confirmation_guard` 挂起 **R1 二次确认**（写入 `state.pending_confirmation`），待用户下一轮自然语言「确认/取消」再放行或取消，避免误触高风险动作。
 
 ## Project Structure & Module Organization
 
@@ -40,7 +40,7 @@ myagent/
 - `agent/`：`graph.py`（`CustomerServiceAgent`，LangGraph 编排）、`agent_node.py`（`AgentNodeService`，LLM function-calling 工具节点）。图节点含 `confirmation_guard`（R1 二次确认拦截）。
 - `intent/`：`routing.py`（`IntentRouterService` 意图路由、`StateTrackerService` 槽位状态、`HandoffClarificationPolicy` 策略）、`schema.py`（`IntentSchemaRegistry`/`IntentRuleRegistry`，从 YAML 加载）、`policy.py`（`DialoguePolicy`，多轮状态仲裁/挂起决策层：`should_archive()`/`inherit_slots()`）、`llm_fallback.py`（`LLMIntentFallbackService` 兜底）。
 - `dialog/`：`clarification.py`（`ClarificationService` + `ClarificationPromptRegistry`）、`response.py`（`ResponseService` + `ResponsePromptRegistry`）、`message.py`（`MessageService` 边界批量落库）、`session.py`（`SessionService` 会话/消息读写 + `get_session_service` 工厂）。
-- `tools/`：`domain.py`（`OrderService` / `LogisticsService` / `HandoffService` / `extract_order_id`）、`tool_executor.py`（`ToolExecutor`）、`registry.py`（`build_tool_schemas`）、`rag_tool.py`（`RagRetrieveTool`）、`confirmation.py`（`classify_confirm_signal`，R1 二次确认的「确认/取消」信号确定性识别）、`sanitize.py`（工具入参清洗）。
+- `tools/`：`domain.py`（`OrderService` / `LogisticsService` / `HandoffService` / `RefundService` / `extract_order_id`）、`tool_executor.py`（`ToolExecutor`：批次内去重 + 执行层缓存 + 副作用工具不重试 + 参数校验）、`registry.py`（`build_tool_schemas`，单点注册表定义 `rag_retrieve`/`query_order`/`query_logistics`/`create_handoff`/`request_refund`/`modify_address`/`apply_invoice`，其中 `create_handoff`/`request_refund`/`modify_address`/`apply_invoice` 标 `side_effect=True`）、`rag_tool.py`（`RagRetrieveTool`）、`confirmation.py`（`classify_confirm_signal`，R1 二次确认的「确认/取消」信号确定性识别）、`sanitize.py`（工具结果脱敏）。
 - `context/`：`context.py`（`ContextService` 最近消息窗口 + `running_summary` 压缩）、`state_summary.py`（共享状态摘要，打破 context ↔ intent 循环依赖）。
 - `rag/`：`chunking/`（策略模式分块：`models` / `base` / `recursive_splitter` / `structure_chunk` / **6 个策略文件**（markdown/word/json/excel_csv/pdf/ppt）/ `registry`）+ `retrieval/`（独立检索目录：`models` / `base` / `bm25` / `semantic` / `hybrid` / `rerank` / `registry`，每策略一个文件）+ `ingestion.py`（入库）、`sparse_bm25.py`（BM25 稀疏向量）。`chunking` 与 `retrieval` 互不 import。
 - `prompts/`：`intent.py` / `system.py`（LLM prompt 定义）。
@@ -135,12 +135,14 @@ python eval/trajectory/run_eval.py
 - `POST /chat/stream` — SSE 流式（Web 首选，`text/event-stream`）
 - `GET /chat/sessions` — 当前用户会话列表
 - `GET /chat/session/{session_id}/messages` — 会话消息（须归属当前用户）
+- `GET /chat/session/{session_id}/events` — 回放该会话可观测事件流（intent/state/tool_result/final，可按 `trace_id` 过滤，须归属当前用户）
 - `PUT /chat/session/{session_id}` — 重命名会话
 - `DELETE /chat/session/{session_id}` — 软删除会话
 
 知识库 / RAG（需 Token）：
 - `POST /knowledge/upload` — 上传 `.md`/`.markdown`/`.json`/`.word`/`.excel`/`.csv`/`.pdf`/`.ppt`（先落元信息记录，再向量化）
 - `GET /knowledge/files` — 当前用户文件列表
+- `PUT /knowledge/files/{file_id}` — 更新文件元信息（如标题）
 - `DELETE /knowledge/files/{file_id}` — 软删元信息 + 清理 Qdrant 向量
 - `GET /rag/config` / `PUT /rag/config` — 检索配置读写
 
@@ -178,17 +180,28 @@ curl -X POST http://127.0.0.1:8000/chat \
 - `error` — 异常兜底
 
 ## Intent Structure
-「主意图 + 子意图」，由 `config/intent_schemas.yml` 与 `config/intent_rules.yml` 加载：
-- `order_service` → `order_service.query_status`
-- `logistics_service` → `logistics_service.query_status`
-- `refund_service` → `refund_service.consult_policy` / `refund_service.request_refund`（高风险，走 R1 二次确认）
+「主意图 + 子意图」，由 `config/intent_schemas.yml` 与 `config/intent_rules.yml` 加载（权威枚举见 `app/schema/intent.py`）：
+- `order_query` → `order_query.query_status` / `order_query.modify_address` / `order_query.apply_invoice`
+- `logistics` → `logistics.not_received`（物流查询主入口）/ `logistics.lost_package` / `logistics.delayed`
+- `after_sale_refund` → `after_sale_refund.consult_policy`（政策咨询，走 RAG 检索）/ `after_sale_refund.request_refund`（高风险，走 R1 二次确认）/ `after_sale_refund.no_reason_return` / `after_sale_refund.wrong_goods` / `after_sale_refund.damage_refund`
+- `complaint` → `complaint.compensate` / `complaint.service_complaint`（纯投诉，落 handoff，不抢具体意图）
 - `handoff_service` → `handoff_service.request_human`
-- `unsupported` → `unsupported.unknown`
+- `unrecognize` → `unrecognize.unknown`（问候/闲聊兜底）
+- `unsupported_biz` → `unsupported_biz.out_of_scope`（超出业务范围）
+
+`complaint` 规则置于具体意图之后（first-match-wins），避免「情绪词 + 具体意图词」被误判为投诉而丢失槽位跟进。
+
+## 情绪识别（Emotion）
+意图路由并行做规则+LLM 双路情绪识别，合并后写入 `state.emotion`（`negative` / `positive` / `neutral`）：
+- 规则路：`config/intent_rules.yml` 的 `emotion_keywords`（negative/positive）关键词命中；
+- LLM 路：`IntentRouterService` 的 LLM 兜底同时输出 `emotion` 字段；
+- 合并：`_merge_emotion` 以规则路优先（确定性），上一轮 `negative` 且本轮 neutral 时轻微衰减沿用（避免多轮愤怒断档）；
+- `negative` 时，生成节点（最终回复 / 澄清）经 `app/business/prompts/system.py` 内联提示「先共情安抚再作答」，确定性保证不满/着急用户先被安抚。
 
 ## State Model
 `ConversationState`（`app/schema/state.py`）覆盖两层上下文：
-- 业务状态：`current_main_intent / current_sub_intent / stage / slots / missing_slots / confirmed_slots`
-- 执行状态：`current_action / latest_action_result / action_history / running_summary / archived_states / pending_confirmation`（R1 二次确认挂起负载）
+- 业务状态：`current_main_intent / current_sub_intent / stage / slots / missing_slots / confirmed_slots / emotion`（`EmotionState`：`negative`/`positive`/`neutral`）
+- 执行状态：`current_action / action_history / tool_results / tool_cache`（本 turn 执行层缓存）/ `running_summary / summary / recent_messages / handoff / handoff_reason / intent_clarification_count / pending_confirmation`（R1 二次确认挂起负载）
 
 ## Configuration Files
 
@@ -234,6 +247,8 @@ curl -X POST http://127.0.0.1:8000/chat \
 - `test_rag_module.py` — RAG 模块
 - `test_chunking_strategies.py` — 分块策略
 - `test_tool_executor.py` — 工具执行
+- `test_agent_node_early_stop.py` — Agent 早停与工具重复调用防护
+- `test_context_services.py` — 上下文压缩/窗口
 - `test_auth_services.py` — 认证（异步 sqlite 内存库 + `SqlUserDAO`）
 - `test_confirmation.py` / `test_confirmation_guard.py` — R1 二次确认信号与 guard
 
