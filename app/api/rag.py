@@ -80,6 +80,34 @@ def _delete_vectors(doc_id: int) -> None:
     get_bm25_store().delete_doc(doc_id)
 
 
+def _compute_content_hash(user_id: int, content: str) -> str:
+    """幂等键：user_id + 文件内容（严格按内容去重，doc_type 不入哈希）。"""
+    return hashlib.sha256(f"{user_id}:{content}".encode("utf-8")).hexdigest()
+
+
+async def _reset_for_reingest(file_dao: Any, doc_id: int) -> None:
+    """重建前准备：清旧向量 + 置处理中。上传(错误重试)/更新共用。"""
+    _delete_vectors(doc_id)
+    await file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_PROCESSING)
+
+
+async def _reingest(
+    file_dao: Any,
+    doc_id: int,
+    content: str,
+    filename: str,
+    doc_type: str,
+    user_id: int,
+    refresh_created_at: bool = False,
+) -> int:
+    """删除旧向量 + 置处理中 + 重新向量化（重建）。上传错误重试与更新接口共用。"""
+    await _reset_for_reingest(file_dao, doc_id)
+    return await _ingest_document(
+        file_dao, doc_id, content, filename, doc_type, user_id,
+        refresh_created_at=refresh_created_at,
+    )
+
+
 async def _ingest_document(
     file_dao: Any,
     doc_id: int,
@@ -184,9 +212,7 @@ async def knowledge_upload(
 
     # 幂等键：user_id + 文件内容（严格按内容去重，doc_type 不入哈希）。
     # 同用户上传相同内容 → 命中已有记录，跳过向量化，避免重复向量与冗余记录。
-    content_hash = hashlib.sha256(
-        f"{current_user.id}:{content}".encode("utf-8")
-    ).hexdigest()
+    content_hash = _compute_content_hash(current_user.id, content)
 
     file_dao = get_knowledge_file_dao()
 
@@ -204,8 +230,7 @@ async def knowledge_upload(
         if existing["status"] == KNOWLEDGE_FILE_STATUS_PROCESSING:
             raise HTTPException(status_code=409, detail="相同文件正在处理中，请勿重复上传")
         doc_id = existing["id"]
-        _delete_vectors(doc_id)  # 清除可能残留的向量
-        await file_dao.update_status(doc_id, KNOWLEDGE_FILE_STATUS_PROCESSING)
+        await _reset_for_reingest(file_dao, doc_id)  # 清除可能残留的向量 + 置处理中
         return doc_id
 
     existing = await file_dao.find_by_content_hash(current_user.id, content_hash)
@@ -307,9 +332,7 @@ async def update_knowledge_file(
         raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
 
     # 幂等键：与上传一致（user_id + 内容）
-    content_hash = hashlib.sha256(
-        f"{current_user.id}:{content}".encode("utf-8")
-    ).hexdigest()
+    content_hash = _compute_content_hash(current_user.id, content)
 
     # 若新内容与其他已上传文件重复（非自身），直接冲突返回，避免重建后撞唯一键
     other = await file_dao.find_by_content_hash(current_user.id, content_hash)
@@ -324,12 +347,8 @@ async def update_knowledge_file(
         await file_dao.update_content(file_id, content_hash, file.filename, file_size, doc_type)
     except DuplicateKnowledgeFileError:
         raise HTTPException(status_code=409, detail="更新后的内容与其他已上传文件重复")
-    # 2) 删除旧向量
-    _delete_vectors(file_id)
-    # 3) 置处理中（同时刷新 updated_at）
-    await file_dao.update_status(file_id, KNOWLEDGE_FILE_STATUS_PROCESSING)
-    # 4) 重新向量化（重建）
-    await _ingest_document(file_dao, file_id, content, file.filename, doc_type, current_user.id)
+    # 2) 删除旧向量 + 置处理中 + 重新向量化（重建）
+    await _reingest(file_dao, file_id, content, file.filename, doc_type, current_user.id)
 
     result = _serialize_knowledge_file(await file_dao.get_by_id(file_id))
     result["duplicated"] = False
