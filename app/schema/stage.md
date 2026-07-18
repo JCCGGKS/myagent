@@ -21,7 +21,7 @@
 
 ## 情绪与澄清
 
-- `emotion: EmotionState` — 情绪与置信度。`routing.py` 读取参与置信度决策（`state.emotion.primary == "negative"` 时下调 confidence）。
+- `emotion: EmotionState` — 情绪与置信度（primary: neutral/positive/negative）。写入：`intent_router` 内 `_detect_emotion` + `_merge_emotion`（规则+LLM 双路）产出，经 `state_tracker.apply()` 从 `IntentResult.emotion` 分解写入 `state.emotion`。读取：① `prompts/system.py` 的 `clarification_node` / `response_generator` 用于**语气塑形**（negative → 先安抚）；② `routing.py` 的「负面记忆回退」——上一轮 negative 且本轮 neutral 时沿用 negative 并轻微衰减 **emotion 自身 confidence**（仅语气连贯）。⚠️ **不参与任何意图置信度/路由/转人工决策**：旧述「读取参与置信度决策、下调 confidence」不准确——意图 `confidence` 不受情绪影响，`state.emotion.primary == "negative"` 仅用于情绪字段的延续判断，不触达任何分支决策。
 - `needs_clarification: bool` — 是否需澄清。控制进入 clarification 节点；前端 snapshot 展示。
 - `intent_clarification_count: int` — 意图澄清轮次计数（仅「真·听不懂」的 unrecognize 澄清计入）。达 `handoff_threshold` 且非自助意图时转人工（`routing.py` 阈值判断）；解析成功的一轮清零，语义为「连续澄清失败次数」。
 

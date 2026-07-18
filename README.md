@@ -36,7 +36,7 @@ docker compose up -d mysql redis qdrant
 
 ## Current Scope
 - 订单状态查询、改地址、开票；物流状态查询；退款/售后（咨询与办理）；投诉处理；转人工；问候闲聊
-- 规则+LLM 双路情绪识别（negative 时确定性先安抚后作答）
+- 规则+LLM 双路情绪识别（意图路由内并行识别，合并写入 `state.emotion`；negative 时确定性「先安抚后作答」）；**情绪仅作回复/澄清的语气信号，不参与意图路由、策略仲裁或转人工等任何决策分支**（详见 `app/schema/stage.md` 与 `app/business/intent/README.md`）
 - 多轮槽位补齐；主意图切换后状态冻结与槽位继承
 - 结构化上下文压缩（`running_summary`）与工具调用
 - **R1 二次确认**：退款等高风险的 `request_refund` 动作在工具执行前挂起，待用户下一轮自然语言「确认/取消」再放行（确定性信号识别，不依赖 LLM 回忆）
