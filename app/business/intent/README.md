@@ -162,7 +162,11 @@
 
 **融合方案（拍板）**：抽共享 tone 助手 `build_tone_instruction(state)`，注入所有*产出回复*的节点 prompt（`response_generator` / `agent_node` / `clarification_node` / `handoff_node`）。每节点**一次 LLM 调用**，读 `state.emotion`/`negative_streak` 按「先安抚后答案」语序生成——全覆盖、零新增节点、语气连贯。
 
-**落点**：检测 `_detect_emotion()` 写 `emotion`+`negative_streak`；塑形由回复节点消费；负向且连续追问 → 在 `HandoffClarificationPolicy.decide()` 提高转人工优先级。
+> ⚠️ **部分未落地（设计拍板，非现状）**：`build_tone_instruction` 共享助手**当前未实现**，由各生成节点内联注入情绪语气指令；且实际仅 `clarification_node` / `response_generator` 透传 `emotion`（`agent_node` 的 `AGENT_FIELDS` 仅含 `slots`、`handoff_node` 不读情绪）。`negative_streak` 亦**未实现**（见 §3.5）。
+
+**落点**：检测 `_detect_emotion()` 写 `emotion`（已实现；上一轮 negative 记忆回退由 `_merge_emotion` 后 `confidence` 轻微衰减承载，**不引入 `negative_streak` 字段**）；塑形由回复节点消费（已实现：仅 clarification_node / response_generator）。
+
+> ⚠️ **未落地**：「负向且连续追问 → 在 `HandoffClarificationPolicy.decide()` 提高转人工优先级」属设计提案，当前代码**未实现**——`decide()` 实际只依据 `needs_clarification` / `handoff` / `missing_slots` / `current_main_intent` / `intent_clarification_count`，**不读任何情绪字段**。情绪现状下仅调语气，不影响转人工等任何决策。
 
 ---
 
@@ -214,8 +218,8 @@ Layer 3  分类后辅助判定（不改路由）
 
 ### 3.5 Layer 3 — 分类后辅助判定（不改路由）
 
-- `_detect_emotion()`：判负/正面情绪，写 `state.emotion` + `negative_streak`（保留上一轮负面记忆，轻微衰减）；情绪只塑形生成（§2.7），不进意图分类。
-- `HandoffClarificationPolicy.decide()`：依据 `needs_clarification` / `handoff` / 意图类型 / `negative_streak` 产出 `current_action`，连续追问超阈值（默认 3）强制转人工。
+  - `_detect_emotion()`：判负/正面情绪，写 `state.emotion`（已实现；上一轮 negative 记忆回退通过 `_merge_emotion` 后 `confidence` 轻微衰减承载，**不引入 `negative_streak` 字段**）；情绪只塑形生成（§2.7），不进意图分类。
+  - `HandoffClarificationPolicy.decide()`：依据 `needs_clarification` / `handoff` / `missing_slots` / `current_main_intent` / `intent_clarification_count` 产出 `current_action`，连续追问超阈值（默认 3）强制转人工。**⚠️ 实际不读 `negative_streak`**（该字段未实现）；「负向连续追问提高转人工优先级」为未落地提案，现状下情绪仅调语气、不影响转人工决策。
 
 ### 3.6 多意图识别（规划中，当前未实现）
 
