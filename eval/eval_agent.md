@@ -31,6 +31,20 @@
 **产物**：`intent_single_step_cases.json` / `intent_single_step_results_*.json` /
 `intent_single_step_report_*.md`，以及对比报告 `intent_compare_report.md`。
 
+> **基线（1000 条，规则-only vs 规则+LLM 兜底，来自 `intent_compare_report.md`）**：
+> - 规则-only 准确率 **72.60%**（726/1000）；规则+LLM 准确率 **96.50%**（965/1000），LLM 兜底命中 261 次
+> - 准确率提升 **+23.90pp**（规则-only → 规则+LLM）
+> - 按样本类别拆解（规则-only → 规则+LLM）：
+>   - `rule_hit` 100.00% → 100.00%（+0.00pp，规则已命中，LLM 不反噬）
+>   - `finer_subintent` 75.57% → 93.67%（+18.10pp，规则只给粗子意图，+LLM 补细）
+>   - `colloquial` 0.00% → 90.45%（+90.45pp，口语/省略无规则关键词，纯靠 LLM 兜底）
+>   - `multiturn_followup` 100.00% → 100.00%（+0.00pp）
+>   - `unrecognize` 100.00% → 100.00%（+0.00pp，问候/超范围）
+> - 结论：LLM 兜底对 `colloquial` / `finer_subintent` 提升显著（合计 +23.90pp）；
+>   但 LLM 覆盖（confidence<0.8 的规则结果被覆盖、未识别走兜底）会反噬少数已正确的
+>   规则命中与问候样本，属已知权衡（剩余失败维度集中在 `logistics.delayed` ↔
+>   `logistics.not_received` 子意图混淆，见 `intent_single_step_report_with_llm.md`）。
+
 ---
 
 ## 2. 轨迹评估（决策路径）— `eval/trajectory`

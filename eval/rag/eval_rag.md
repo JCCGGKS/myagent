@@ -208,4 +208,41 @@ python3 eval/rag/run_ragas_eval.py --no-ingest           # 复用已入库数据
    量化子串/ID 口径的差距。
 3. **生成端到端（LLM）**：接通 `response` 生成，跑 `Faithfulness`（防幻觉，必做）+
    `AnswerRelevancy`（切题），输出最终回答质量与幻觉率结论。
+
+---
+
+## §11 评测基线（RAGAS 多轮迭代）
+
+> 数值口径：context_recall / context_precision 取 **llm 后端**（语义 claims 比对），范围 0~1，越高越好。
+> 各轮均 18 条样本（基于 `template/knowledge/md/` 8 篇），集合 `customer_service_knowledge`。
+
+> **基线（report_01，k=5，rerank 关，backend=all，commit `95b2e29`）** —— 各策略
+> context_recall / context_precision / faithfulness / answer_relevancy：
+> - bm25：0.8519 / 0.7009 / 0.9487 / 0.7151
+> - semantic：0.8519 / 0.875 / 0.966 / 0.7368
+> - hybrid：0.8704 / 0.8333 / 0.9818 / 0.7716
+> - 瓶颈：精确率分化（bm25 仅 0.7009，多 case 命中但排位靠后/噪声多）；两个 hard-fail
+>   拖全局——`rag_0014`（Pro 并发）三策略 recall=0.0、`rag_0016`（增强包退款）precision=0.0~0.25；
+>   生成端健康（faithfulness 0.95~0.98、answer_relevancy 0.71~0.77，幻觉率低）。
+
+> **对齐后基线（report_05，修正评测集 reference 与源文档 edition mismatch，k=5，rerank 关）**：
+> - bm25：0.9167 / 0.6731 / 0.9708 / 0.7034
+> - semantic：0.9259 / 0.8194 / 0.9835 / 0.7446
+> - hybrid：**0.9445 / 0.8611 / 0.9512 / 0.7488**
+> - recall 全面抬升 +0.065~+0.074（hybrid 0.8704→**0.9445**），证伪「检索失败」假设——
+>   根因是 `rag_0014`/`rag_0013` 评测集 reference 与源文档对不齐（文档写「标准版」、ref 写「Pro」）；
+>   precision 持平/略降，瓶颈仍在 `rag_0016`（精确率/忠实度，非召回问题）。
+
+> **rerank 对照（report_02，rerank 开，k=5，backend=llm）**：
+> - bm25 / semantic / hybrid context_recall 0.8704 / 0.8704 / 0.8704
+> - context_precision **0.8935 / 0.8769 / 0.8074**
+> - 结论：rerank 只重排已召回块，与 recall 无关（候选集不变）；强增益 bm25 精确率
+>   （rerank 关 0.7104 → rerank 开 0.8935，约 +18pp），对 semantic/hybrid 中性或微负。
+
+> **当前生产默认（report_06，hybrid + rerank 开，k=6，backend=llm）**：
+> - hybrid context_recall 0.9445 / context_precision 0.8213 / faithfulness 0.9556 / answer_relevancy 0.7556
+> - 决策：**生产默认 = hybrid + rerank 开 + k=5**（`top_k` 5→10 仅边际 recall 增益 +1.85pp 但损
+>   precision，已还原 k=5；rerank 对 hybrid 基本中性，但对 bm25 精确率增益显著，故整体开启）。
+> - 残余 open 项：`rag_0016`（精确率+忠实度）、多 claim 部分覆盖（rag_0007/0015），属评测集/
+>   生成质量，由 rerank + 生成约束缓解，非检索失败。
 ```
