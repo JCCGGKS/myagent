@@ -5,7 +5,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.business.rag.retrieval.bm25 import get_bm25_store
 from app.business.rag.chunking.registry import get_chunking_strategy
+from app.business.rag.retrieval.bm25 import tokenize
 from app.pkgs.vector import QdrantClient
 from app.utils.module_logger import _tagged, get_module_logger
 
@@ -189,14 +191,19 @@ class KnowledgeIngestionService:
     ) -> int:
         if not chunks:
             return 0
+        # 每个 chunk 分配稳定的 pid：索引写入与 Qdrant 入库共用，避免 uuid 重复生成不一致。
+        # 同时同步手搓 BM25 倒排索引（与 Qdrant 入库并行，本进程内存态）。
+        planned = [(str(uuid.uuid4()), c) for c in chunks]
+        for pid, chunk in planned:
+            self._index_chunk(pid, chunk, user_id, doc_id)
+
         if self.embedding_client is None:
             # BM25 仅依赖本地稀疏向量，无需 embedding：写入稀疏向量即可（前端选 bm25
             # 且未配向量模型时的合法路径）。semantic/hybrid 已在 /knowledge/upload 预检拦截。
-            from app.business.rag.sparse_bm25 import build_sparse_vector
+            from app.business.rag.retrieval.bm25 import build_sparse_vector
 
             points = []
-            for chunk in chunks:
-                pid = str(uuid.uuid4())
+            for pid, chunk in planned:
                 payload: dict[str, Any] = {
                     "content": chunk.content,
                     "doc_type": chunk.doc_type,
@@ -222,14 +229,13 @@ class KnowledgeIngestionService:
             )
             return len(points)
 
-        from app.business.rag.sparse_bm25 import build_sparse_vector
+        from app.business.rag.retrieval.bm25 import build_sparse_vector
 
-        contents = [c.content for c in chunks]
+        contents = [c.content for _, c in planned]
         dense_vectors = self.embedding_client.embed(contents)
 
         points: list[dict[str, Any]] = []
-        for chunk, dense in zip(chunks, dense_vectors):
-            pid = str(uuid.uuid4())
+        for (pid, chunk), dense in zip(planned, dense_vectors):
             payload: dict[str, Any] = {
                 "content": chunk.content,
                 "doc_type": chunk.doc_type,
@@ -257,3 +263,23 @@ class KnowledgeIngestionService:
         self.qdrant_client.upsert(points)
         logger.info(_tagged("rag", "已入库 %d 个块 user_id=%s doc_id=%s"), len(points), user_id, doc_id)
         return len(points)
+
+    def _index_chunk(
+        self, chunk_id: str, chunk: Any, user_id: int | None, doc_id: int | None
+    ) -> None:
+        """把单个 chunk 同步进手搓 BM25 倒排索引（本进程内存态）。"""
+        tokens = tokenize(chunk.content)
+        if not tokens:
+            return
+        meta: dict[str, Any] = {
+            "content": chunk.content,
+            "doc_type": chunk.doc_type,
+            "chunk_type": chunk.chunk_type,
+            "heading_path": chunk.heading_path,
+            "metadata": chunk.metadata,
+        }
+        if user_id is not None:
+            meta["user_id"] = user_id
+        if doc_id is not None:
+            meta["doc_id"] = doc_id
+        get_bm25_store().add(chunk_id, tokens, chunk.content, meta, user_id, doc_id)

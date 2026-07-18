@@ -63,7 +63,7 @@
 
 ---
 
-## 2. 向量化（ingestion.py + sparse_bm25.py）
+## 2. 向量化（ingestion.py + bm25.py）
 
 **职责**：把每个 `Chunk` 转换成稠密向量（语义）和稀疏向量（BM25 关键词），用于后续双路检索。
 
@@ -73,11 +73,11 @@
 - `build_embedding_client()`：从顶层独立 `embedding` 段（base_url / api_key / model / vector_size）构建，**独立**于 agent 的 `llm.base_url`，缺 `api_key` 返回 `None`。
 - 向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 
-### 稀疏向量（BM25）
+### 稀疏向量（BM25，见 `rag/retrieval/bm25.py`）
 - `tokenize()`：小写 ASCII 词 + 单个汉字（`[a-z0-9]+|[一-鿿]`），MVP 简化分词。
-- `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**；IDF 由 Qdrant 在查询时按全局统计计算（`Modifier.IDF`）。
+- `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**；IDF 由 Qdrant 在查询时按全局统计计算（`Modifier.IDF`）。仅用于 Qdrant 的 `bm25` 命名向量（入库写入 + 查询构造 query 向量）。
 - 词→索引用 md5 稳定映射到 `VOCAB_SIZE = 1<<20` 的哈希空间，无需维护真实词表。
-- 本仓库采用此 BM25 方案（非 full-text 索引，qdrant-client 1.18 无文本查询类型）。
+- 此外 `rag/retrieval/bm25.py` 还实现**手搓 BM25 倒排索引**（`BM25Index` / `BM25Store`）：入库时同步把 chunk 写入内存倒排索引，检索时直接对索引做 BM25 求和（IDF / avgdl 现算，分数即真·BM25），由 `BM25Strategy` 包装，不依赖 Qdrant 稀疏向量检索。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
 
 ---
 
@@ -113,16 +113,17 @@
 **职责**：根据配置选择具体策略，从 Qdrant 召回候选文档。
 
 **文件布局**（与 `chunking/` 对齐）：
-- `models.py` — `Document` 统一结果结构。
-- `base.py` — `RetrievalStrategy`（ABC），统一接口 `retrieve(query) -> list[Document]`。
-- `bm25.py` / `semantic.py` / `hybrid.py` — 三种具体策略，各自独立文件。
-- `registry.py` — 工厂 `get_strategy_from_config` / `_build_strategy` / `_build_embedding_client`。
-- `rerank.py` — DashScope 重排客户端。
+- `rag/retrieval/bm25.py` — **单一 BM25 模块**：`tokenize` / `build_sparse_vector`（Qdrant 稀疏向量）+ 手搓倒排索引 `BM25Index` / `BM25Store` / `get_bm25_store` + 检索策略 `BM25Strategy`，合并于一处，不再拆多文件。
+- `retrieval/models.py` — `Document` 统一结果结构。
+- `retrieval/base.py` — `RetrievalStrategy`（ABC），统一接口 `retrieve(query) -> list[Document]`。
+- `retrieval/semantic.py` / `retrieval/hybrid.py` — 语义 / 混合具体策略。
+- `retrieval/registry.py` — 工厂 `get_strategy_from_config` / `_build_strategy` / `_build_embedding_client`。
+- `retrieval/rerank.py` — DashScope 重排客户端。
 
 ### 抽象与具体策略
 - `Document`：统一结果结构 `id / content / metadata / score`；`metadata` 包含 `doc_type`、`heading_path`、`source`、入库时传入的 `user_id`（如有）。
 - `RetrievalStrategy`（ABC）：统一接口 `retrieve(query) -> list[Document]`。
-- `BM25Strategy`：调用 `search_bm25`，按单一 `min_score_threshold` 过滤。
+- `BM25Strategy`（`rag/retrieval/bm25.py`）：手搓 BM25，直接对内存倒排索引求和（IDF / avgdl 现算），不调用 `search_bm25`；索引为空时从 Qdrant 一次性 `rebuild_from_qdrant`。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`。
 
 ### HybridStrategy — 泛型依赖注入

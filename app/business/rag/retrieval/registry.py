@@ -47,12 +47,16 @@ def _build_strategy(client: QdrantClient, rag_config: RagConfig) -> RetrievalStr
     retrieval_strategy = rag_config.retrieval_strategy
     threshold = rag_config.min_score_threshold
     top_k = rag_config.top_k
+    bm25_k1 = rag_config.bm25_k1
+    bm25_b = rag_config.bm25_b
 
     if retrieval_strategy == "bm25":
         return BM25Strategy(
             client=client,
             min_score_threshold=threshold,
             top_k=top_k,
+            k1=bm25_k1,
+            b=bm25_b,
         )
     elif retrieval_strategy == "semantic":
         return SemanticStrategy(
@@ -64,7 +68,13 @@ def _build_strategy(client: QdrantClient, rag_config: RagConfig) -> RetrievalStr
     else:  # hybrid
         return HybridStrategy(
             strategies=[
-                BM25Strategy(client=client, min_score_threshold=threshold, top_k=top_k),
+                BM25Strategy(
+                    client=client,
+                    min_score_threshold=threshold,
+                    top_k=top_k,
+                    k1=bm25_k1,
+                    b=bm25_b,
+                ),
                 SemanticStrategy(
                     client=client,
                     embedding_client=_build_embedding_client(),

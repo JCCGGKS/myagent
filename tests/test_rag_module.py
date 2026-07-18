@@ -53,6 +53,13 @@ class TestRetrievalStrategy:
 
     def setup_method(self):
         self.client = _fake_client()
+        # 手搓 BM25 策略在索引为空时，从 Qdrant 一次性重建（lazy rebuild）。
+        # 测试用假 client 不连真实 Qdrant，故把 scroll_all mock 成空召回（安全 no-op），
+        # 单个用例再按需改 return_value 喂入数据。同时重置索引导单例避免用例间污染。
+        self.client.scroll_all = MagicMock(return_value=[])
+        from app.business.rag.retrieval.bm25 import get_bm25_store
+        get_bm25_store()._indexes.clear()
+        get_bm25_store()._doc_map.clear()
         self.bm25_strategy = BM25Strategy(client=self.client, min_score_threshold=0.0)
         self.semantic_strategy = SemanticStrategy(
             client=self.client,
@@ -64,8 +71,9 @@ class TestRetrievalStrategy:
         )
 
     def test_bm25_strategy_should_retrieve(self):
-        self.client._client.query_points.return_value.points = [
-            MagicMock(id="1", score=1.0, payload={"content": "c1", "doc_type": "faq"})
+        # 用 scroll_all 喂入一条命中 query 的数据，rebuild 后内存索引可检索。
+        self.client.scroll_all.return_value = [
+            {"id": "1", "payload": {"content": "测试查询 c1", "doc_type": "faq"}}
         ]
         docs = self.bm25_strategy.retrieve(query="测试查询")
         assert isinstance(docs, list)

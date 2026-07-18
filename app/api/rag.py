@@ -74,6 +74,10 @@ def _build_ingestion_service() -> KnowledgeIngestionService:
 def _delete_vectors(doc_id: int) -> None:
     """清理某文档的全部 Qdrant 向量（按 doc_id）。删除 / 更新接口共用。"""
     get_qdrant_client().delete_by_doc_id(doc_id)
+    # 同步清掉手搓 BM25 倒排索引里该文档的所有 chunk
+    from app.business.rag.retrieval.bm25 import get_bm25_store
+
+    get_bm25_store().delete_doc(doc_id)
 
 
 async def _ingest_document(

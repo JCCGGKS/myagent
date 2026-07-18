@@ -59,6 +59,10 @@ class RagConfig(BaseModel):
     min_chunk_size: int = Field(default=50, ge=1)
     # RRF 融合常数 k（仅 hybrid 策略生效），分越小权重越大。
     rrf_k: int = Field(default=60, ge=1)
+    # 手搓 BM25（rag/bm25.BM25Strategy）的超参，与原生 BM25 口径一致：
+    #   k1 控 TF 饱和（1.2~2.0），b 控长度归一（0~1，常用 0.75）。
+    bm25_k1: float = Field(default=1.2, gt=0.0)
+    bm25_b: float = Field(default=0.75, ge=0.0, le=1.0)
     rerank: RerankConfig = RerankConfig()
     # 注：向量化模型配置为顶层独立块 `embedding`（见 EmbeddingConfig），
     # 与 agent llm / qdrant 同级，不在此 RagConfig 内，不由前端 PUT /rag/config 管理。

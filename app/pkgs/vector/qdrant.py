@@ -228,7 +228,7 @@ class QdrantClient:
         user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._ensure_collection()
-        from app.business.rag.sparse_bm25 import build_sparse_vector
+        from app.business.rag.retrieval.bm25 import build_sparse_vector
 
         sparse = build_sparse_vector(query)
         result = self._client.query_points(
@@ -241,6 +241,36 @@ class QdrantClient:
             with_payload=True,
         )
         return [_hit_to_dict(h) for h in result.points]
+
+    def scroll_all(
+        self,
+        user_id: int | None = None,
+        batch_size: int = 256,
+    ) -> list[dict[str, Any]]:
+        """滚动读取集合内全部点（按 user_id 可选过滤），返回 {id, payload} 列表。
+
+        用于手搓 BM25 倒排索引在进程重启后的从 Qdrant 重建。
+        """
+        self._ensure_collection()
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        scroll_filter = self._user_filter(user_id)
+        points: list[dict[str, Any]] = []
+        next_offset: Any = None
+        while True:
+            batch, next_offset = self._client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
+                limit=batch_size,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for p in batch:
+                points.append({"id": p.id, "payload": p.payload or {}})
+            if next_offset is None or not batch:
+                break
+        return points
 
 
 def _hit_to_dict(hit: Any) -> dict[str, Any]:
