@@ -75,7 +75,7 @@
 
 ### 稀疏向量（BM25，见 `rag/retrieval/bm25.py`）
 - `tokenize()`：小写 ASCII 词 + 单个汉字（`[a-z0-9]+|[一-鿿]`），MVP 简化分词。
-- `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**；IDF 由 Qdrant 在查询时按全局统计计算（`Modifier.IDF`）。仅用于 Qdrant 的 `bm25` 命名向量（入库写入 + 查询构造 query 向量）。
+- `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**。现仅用于**纯 BM25 模式（无 embedding）**的入库——作为 Qdrant point 的稀疏向量载体（命名向量集合要求 point 至少带一个向量），使该文档在 Qdrant 落点、可供跨 worker 经 `rebuild_from_qdrant` 重建内存索引。**不参与检索**，BM25 检索全部走内存手搓倒排索引。
 - 词→索引用 md5 稳定映射到 `VOCAB_SIZE = 1<<20` 的哈希空间，无需维护真实词表。
 - 此外 `rag/retrieval/bm25.py` 还实现**手搓 BM25 倒排索引**（`BM25Index` / `BM25Store`）：入库时同步把 chunk 写入内存倒排索引，检索时直接对索引做 BM25 求和（IDF / avgdl 现算，分数即真·BM25），由 `BM25Strategy` 包装，不依赖 Qdrant 稀疏向量检索。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
 
@@ -113,7 +113,7 @@
 **职责**：根据配置选择具体策略，从 Qdrant 召回候选文档。
 
 **文件布局**（与 `chunking/` 对齐）：
-- `rag/retrieval/bm25.py` — **单一 BM25 模块**：`tokenize` / `build_sparse_vector`（Qdrant 稀疏向量）+ 手搓倒排索引 `BM25Index` / `BM25Store` / `get_bm25_store` + 检索策略 `BM25Strategy`，合并于一处，不再拆多文件。
+- `rag/retrieval/bm25.py` — **单一 BM25 模块**：`tokenize` / `build_sparse_vector`（仅纯 BM25 模式的 Qdrant 稀疏载体）+ 手搓倒排索引 `BM25Index` / `BM25Store` / `get_bm25_store` + 检索策略 `BM25Strategy`，合并于一处，不再拆多文件。
 - `retrieval/models.py` — `Document` 统一结果结构。
 - `retrieval/base.py` — `RetrievalStrategy`（ABC），统一接口 `retrieve(query) -> list[Document]`。
 - `retrieval/semantic.py` / `retrieval/hybrid.py` — 语义 / 混合具体策略。
@@ -123,7 +123,7 @@
 ### 抽象与具体策略
 - `Document`：统一结果结构 `id / content / metadata / score`；`metadata` 包含 `doc_type`、`heading_path`、`source`、入库时传入的 `user_id`（如有）。
 - `RetrievalStrategy`（ABC）：统一接口 `retrieve(query) -> list[Document]`。
-- `BM25Strategy`（`rag/retrieval/bm25.py`）：手搓 BM25，直接对内存倒排索引求和（IDF / avgdl 现算），不调用 `search_bm25`；索引为空时从 Qdrant 一次性 `rebuild_from_qdrant`。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
+- `BM25Strategy`（`rag/retrieval/bm25.py`）：手搓 BM25，直接对内存倒排索引求和（IDF / avgdl 现算），**Qdrant 不再提供 BM25 检索**；索引为空时从 Qdrant 一次性 `rebuild_from_qdrant`（读取 payload 的 content 重建）。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`。
 
 ### HybridStrategy — 泛型依赖注入
@@ -308,7 +308,7 @@ Qdrant 集合 `customer_service_knowledge` 当前建立的索引如下。
 | `content` | ❌ 未建 | 正文全文，通常不建索引 |
 
 ### 多租户隔离（user_id 过滤）
-- 三个检索方法（`search_semantic` / `search_bm25` / `search_hybrid`）均接受 `user_id` 参数；非空时构造 `Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])` 透传给 `query_points`。
+- `QdrantClient.search_semantic` 接受 `user_id` 参数；非空时构造 `Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))])` 透传给 `query_points`。（BM25 检索走内存倒排索引，不经 Qdrant，`search_bm25` / `search_hybrid` 已移除。）
 - 调用链：`agent_node._execute_tool` → `RagRetrieveTool.run(query, user_id=state.user_id)` → `strategy.retrieve(query, user_id=...)` → Qdrant `query_filter`。
 - `user_id` 为 `None` 时不过滤（全库召回，用于未登录/内部场景），向后兼容。
 - 入库时 `user_id` 写入每块 payload（见 §3），与检索过滤类型一致（均为 `int`）。

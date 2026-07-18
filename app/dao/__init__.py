@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.dao.knowledge import KnowledgeStore
 from app.dao.knowledge_file import (
     KnowledgeFileDAO,
     MemoryKnowledgeFileDAO,
@@ -55,7 +54,6 @@ __all__ = [
     "SqlUserDAO",
     "get_session_store",
     "get_user_dao",
-    "KnowledgeStore",
     "KnowledgeFileDAO",
     "MemoryKnowledgeFileDAO",
     "SqlKnowledgeFileDAO",

@@ -54,7 +54,7 @@ myagent/
 - `AsyncSessionLocal` 非空（已配 mysql + aiomysql）→ 用 `Sql*` 异步实现；
 - 为空（未配 mysql）→ 回退 `Memory*` 进程内实现，适合本地/测试。
 
-`knowledge.py`（`KnowledgeStore`）包装 `app.pkgs.vector`；`data.py` 容错加载 `app/data` 的 JSON；`event_log.py`（`EventLogStore`）按 `trace_id`/`session_id` 持久化事件日志。
+`data.py` 容错加载 `app/data` 的 JSON；`event_log.py`（`EventLogStore`）按 `trace_id`/`session_id` 持久化事件日志。
 
 ### `app/model`
 SQLAlchemy 2.0 ORM：`user.py`（`User`，`id` 为 `Integer` 自增主键）、`session.py`（`Session` / `Message` / `EventLog` 三张表，**早期审计表 `StateSnapshot`/`ToolCall`/`HandoffRecord` 已移除**，`EventLog` 为可观测事件日志表）、`knowledge.py`（知识库文件元数据）。

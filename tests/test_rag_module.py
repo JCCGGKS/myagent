@@ -26,18 +26,6 @@ def _fake_client() -> QdrantClient:
 class TestQdrantClient:
     """测试 QdrantClient 结果转换（底层客户端 mock）。"""
 
-    def test_search_bm25_should_return_results(self):
-        client = _fake_client()
-        client._client.query_points.return_value.points = [
-            MagicMock(id="1", score=1.2, payload={"content": "测试内容", "doc_type": "faq"})
-        ]
-        results = client.search_bm25(query="测试查询", limit=5)
-        assert isinstance(results, list)
-        assert len(results) > 0
-        assert "id" in results[0]
-        assert "content" in results[0]
-        assert results[0]["metadata"]["doc_type"] == "faq"
-
     def test_search_semantic_should_return_results(self):
         client = _fake_client()
         client._client.query_points.return_value.points = [

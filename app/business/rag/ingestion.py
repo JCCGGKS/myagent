@@ -198,8 +198,12 @@ class KnowledgeIngestionService:
             self._index_chunk(pid, chunk, user_id, doc_id)
 
         if self.embedding_client is None:
-            # BM25 仅依赖本地稀疏向量，无需 embedding：写入稀疏向量即可（前端选 bm25
-            # 且未配向量模型时的合法路径）。semantic/hybrid 已在 /knowledge/upload 预检拦截。
+            # 纯 BM25 模式（前端选 bm25 且未配向量模型，合法路径；semantic/hybrid
+            # 已在 /knowledge/upload 预检拦截）。无 embedding 故无稠密向量，但文档仍须
+            # 在 Qdrant 落一个 point（承载 content），以便其它 worker 在重启 / 首次查询时
+            # 经 rebuild_from_qdrant 从 payload 重建内存倒排索引。这里用极小的 TF 稀疏向量
+            # 作为该 point 的载体（命名向量集合要求 point 至少带一个向量）；
+            # 该稀疏向量不参与检索，BM25 检索全部走内存倒排索引。
             from app.business.rag.retrieval.bm25 import build_sparse_vector
 
             points = []
@@ -224,12 +228,10 @@ class KnowledgeIngestionService:
                 )
             self.qdrant_client.upsert(points)
             logger.info(
-                _tagged("rag", "已入库 %d 个块（仅 BM25 稀疏向量，未配 embedding） user_id=%s doc_id=%s"),
+                _tagged("rag", "已入库 %d 个块（纯 BM25 模式，Qdrant 仅存稀疏载体） user_id=%s doc_id=%s"),
                 len(points), user_id, doc_id,
             )
             return len(points)
-
-        from app.business.rag.retrieval.bm25 import build_sparse_vector
 
         contents = [c.content for _, c in planned]
         dense_vectors = self.embedding_client.embed(contents)
@@ -248,14 +250,12 @@ class KnowledgeIngestionService:
             # doc_id：文件级标识（knowledge_files.id），同文件 chunk 共享，用于按文档删向量
             if doc_id is not None:
                 payload["doc_id"] = doc_id
-            # 命名向量：稠密（语义）+ 稀疏（BM25，仅存词频，IDF 由 Qdrant 计算）
+            # 命名向量：仅稠密（语义召回）。BM25 走内存倒排索引，
+            # Qdrant 不再存稀疏向量（纯 BM25 模式的稀疏载体见上方无 embedding 分支）。
             points.append(
                 {
                     "id": pid,
-                    "vector": {
-                        "dense": dense,
-                        "bm25": build_sparse_vector(chunk.content),
-                    },
+                    "vector": {"dense": dense},
                     "payload": payload,
                 }
             )

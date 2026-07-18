@@ -25,8 +25,10 @@ _DISTANCE_MAP = {
 class QdrantClient:
     """Qdrant 客户端封装（基于 qdrant-client，连接真实 Qdrant 实例）。
 
-    集合同时保存稠密向量（语义召回）与稀疏向量（BM25 关键词召回，
-    modifier=IDF 由 Qdrant 维护全局 IDF）。混合检索使用 Qdrant 原生 RRF 融合。
+    集合保存稠密向量（语义召回）以及纯 BM25 模式下的稀疏向量载体。
+    BM25 关键词召回走内存手搓倒排索引（rag/retrieval/bm25.py），
+    不再依赖 Qdrant 原生稀疏检索；稀疏向量仅作为「无 embedding 的纯 BM25
+    模式」下文档 point 的持久化载体（供跨 worker 经 rebuild_from_qdrant 重建）。
     """
 
     def __init__(
@@ -66,10 +68,11 @@ class QdrantClient:
     # 集合管理
     # ------------------------------------------------------------------ #
     def _ensure_collection(self) -> None:
-        """懒创建集合（稠密 + BM25 稀疏向量），仅首次访问时执行。
+        """懒创建集合（稠密向量 + 纯 BM25 模式的稀疏载体），仅首次访问时执行。
 
-        若集合已存在但缺少 BM25 稀疏向量（旧 schema），在本地开发环境下重建，
-        避免静默失败。生产环境应改为显式迁移。
+        稀疏向量仅作为「无 embedding 的纯 BM25 模式」下文档 point 的载体，
+        不参与检索。若集合已存在但缺少该稀疏配置（旧 schema），在本地开发环境
+        下重建，避免静默失败。生产环境应改为显式迁移。
         """
         if self._collection_ready:
             return
@@ -213,28 +216,6 @@ class QdrantClient:
             collection_name=self.collection_name,
             query=query_vector,
             using=DENSE_VECTOR_NAME,
-            limit=limit,
-            score_threshold=score_threshold,
-            query_filter=self._user_filter(user_id),
-            with_payload=True,
-        )
-        return [_hit_to_dict(h) for h in result.points]
-
-    def search_bm25(
-        self,
-        query: str,
-        limit: int = 10,
-        score_threshold: float | None = None,
-        user_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        self._ensure_collection()
-        from app.business.rag.retrieval.bm25 import build_sparse_vector
-
-        sparse = build_sparse_vector(query)
-        result = self._client.query_points(
-            collection_name=self.collection_name,
-            query=sparse,
-            using=SPARSE_VECTOR_NAME,
             limit=limit,
             score_threshold=score_threshold,
             query_filter=self._user_filter(user_id),
