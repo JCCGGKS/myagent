@@ -4,7 +4,6 @@ import asyncio
 import inspect
 import json
 import logging
-import os
 import uuid
 from collections.abc import AsyncGenerator, Awaitable
 from typing import Any, Callable
@@ -233,33 +232,44 @@ class CustomerServiceAgent:
     def _build_checkpointer(self) -> Any:
         """构造图态持久化层（checkpointer）。
 
-        优先级：配置了 ``REDIS_URL`` 且 ``langgraph-checkpoint-redis`` + ``redis`` 可用
+        与 mysql / qdrant 一致，redis 连接信息统一从 ``llm_config.{env}.yml`` 的
+        ``redis`` 段读取（``get_redis_config``），不再依赖 ``REDIS_URL`` 环境变量。
+        优先级：``redis.enabled=true`` 且 ``langgraph-checkpoint-redis`` + ``redis`` 可用
         → ``AsyncRedisSaver``（跨重启 / 跨 worker 真持久化）；否则回退进程内
         ``MemorySaver``（dev / 测试 / 无 Redis 环境，行为等价于原内存态，但不跨重启）。
-
-        Redis 路径为**显式 opt-in**（需设置环境变量），避免无服务器时连接阻塞。
         """
-        redis_url = os.getenv("REDIS_URL") or os.getenv("AGENT_REDIS_URL")
-        if not redis_url:
+        from app.config import get_redis_config
+
+        redis_cfg = get_redis_config()
+        if not redis_cfg.get("enabled"):
             return MemorySaver()
         try:
             from langgraph.checkpoint.redis.aio import AsyncRedisSaver
         except ImportError:
             logger.warning(
-                "REDIS_URL set but langgraph-checkpoint-redis/redis not installed; "
+                "redis enabled but langgraph-checkpoint-redis/redis not installed; "
                 "falling back to MemorySaver."
             )
             return MemorySaver()
         try:
-            # 直接传 redis_url 字符串（让 AsyncRedisSaver 内部惰性建 client）；
+            # 由配置段拼出 redis:// URL（密码按需内联），让 AsyncRedisSaver 内部惰性建 client；
             # 不要预先构造 redis.asyncio.Redis，否则其 __init__ 也会要求运行中的事件循环。
-            # TTL：0 / 不配置 → None（不过期）；>0 → 传给 saver，活跃会话每轮落库刷新过期时间。
-            ttl = get_checkpoint_config_service().get_config().ttl_seconds
-            redis_ttl = ttl if ttl and ttl > 0 else None
+            password = redis_cfg.get("password") or ""
+            auth = f":{password}@" if password else ""
+            redis_url = f"redis://{auth}{redis_cfg['host']}:{redis_cfg['port']}/{redis_cfg['db']}"
+            # TTL：0 / 不配置 → None（不过期）；>0 → 传 TTLConfig 字典。
+            # 注意：AsyncRedisSaver 的 ttl 参数类型是 Dict（TTLConfig），其中
+            # ``default_ttl`` 单位为「分钟」，与本项目 CheckpointConfig 的
+            # ``ttl_seconds``（秒）不同；若直接传 int，saver 内部会执行
+            # ``"default_ttl" in self.ttl_config`` 而报
+            # ``argument of type 'int' is not iterable``。故此处做秒→分钟的换算并包成 dict。
+            ttl_seconds = get_checkpoint_config_service().get_config().ttl_seconds
+            ttl_config = {"default_ttl": ttl_seconds // 60} if ttl_seconds and ttl_seconds > 0 else None
+            timeout = redis_cfg.get("socket_timeout", 5.0)
             return AsyncRedisSaver(
                 redis_url=redis_url,
-                ttl=redis_ttl,
-                connection_args={"socket_connect_timeout": 3, "socket_timeout": 3},
+                ttl=ttl_config,
+                connection_args={"socket_connect_timeout": timeout, "socket_timeout": timeout},
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(_tag("infra", "Redis saver init failed, fallback MemorySaver: %r"), exc)

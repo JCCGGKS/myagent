@@ -77,8 +77,8 @@ services:
       # 加载 config/llm_config.docker.yml（下方以只读卷挂载，不烘焙进镜像）；
       # 该文件主机已指向 docker 服务名（mysql/qdrant/redis），故容器内可用到底座依赖。
       APP_ENV: docker
-      # 图态 checkpointer 走 redis 服务（app 仅读 REDIS_URL 这个环境变量）
-      REDIS_URL: redis://redis:6379
+      # 图态 checkpointer 走 redis 服务：连接信息从 config/llm_config.docker.yml 的
+      # redis 段读取（enabled/host/port/db/password），不再依赖 REDIS_URL 环境变量。
       # BM25 稀疏向量依赖 fastembed 的 Qdrant/bm25 模型。fastembed 默认把权重缓存到
       # 容器内的 /tmp/fastembed_cache（临时目录，重建即丢），故这里把缓存根指向挂载的
       # hf_cache 卷（/root/.cache/huggingface），让模型跨容器重建保留、只下载一次。
