@@ -102,6 +102,32 @@ services:
     networks:
       - myagent-net
 
+  # 前端：Vue3 + Vite 开发服务器（npm run dev，带 HMR）。
+  # 开发态：依赖烤进镜像，源码以卷挂入实现热更新；代理目标经 VITE_PROXY_TARGET
+  # 指向同网络内的后端服务 app:8000（compose 服务名），宿主机浏览器访问 5173。
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: myagent-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      # 容器内 Vite 代理目标：同网络的 app 服务（端口 8000）。
+      VITE_PROXY_TARGET: http://app:8000
+      # 源码以卷挂入时，轮询更能可靠触发 HMR 文件变更事件。
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      # 源码挂入实现热更新；匿名卷 /app/node_modules 保留镜像内已装依赖，
+      # 避免覆盖宿主 node_modules（平台/版本差异）。
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - app
+    networks:
+      - myagent-net
+
   # 可观测：自托管 Prometheus（抓取） + Grafana（可视化），均免费、数据不出本机
   prometheus:
     image: prom/prometheus:latest

@@ -1,10 +1,16 @@
 # myagent
 
-客服 Agent MVP：基于 `FastAPI` 的对话后端 + `Vue 3 + Vite + TypeScript` 前端。提供 `订单查询/改地址/开票 / 物流查询 / 退款与售后 / 投诉处理 / 转人工 / 问候闲聊` 六条最小闭环能力，采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点；并支持规则+LLM 双路情绪识别与「先安抚后作答」。运行链全异步（`async` SSE → `AsyncOpenAI` → LangGraph `astream`/`ainvoke` → DAO 原生 `AsyncSession`）。
+客服 Agent MVP：基于 `FastAPI` 的对话后端 + `Vue 3 + Vite + TypeScript` 前端，提供「订单查询/改地址/开票、物流查询、退款与售后、投诉处理、转人工、问候闲聊」六条最小闭环能力；采用「主意图 + 子意图」结构 + 多轮槽位补齐，由 LangGraph 编排单轮 Agent 节点，并支持规则+LLM 双路情绪识别与「先安抚后作答」；运行链全异步。
 
-## Quick Start
+> 项目详细介绍（能力演示、各环节说明）见 [`项目演示文档/项目各环节介绍.md`](项目演示文档/项目各环节介绍.md)。
 
-后端：
+## 启动方式
+
+### 方式一：直接启动（本地开发）
+
+后端（需 Python 3.10+），二选一：
+
+**venv：**
 
 ```bash
 python3 -m venv .venv
@@ -13,7 +19,16 @@ pip install -r requirements.txt
 uvicorn app.api.app:app --reload
 ```
 
-前端：
+**conda：**
+
+```bash
+conda create -n myagent python=3.10 -y
+conda activate myagent
+pip install -r requirements.txt
+uvicorn app.api.app:app --reload
+```
+
+前端（需 Node 20+）：
 
 ```bash
 cd frontend
@@ -23,16 +38,59 @@ npm run dev
 
 默认开发地址：
 - 前端：`http://127.0.0.1:5173`
-- 后端：`http://127.0.0.1:8000`
+- 后端：`http://127.0.0.1:8000`（`/docs` 可看接口）
 - 指标：`http://127.0.0.1:8000/metrics`（Prometheus）
 
-> 后端除注册/登录/找回密码/重置密码与 `/docs`、`/openapi.json`、`/redoc`、`/metrics` 外，其余接口（`/chat`、`/knowledge`、`/rag/config`）均需 `Authorization: Bearer <TOKEN>`。先 `POST /auth/register` 或 `/auth/login` 取 token。
+> 直接启动时未设 `REDIS_URL`，图态走进程内 `MemorySaver`；未起 mysql 时会话存储自动回退内存实现。
 
-基础设施（可选，未启动则后端自动回退内存实现）：
+### 方式二：Docker 一键启动（推荐）
+
+依赖 Docker + Compose。一条命令拉起 **前端 + 后端 + mysql + redis + qdrant** 全栈：
 
 ```bash
-docker compose up -d mysql redis qdrant
+make up            # 构建并启动全栈（代码有改动时用，含 --build）
+# 等价： docker compose up -d --build
 ```
+
+启动完成后会自动打印可点击的访问地址（含 `127.0.0.1` / `localhost` / 宿主机 IP）。
+常用操作（详见 `make help`）：
+
+```bash
+make ps            # 查看服务状态
+make logs          # 跟踪前后端日志（等价 docker compose logs -f app frontend）
+make restart-app   # 仅重启后端（改了 llm_config 配置，不重建镜像）
+make down          # 停止全栈（保留数据卷）
+```
+
+> Docker 配置读取 `config/llm_config.docker.yml`（`redis`/`mysql`/`qdrant` 主机名指向 compose 服务名）。
+> 该文件含密钥，已在 `.gitignore` 中；部署到其他机器时请参照 `llm_config.local.example.yml` 准备。
+
+### 简单 curl 示例
+
+先注册取 token，再发起对话：
+
+```bash
+# 1) 注册（公开接口）
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"Test@1234","email":"alice@example.com"}'
+
+# 2) 登录，拿到 token
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"Test@1234"}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+# 3) 发起对话（需 Bearer token）
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"session_id":"demo","user_id":1,"channel":"web","message":"帮我查一下订单 A1001"}'
+```
+
+> 除认证与 `/docs`、`/metrics` 等公开接口外，`/chat`、`/knowledge`、`/rag/config` 均需
+> `Authorization: Bearer <TOKEN>`。Docker 环境下前端经 `/api` 代理访问后端，浏览器打开
+> `http://<宿主机IP>:5173` 即可使用。
 
 ## Current Scope
 - 订单状态查询、改地址、开票；物流状态查询；退款/售后（咨询与办理）；投诉处理；转人工；问候闲聊
