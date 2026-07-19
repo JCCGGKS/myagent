@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 核心服务（后端运行时依赖）
-SERVICES=(mysql redis qdrant)
+SERVICES=(mysql redis qdrant app)
 if [[ "${INCLUDE_OBS}" == true ]]; then
   SERVICES+=(prometheus grafana)
 fi

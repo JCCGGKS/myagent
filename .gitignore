@@ -219,6 +219,7 @@ __marimo__/
 docs
 frontend/node_modules
 config/llm_config.local.yml
+config/llm_config.docker.yml
 
 # Application logs
 logs/
