@@ -10,6 +10,12 @@
 
 后端（需 Python 3.10+），二选一：
 
+> 首次运行前请先准备配置（从示例模板复制并填入你自己的值）：
+> ```bash
+> cp config/llm_config.local.example.yml config/llm_config.local.yml
+> ```
+> 然后编辑 `config/llm_config.local.yml`，把 `<your-llm-api-key>`、`<your-openai-compatible-base-url>`、`<your-jwt-secret>` 等带 `<...>` 的占位符替换为真实值。未启动 mysql / redis / qdrant 时，把对应段的 `enabled` 改为 `false` 即可用内存回退（会话/图态走 MemorySaver，检索走模拟）。
+
 **venv：**
 
 ```bash
@@ -41,11 +47,19 @@ npm run dev
 - 后端：`http://127.0.0.1:8000`（`/docs` 可看接口）
 - 指标：`http://127.0.0.1:8000/metrics`（Prometheus）
 
-> 直接启动时未设 `REDIS_URL`，图态走进程内 `MemorySaver`；未起 mysql 时会话存储自动回退内存实现。
+> 直接启动时若未启用 redis / mysql / qdrant（对应段 `enabled: false`），自动回退——mysql 走内存存储、redis 图态走进程内 `MemorySaver`、qdrant 检索返回空结果（不连 Qdrant、不报错，仅不再提供知识库召回）。
 
 ### 方式二：Docker 一键启动（推荐）
 
-依赖 Docker + Compose。一条命令拉起 **前端 + 后端 + mysql + redis + qdrant** 全栈：
+依赖 Docker + Compose。首次部署请先准备 Docker 配置（从示例复制并填值）：
+
+```bash
+cp config/llm_config.docker.example.yml config/llm_config.docker.yml
+# 编辑 config/llm_config.docker.yml，把 <your-...> 占位符替换为真实值
+# 注意：其中 redis/mysql/qdrant 的 host 固定为 compose 服务名，勿改 127.0.0.1
+```
+
+然后一条命令拉起 **前端 + 后端 + mysql + redis + qdrant** 全栈：
 
 ```bash
 make up            # 构建并启动全栈（代码有改动时用，含 --build）
@@ -63,7 +77,7 @@ make down          # 停止全栈（保留数据卷）
 ```
 
 > Docker 配置读取 `config/llm_config.docker.yml`（`redis`/`mysql`/`qdrant` 主机名指向 compose 服务名）。
-> 该文件含密钥，已在 `.gitignore` 中；部署到其他机器时请参照 `llm_config.local.example.yml` 准备。
+> 该文件含密钥，已在 `.gitignore` 中；首次部署请先从 `llm_config.docker.example.yml` 复制并填值。
 
 ### 简单 curl 示例
 
@@ -194,7 +208,7 @@ myagent/
 - `config/response_prompts.yml` — 客服话术 / 退款确认 / 订单物流转人工模板
 
 ### LLM 兜底配置
-按环境拆分：`config/llm_config.local.yml`（gitignore，本机 key/中转站）、`llm_config.local.example.yml`（示例可复制为 local）、`llm_config.test.yml`、`llm_config.prod.yml`。`get_app_env()` 默认 `local`；`llm_config.local.yml` 存在时覆盖基线。关键字段：`enabled` / `api_key` / `model` / `base_url` / `timeout_seconds` / `confidence_threshold`。RAG 段另含 `embedding`（api_key 等）与 `qdrant`（host/port/collection/vector_size）配置。
+按环境拆分：`config/llm_config.local.yml`（gitignore，本机 key/中转站）、`llm_config.local.example.yml`（示例，**首次运行先 `cp` 成 local.yml 并填值**）、`llm_config.docker.example.yml`（示例，**`make up` 前先 `cp` 成 docker.yml 并填值**）、`llm_config.docker.yml`（gitignore，容器只读挂载的 `APP_ENV=docker` 配置）、`llm_config.test.yml`、`llm_config.prod.yml`（生产模板）。`get_app_env()` 默认 `local`；`llm_config.local.yml` 存在时覆盖基线。关键字段：`enabled` / `api_key` / `model` / `base_url` / `timeout_seconds` / `confidence_threshold`。RAG 段另含 `embedding`（api_key 等）与 `qdrant`（host/port/collection/vector_size）配置。三份示例文件中的 `<your-...>` 均为占位符，需替换为真实值；其余字段已填合理默认值。
 
 ### RAG 检索配置（写入 `llm_config.{env}.yml` 的 `rag` 段，前端 `PUT /rag/config` 可调）
 `retrieval_strategy`（`bm25` | `semantic` | `hybrid`，默认 hybrid，RRF 融合）/ `top_k` / `min_score_threshold`（单一字段，按策略量纲由前端限幅）/ `chunk_size` / `chunk_overlap` / `rrf_k` / `rerank`（`enabled`/`base_url`/`api_key`/`model`，DashScope 重排，失败降级）。详见 `app/business/rag/README.md`。

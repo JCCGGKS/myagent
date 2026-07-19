@@ -3,22 +3,32 @@ from __future__ import annotations
 from typing import Any
 
 from app.config.rag_config import RagConfig
-from app.business.rag.retrieval.base import RetrievalStrategy
+from app.business.rag.retrieval.base import RetrievalStrategy, DisabledRetrievalStrategy
 from app.business.rag.retrieval.bm25 import BM25Strategy
 from app.business.rag.retrieval.semantic import SemanticStrategy
 from app.business.rag.retrieval.hybrid import HybridStrategy
-from app.pkgs.vector import QdrantClient, get_qdrant_client
+from app.pkgs.vector import QdrantClient, get_qdrant_client, is_qdrant_enabled
+from app.utils.module_logger import get_module_logger
+
+logger = get_module_logger("rag")
 
 
 def get_strategy_from_config(rag_config: RagConfig | None = None) -> RetrievalStrategy:
     """从 RAG 配置创建对应检索策略实例。
 
     rag_config 为 None 时，从运行时 RagConfigService 读取最新配置。
+
+    ``qdrant.enabled: false`` 时直接返回 ``DisabledRetrievalStrategy``（检索空结果），
+    不构建真实 Qdrant 客户端，避免未启动 Qdrant 时建连失败。
     """
     from app.config.rag_config import get_rag_config_service
 
     if rag_config is None:
         rag_config = get_rag_config_service().get_config()
+
+    if not is_qdrant_enabled():
+        logger.info("qdrant 未启用（enabled=false），检索降级为空结果（DisabledRetrievalStrategy）。")
+        return DisabledRetrievalStrategy()
 
     client = get_qdrant_client()
     return _build_strategy(client, rag_config)

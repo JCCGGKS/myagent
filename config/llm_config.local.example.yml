@@ -1,16 +1,29 @@
-# LLM 配置（本地覆盖，参考模板）
+# =============================================================
+# 本地配置模板（local）
+# -------------------------------------------------------------
+# 直接启动（uvicorn app.api.app:app）时，后端默认读取本文件复制出的
+# config/llm_config.local.yml。复制并填入你自己的值：
+#
+#   cp config/llm_config.local.example.yml config/llm_config.local.yml
+#
+# 然后至少修改下面带 <...> 占位符的字段（LLM key / base_url / JWT secret 等）。
+# 未启动 mysql / redis / qdrant 时，可将对应段的 enabled 改为 false：
+# 后端会自动回退——mysql 走内存存储、redis 图态走 MemorySaver、qdrant 检索返回空结果（不连 Qdrant）。
+# 本模板的 redis / mysql / qdrant 主机名均指向 127.0.0.1（本机）。
+# =============================================================
+
 llm:
   # 是否启用 LLM 意图识别兜底
   enabled: true
 
-  # OpenAI / 兼容 API 的密钥（替换为自己真实的 key）
-  api_key: replace-with-local-key
+  # OpenAI / 兼容 API 的密钥（填入你自己的 key）
+  api_key: <your-llm-api-key>
 
-  # 使用的模型名称
+  # 使用的模型名称（按你的网关支持填写，如 gpt-4o / qwen-plus 等）
   model: gpt-5.5
 
-  # 兼容 API 的 base URL（第三方网关地址）
-  base_url: https://your-openai-compatible-gateway.example.com/v1
+  # 兼容 API 的 base URL（第三方网关地址，注意通常以 /v1 结尾）
+  base_url: <your-openai-compatible-base-url>
 
   # 请求超时时间（秒）
   timeout_seconds: 20.0
@@ -58,28 +71,28 @@ rag:
     # 是否启用 Rerank
     enabled: false
 
-    # 重排网关地址（缺省 DashScope rerank 服务）
-    base_url: "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+    # 重排网关地址（OpenAI 兼容 /v1，必须由配置显式提供，无默认值；启用时必填）
+    base_url: <your-rerank-base-url>
 
-    # DashScope API Key（独立配置，不再复用 embedding 的 key）
-    api_key: ""
+    # DashScope API Key（启用时填入）
+    api_key: <your-rerank-api-key>
 
     # Rerank 模型名称（启用时必填）
-    model: ""
+    model: <your-rerank-model>
 
 # 图态快照（checkpointer）配置：仅在使用 Redis saver 时生效
-# （REDIS_URL / AGENT_REDIS_URL 已配置；否则回退 MemorySaver，TTL 无意义）。
+# （redis.enabled 为 true 且配置齐全；否则回退 MemorySaver，TTL 无意义）。
 checkpoint:
   # 图态在 Redis 中的过期时间（秒）。0 表示不过期（禁用 TTL）。
   # 建议按「最大可接受对话间隔」设置：活跃会话每轮落库会刷新过期时间，
   # 仅长期空闲的会话才被回收，避免 Redis 无限增长。
-  # 也可用环境变量 CHECKPOINT_TTL_SECONDS 覆盖（键名前缀指明这是图态快照的 TTL）。
+  # 也可用环境变量 CHECKPOINT_TTL_SECONDS 覆盖。
   ttl_seconds: 604800  # 7 天
 
 # Redis 配置
 redis:
-  # 连接地址（Docker Compose 内用服务名 redis）
-  host: redis
+  # 连接地址（直接启动时填本机 127.0.0.1；Docker 用服务名 redis）
+  host: 127.0.0.1
   # 服务端口
   port: 6379
   # 数据库编号
@@ -93,15 +106,15 @@ redis:
 
 # MySQL 配置
 mysql:
-  # 连接地址（Docker Compose 内用服务名 mysql）
-  host: mysql
+  # 连接地址（直接启动时填本机 127.0.0.1；Docker 用服务名 mysql）
+  host: 127.0.0.1
   # 服务端口
   port: 3306
   # 数据库名
   database: myagent
-  # 用户名
+  # 用户名（按你本地 mysql 实际情况修改）
   user: myagent
-  # 密码
+  # 密码（按你本地 mysql 实际情况修改）
   password: myagent
   # 连接池大小
   pool_size: 5
@@ -112,8 +125,8 @@ mysql:
 
 # JWT 配置
 jwt:
-  # 签名密钥（生产环境务必替换为强随机值）
-  secret: "change-me-in-prod"
+  # 签名密钥（生产/本地务必替换为强随机值）
+  secret: <your-jwt-secret>
   # 签名算法
   algorithm: "HS256"
   # 登录 token 有效期（分钟）
@@ -125,14 +138,14 @@ jwt:
 smtp:
   # 是否启用真实发送（关闭时仅打印重置链接到日志）
   enabled: false
-  # SMTP 服务器地址
-  host: ""
+  # SMTP 服务器地址（启用时填入）
+  host: <your-smtp-host>
   # SMTP 端口（465 通常为 SSL，587 通常为 STARTTLS）
   port: 465
-  # 登录用户名
-  user: ""
-  # 登录密码 / 授权码
-  password: ""
+  # 登录用户名（启用时填入）
+  user: <your-smtp-user>
+  # 登录密码 / 授权码（启用时填入）
+  password: <your-smtp-password>
   # 发件人地址
   from_addr: "no-reply@myagent.local"
   # 是否使用 TLS
@@ -140,30 +153,31 @@ smtp:
 
 # Embedding 配置（基础设施，顶层独立配置块，与 llm / qdrant 同级；不由前端 PUT /rag/config 管理）
 embedding:
-  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
-  base_url: ""
-  # API Key
-  api_key: ""
+  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式；填入你自己的）
+  base_url: <your-embedding-base-url>
+  # API Key（填入你自己的）
+  api_key: <your-embedding-api-key>
   # 嵌入模型名称（如 DashScope text-embedding-v4）
   model: "text-embedding-v4"
-  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
-  vector_size: 1536
+  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size。
+  # text-embedding-v4 输出 1024 维；若改用 OpenAI text-embedding-3-small 则为 1536。
+  vector_size: 1024
 
 # Qdrant 配置
 qdrant:
-  # 连接地址（Docker Compose 内用服务名 qdrant）
-  host: qdrant
+  # 连接地址（直接启动时填本机 127.0.0.1；Docker 用服务名 qdrant）
+  host: 127.0.0.1
   # REST 端口
   port: 6333
   # 集合（collection）名称
   collection_name: customer_service_knowledge
   # 向量维度（与嵌入模型对齐）
-  vector_size: 1536
+  vector_size: 1024
   # 距离度量方式：cosine | dot_product | euclidean
   distance: cosine
   # API Key（为空则不鉴权）
   api_key: ""
-  # 是否启用（关闭时后端回退到模拟检索）
+  # 是否启用（关闭时检索返回空结果，不连 Qdrant、不报错）
   enabled: true
 
 # 日志配置

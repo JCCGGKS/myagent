@@ -18,8 +18,17 @@ class Base(DeclarativeBase):
 
 
 def _build_url(cfg: dict[str, Any], driver: str) -> str | None:
-    """根据配置拼出数据库 URL；driver 决定同步/异步方言（如 mysql+pymysql / mysql+aiomysql）。"""
+    """根据配置拼出数据库 URL；driver 决定同步/异步方言（如 mysql+pymysql / mysql+aiomysql）。
+
+    回退规则（enabled 优先于段是否存在）：
+    - ``mysql`` 段缺失 / 为空 → 返回 None（不启用，dao 用内存实现）；
+    - ``enabled: false``（显式关闭，如未启动 mysql）→ 返回 None，dao 用内存实现；
+    - 段存在但 host/database/user 等关键字段缺失 → 直接报错。
+    """
     if not cfg:
+        return None
+    if not cfg.get("enabled", True):
+        logger.info("MySQL enabled=false，使用内存存储实现（不构建数据库引擎）。")
         return None
     missing = [k for k in ("host", "database", "user") if not cfg.get(k)]
     if missing:

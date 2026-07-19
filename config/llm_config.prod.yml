@@ -1,16 +1,25 @@
-# LLM 配置（prod 环境）
+# =============================================================
+# 生产环境配置模板（prod）
+# -------------------------------------------------------------
+# 部署时复制并填入你自己的值：
+#   cp config/llm_config.prod.yml config/llm_config.prod.yml   # 已在 .gitignore
+# 所有带 <...> 的字段为占位符，必须由你提供（密钥 / 主机地址 / 账号）。
+# 端口、数据库名、算法等已填合理默认值，可按实际拓扑调整。
+# 生产环境建议启用 LLM 兜底（enabled: true）并填入真实 key。
+# =============================================================
+
 llm:
-  # 是否启用 LLM 意图识别兜底
+  # 是否启用 LLM 意图识别兜底（生产建议 true）
   enabled: false
 
-  # OpenAI / 兼容 API 的密钥（为空时自动禁用）
-  api_key: ""
+  # OpenAI / 兼容 API 的密钥（填入生产 key）
+  api_key: <your-llm-api-key>
 
-  # 使用的模型名称
+  # 使用的模型名称（按你的网关支持填写）
   model: gpt-5.5
 
-  # 兼容 API 的 base URL（设为 null 则使用官方端点）
-  base_url: null
+  # 兼容 API 的 base URL（第三方网关地址）
+  base_url: <your-openai-compatible-base-url>
 
   # 请求超时时间（秒）
   timeout_seconds: 20.0
@@ -57,23 +66,23 @@ rag:
   rerank:
     # 是否启用 Rerank
     enabled: false
-    # 重排网关地址（缺省 DashScope rerank 服务）
-    base_url: "https://dashscope.aliyuncs.com/api/v1/services/rerank"
-    # DashScope API Key（独立配置，不再复用 embedding 的 key）
-    api_key: ""
+    # 重排网关地址（OpenAI 兼容 /v1，必须由配置显式提供，无默认值；启用时必填）
+    base_url: <your-rerank-base-url>
+    # DashScope API Key（启用时填入）
+    api_key: <your-rerank-api-key>
     # Rerank 模型名称（启用时必填）
-    model: ""
+    model: <your-rerank-model>
 
 # Redis 配置
 redis:
-  # 连接地址（Docker Compose 内用服务名 redis）
-  host: redis
+  # 连接地址（生产填真实主机，如 redis.xxx.internal）
+  host: <your-redis-host>
   # 服务端口
   port: 6379
   # 数据库编号
   db: 0
-  # 访问密码（为空则不鉴权）
-  password: ""
+  # 访问密码（生产建议设置）
+  password: <your-redis-password>
   # 连接超时（秒）
   socket_timeout: 5.0
   # 是否启用（关闭时后端回退到内存存储）
@@ -81,16 +90,16 @@ redis:
 
 # MySQL 配置
 mysql:
-  # 连接地址（Docker Compose 内用服务名 mysql）
-  host: mysql
+  # 连接地址（生产填真实主机）
+  host: <your-mysql-host>
   # 服务端口
   port: 3306
   # 数据库名
   database: myagent
   # 用户名
-  user: myagent
+  user: <your-mysql-user>
   # 密码
-  password: myagent
+  password: <your-mysql-password>
   # 连接池大小
   pool_size: 5
   # 连接超时（秒）
@@ -100,8 +109,8 @@ mysql:
 
 # JWT 配置
 jwt:
-  # 签名密钥（生产环境务必替换为强随机值）
-  secret: "change-me-in-prod"
+  # 签名密钥（生产环境务必替换为强随机值，切勿使用示例值）
+  secret: <your-jwt-secret>
   # 签名算法
   algorithm: "HS256"
   # 登录 token 有效期（分钟）
@@ -111,16 +120,16 @@ jwt:
 
 # SMTP 配置（找回密码邮件）
 smtp:
-  # 是否启用真实发送（关闭时仅打印重置链接到日志）
+  # 是否启用真实发送
   enabled: false
-  # SMTP 服务器地址
-  host: ""
+  # SMTP 服务器地址（启用时填入）
+  host: <your-smtp-host>
   # SMTP 端口（465 通常为 SSL，587 通常为 STARTTLS）
   port: 465
-  # 登录用户名
-  user: ""
-  # 登录密码 / 授权码
-  password: ""
+  # 登录用户名（启用时填入）
+  user: <your-smtp-user>
+  # 登录密码 / 授权码（启用时填入）
+  password: <your-smtp-password>
   # 发件人地址
   from_addr: "no-reply@myagent.local"
   # 是否使用 TLS
@@ -128,30 +137,31 @@ smtp:
 
 # Embedding 配置（基础设施，顶层独立配置块，与 llm / qdrant 同级；不由前端 PUT /rag/config 管理）
 embedding:
-  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
-  base_url: ""
-  # API Key
-  api_key: ""
+  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式；填入生产地址）
+  base_url: <your-embedding-base-url>
+  # API Key（填入生产 key）
+  api_key: <your-embedding-api-key>
   # 嵌入模型名称（如 DashScope text-embedding-v4）
   model: "text-embedding-v4"
-  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
-  vector_size: 1536
+  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size。
+  # text-embedding-v4 输出 1024 维；若改用 OpenAI text-embedding-3-small 则为 1536。
+  vector_size: 1024
 
 # Qdrant 配置
 qdrant:
-  # 连接地址（Docker Compose 内用服务名 qdrant）
-  host: qdrant
+  # 连接地址（生产填真实主机，如 qdrant.xxx.internal）
+  host: <your-qdrant-host>
   # REST 端口
   port: 6333
   # 集合（collection）名称
   collection_name: customer_service_knowledge
   # 向量维度（与嵌入模型对齐）
-  vector_size: 1536
+  vector_size: 1024
   # 距离度量方式：cosine | dot_product | euclidean
   distance: cosine
   # API Key（为空则不鉴权）
-  api_key: ""
-  # 是否启用（关闭时后端回退到模拟检索）
+  api_key: <your-qdrant-api-key>
+  # 是否启用（关闭时检索返回空结果，不连 Qdrant、不报错）
   enabled: true
 
 # 日志配置

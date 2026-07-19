@@ -1,24 +1,30 @@
 # =============================================================
-# 测试环境配置（test）
+# Docker 启动配置模板（docker）
 # -------------------------------------------------------------
-# 由 pytest / CI 读取（APP_ENV=test）。大部分能力走规则引擎与内存桩，
-# 故 LLM / Rerank / SMTP 默认关闭；Redis / MySQL / Qdrant 指向本机
-# 127.0.0.1（配合 `make up` 起的 infra 映射到宿主机端口）。
-# 带 <...> 的字段为占位符，按需替换；测试一般不依赖真实密钥。
+# `make up` 时容器以 APP_ENV=docker 读取本文件复制出的
+# config/llm_config.docker.yml（该文件含密钥，已 gitignore，不进仓库）。
+# 首次部署请复制并填入你自己的值：
+#
+#   cp config/llm_config.docker.example.yml config/llm_config.docker.yml
+#
+# 然后把 <...> 占位符替换为真实值。注意：下方 redis / mysql / qdrant 的
+# 主机名固定为 compose 服务名（redis / mysql / qdrant），不要改成 127.0.0.1——
+# 容器与这些依赖在同一个 compose 网络中，靠服务名互通。
+# 该文件以只读卷挂入容器，改完只需 `make restart-app`，无需重建镜像。
 # =============================================================
 
 llm:
-  # 是否启用 LLM 意图识别兜底（测试默认关闭，走规则引擎）
-  enabled: false
+  # 是否启用 LLM 意图识别兜底
+  enabled: true
 
-  # OpenAI / 兼容 API 的密钥（为空时自动禁用）
-  api_key: ""
+  # OpenAI / 兼容 API 的密钥（填入你自己的 key）
+  api_key: <your-llm-api-key>
 
-  # 使用的模型名称
-  model: gpt-4o
+  # 使用的模型名称（按你的网关支持填写，如 gpt-4o / qwen-plus 等）
+  model: gpt-5.5
 
-  # 兼容 API 的 base URL（设为 null 则使用官方端点）
-  base_url: null
+  # 兼容 API 的 base URL（第三方网关地址，注意通常以 /v1 结尾）
+  base_url: <your-openai-compatible-base-url>
 
   # 请求超时时间（秒）
   timeout_seconds: 20.0
@@ -28,10 +34,10 @@ llm:
 
   # 生成参数（可选；不填则用默认值）
   # 是否启用思维链（仅 Qwen3 等推理模型支持，经 extra_body 下发）。
-  # 默认 false（关闭）以避免单次对话的推理开销；需强推理时置 true。
+  # 默认 false（关闭）以避免单次对话 20s 的推理开销；需强推理时置 true。
   enable_thinking: false
   # 采样温度（0~2，越大越随机）；留空用模型默认。
-  # temperature: 0.3
+  temperature: 0.1
   # 单次回复最大 token 数；留空用模型默认。
   # max_tokens: 1024
   # 核采样概率阈值（0~1）；留空用模型默认。
@@ -65,17 +71,29 @@ rag:
   rerank:
     # 是否启用 Rerank
     enabled: false
+
     # 重排网关地址（OpenAI 兼容 /v1，必须由配置显式提供，无默认值；启用时必填）
     base_url: <your-rerank-base-url>
-    # DashScope API Key（独立配置，不再复用 embedding 的 key）
-    api_key: ""
+
+    # DashScope API Key（启用时填入）
+    api_key: <your-rerank-api-key>
+
     # Rerank 模型名称（启用时必填）
-    model: ""
+    model: <your-rerank-model>
+
+# 图态快照（checkpointer）配置：仅在使用 Redis saver 时生效
+# （redis.enabled 为 true 且配置齐全；否则回退 MemorySaver，TTL 无意义）。
+checkpoint:
+  # 图态在 Redis 中的过期时间（秒）。0 表示不过期（禁用 TTL）。
+  # 建议按「最大可接受对话间隔」设置：活跃会话每轮落库会刷新过期时间，
+  # 仅长期空闲的会话才被回收，避免 Redis 无限增长。
+  # 也可用环境变量 CHECKPOINT_TTL_SECONDS 覆盖。
+  ttl_seconds: 604800  # 7 天
 
 # Redis 配置
 redis:
-  # 连接地址（测试指向本机 127.0.0.1；Docker 用服务名 redis）
-  host: 127.0.0.1
+  # 连接地址（Docker 内用 compose 服务名 redis，勿改 127.0.0.1）
+  host: redis
   # 服务端口
   port: 6379
   # 数据库编号
@@ -89,8 +107,8 @@ redis:
 
 # MySQL 配置
 mysql:
-  # 连接地址（测试指向本机 127.0.0.1；Docker 用服务名 mysql）
-  host: 127.0.0.1
+  # 连接地址（Docker 内用 compose 服务名 mysql，勿改 127.0.0.1）
+  host: mysql
   # 服务端口
   port: 3306
   # 数据库名
@@ -108,8 +126,8 @@ mysql:
 
 # JWT 配置
 jwt:
-  # 签名密钥（测试环境占位，按需替换）
-  secret: <your-test-jwt-secret>
+  # 签名密钥（生产环境务必替换为强随机值）
+  secret: <your-jwt-secret>
   # 签名算法
   algorithm: "HS256"
   # 登录 token 有效期（分钟）
@@ -121,14 +139,14 @@ jwt:
 smtp:
   # 是否启用真实发送（关闭时仅打印重置链接到日志）
   enabled: false
-  # SMTP 服务器地址
-  host: ""
+  # SMTP 服务器地址（启用时填入）
+  host: <your-smtp-host>
   # SMTP 端口（465 通常为 SSL，587 通常为 STARTTLS）
   port: 465
-  # 登录用户名
-  user: ""
-  # 登录密码 / 授权码
-  password: ""
+  # 登录用户名（启用时填入）
+  user: <your-smtp-user>
+  # 登录密码 / 授权码（启用时填入）
+  password: <your-smtp-password>
   # 发件人地址
   from_addr: "no-reply@myagent.local"
   # 是否使用 TLS
@@ -136,19 +154,20 @@ smtp:
 
 # Embedding 配置（基础设施，顶层独立配置块，与 llm / qdrant 同级；不由前端 PUT /rag/config 管理）
 embedding:
-  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式）
-  base_url: ""
-  # API Key
-  api_key: ""
+  # 嵌入网关地址（OpenAI 兼容，如 DashScope 兼容模式；填入你自己的）
+  base_url: <your-embedding-base-url>
+  # API Key（填入你自己的）
+  api_key: <your-embedding-api-key>
   # 嵌入模型名称（如 DashScope text-embedding-v4）
   model: "text-embedding-v4"
-  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size
+  # 稠密向量维度，须与模型实际输出维度一致，且须等于 qdrant.vector_size。
+  # text-embedding-v4 输出 1024 维；若改用 OpenAI text-embedding-3-small 则为 1536。
   vector_size: 1024
 
 # Qdrant 配置
 qdrant:
-  # 连接地址（测试指向本机 127.0.0.1；Docker 用服务名 qdrant）
-  host: 127.0.0.1
+  # 连接地址（Docker 内用 compose 服务名 qdrant，勿改 127.0.0.1）
+  host: qdrant
   # REST 端口
   port: 6333
   # 集合（collection）名称

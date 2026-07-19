@@ -350,6 +350,17 @@ def _read_qdrant_config() -> dict[str, Any]:
     return qdrant_cfg
 
 
+def is_qdrant_enabled() -> bool:
+    """Qdrant 是否启用（检索降级 / 入库禁用判断用）。
+
+    ``enabled`` 缺省视为 True（向后兼容：旧配置未写该字段时仍按启用处理）。
+    仅 ``enabled: false`` 时关闭——此时检索走 ``DisabledRetrievalStrategy``
+    返回空结果（不连 Qdrant、不报错），知识库入库也被禁用。
+    """
+    cfg = _read_qdrant_config()
+    return bool(cfg.get("enabled", True))
+
+
 def get_qdrant_client() -> QdrantClient:
     """根据配置创建 Qdrant 客户端。
 

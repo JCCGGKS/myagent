@@ -15,7 +15,7 @@ from app.model.knowledge import (
     KNOWLEDGE_FILE_STATUS_PROCESSING,
     KNOWLEDGE_FILE_STATUS_SUCCESS,
 )
-from app.pkgs.vector import get_qdrant_client
+from app.pkgs.vector import get_qdrant_client, is_qdrant_enabled
 from app.business.rag import (
     KnowledgeIngestionService,
     build_embedding_client,
@@ -77,7 +77,11 @@ def _delete_vectors(doc_id: int) -> None:
 
     dense 与 bm25 稀疏向量均由 Qdrant 承载，delete_by_doc_id 一并清理，
     不再依赖进程内手搓 BM25 倒排索引（多 worker 下不一致的老问题已消除）。
+
+    qdrant 未启用（enabled=false）时向量本就未写入，此处直接跳过（无操作）。
     """
+    if not is_qdrant_enabled():
+        return
     get_qdrant_client().delete_by_doc_id(doc_id)
 
 
@@ -85,12 +89,19 @@ def _ensure_ingest_ready() -> None:
     """文件上传 / 更新前校验入库所需依赖与配置是否齐全（共用，fail-fast）。
 
     入库统一写 bm25 稀疏向量 + dense 稠密向量，因此必须同时具备：
+      - qdrant 已启用（enabled=true，否则无处落向量）；
       - fastembed 已安装（生成 bm25 稀疏向量，本地 CPU 推理，无需 API）；
       - embedding 配置完整（base_url / api_key / model，生成 dense 稠密向量）。
 
     任一缺失直接 400，避免产出「只有一半向量」的残缺文档。检索策略只影响
     召回方式、不影响存储，故此处与 retrieval_strategy 无关。
     """
+    if not is_qdrant_enabled():
+        raise HTTPException(
+            status_code=400,
+            detail="Qdrant 未启用（qdrant.enabled=false），知识库入库已禁用；"
+            "如需上传知识库请先在配置中启用 qdrant 并启动服务。",
+        )
     if importlib.util.find_spec("fastembed") is None:
         raise HTTPException(
             status_code=400,
