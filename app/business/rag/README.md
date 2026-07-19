@@ -74,10 +74,9 @@
 - 向量维度由 `qdrant.vector_size` 决定（与嵌入模型输出维度对齐）。
 
 ### 稀疏向量（BM25，见 `rag/retrieval/bm25.py`）
-- `tokenize()`：小写 ASCII 词 + 单个汉字（`[a-z0-9]+|[一-鿿]`），MVP 简化分词。
-- `build_sparse_vector(text)`：把文本转成 `SparseVector(indices, values)`，**仅存词频 TF**。现仅用于**纯 BM25 模式（无 embedding）**的入库——作为 Qdrant point 的稀疏向量载体（命名向量集合要求 point 至少带一个向量），使该文档在 Qdrant 落点、可供跨 worker 经 `rebuild_from_qdrant` 重建内存索引。**不参与检索**，BM25 检索全部走内存手搓倒排索引。
-- 词→索引用 md5 稳定映射到 `VOCAB_SIZE = 1<<20` 的哈希空间，无需维护真实词表。
-- 此外 `rag/retrieval/bm25.py` 还实现**手搓 BM25 倒排索引**（`BM25Index` / `BM25Store`）：入库时同步把 chunk 写入内存倒排索引，检索时直接对索引做 BM25 求和（IDF / avgdl 现算，分数即真·BM25），由 `BM25Strategy` 包装，不依赖 Qdrant 稀疏向量检索。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
+- `build_sparse_vector(text)`：调用官方 **`Qdrant/bm25` FastEmbed 稀疏模型**生成 `SparseVector(indices, values)`（分词 + 词频/IDF 权重已烤进 values），查询与入库共用，保证同分布。
+- 该稀疏向量写入 Qdrant 的 `bm25` 命名向量字段（`SparseVectorParams(modifier=Modifier.IDF)`），检索时由 **Qdrant 原生 BM25 打分**（`BM25Strategy` → `QdrantClient.search_sparse`）。BM25 打分已下沉到 Qdrant，进程内不再维护倒排索引，多 worker 以 Qdrant 为唯一真源。
+- `k1` / `b` 等 Okapi 超参不再可调：Qdrant `Modifier.IDF` 做 IDF 加权 TF 点积，权重由模型与集合 IDF 决定。
 
 ---
 
@@ -113,7 +112,7 @@
 **职责**：根据配置选择具体策略，从 Qdrant 召回候选文档。
 
 **文件布局**（与 `chunking/` 对齐）：
-- `rag/retrieval/bm25.py` — **单一 BM25 模块**：`tokenize` / `build_sparse_vector`（仅纯 BM25 模式的 Qdrant 稀疏载体）+ 手搓倒排索引 `BM25Index` / `BM25Store` / `get_bm25_store` + 检索策略 `BM25Strategy`，合并于一处，不再拆多文件。
+- `rag/retrieval/bm25.py` — **单一 BM25 模块**：`build_sparse_vector`（官方 `Qdrant/bm25` FastEmbed 稀疏向量）+ 检索策略 `BM25Strategy`（走 Qdrant 原生 `search_sparse`），合并于一处。
 - `retrieval/models.py` — `Document` 统一结果结构。
 - `retrieval/base.py` — `RetrievalStrategy`（ABC），统一接口 `retrieve(query) -> list[Document]`。
 - `retrieval/semantic.py` / `retrieval/hybrid.py` — 语义 / 混合具体策略。
@@ -123,20 +122,19 @@
 ### 抽象与具体策略
 - `Document`：统一结果结构 `id / content / metadata / score`；`metadata` 包含 `doc_type`、`heading_path`、`source`、入库时传入的 `user_id`（如有）。
 - `RetrievalStrategy`（ABC）：统一接口 `retrieve(query) -> list[Document]`。
-- `BM25Strategy`（`rag/retrieval/bm25.py`）：手搓 BM25，直接对内存倒排索引求和（IDF / avgdl 现算），**Qdrant 不再提供 BM25 检索**；索引为空时从 Qdrant 一次性 `rebuild_from_qdrant`（读取 payload 的 content 重建）。`k1` / `b` 由 `RagConfig.bm25_k1` / `bm25_b` 注入。
+- `BM25Strategy`（`rag/retrieval/bm25.py`）：Qdrant 原生 BM25，经 `QdrantClient.search_sparse`（`using="bm25"`）在稀疏向量字段上检索，由 Qdrant 用 `Modifier.IDF` 打分；client 为必传。
 - `SemanticStrategy`：调用 `EmbeddingClient.embed_one()` 生成查询向量后 `search_semantic`；未配置 embedding 时抛 `RuntimeError`。
 
-### HybridStrategy — 泛型依赖注入
-- **构造**：`strategies: list[RetrievalStrategy]` — 通过构造注入任意数量的子策略，不再硬编码 BM25 / Semantic 命名参数。
-- **职责单一**：只负责调度注入的子策略各路召回并 RRF 融合，自身不 `new` 任何子策略。
-- 支持未来扩展 N 路检索，只需改工厂函数。
+### HybridStrategy — 服务端融合
+- **构造**：`client` + `embedding_client`，dense 由 `EmbeddingClient` 产出、sparse 由 `build_sparse_vector` 产出。
+- **职责单一**：单次调用 `QdrantClient.search_hybrid`（prefetch dense + bm25 两路 + `QueryFusion.RRF(rank_constant=rrf_k)` 服务端融合），返回融合后的候选；`rrf_k` 透传给 Qdrant。
 
 ### 工厂函数
 - `get_strategy_from_config(rag_config=None)`：从运行时 `RagConfigService` 读最新配置。
 - `_build_strategy(client, rag_config)`：按 `RagConfig.retrieval_strategy` 分支构造。
   - `bm25` → `BM25Strategy`
   - `semantic` → `SemanticStrategy`
-  - `hybrid` → `HybridStrategy(strategies=[BM25Strategy, SemanticStrategy], ...)`
+  - `hybrid` → `HybridStrategy(client, embedding_client, ...)`（服务端 RRF 融合）
 - 语义/混合缺 embedding 配置时**直接抛错**（fail-fast），不静默回退到 mock。
 - 单一 `min_score_threshold` 由 `rag` 顶层读出即用于三路过滤，不做归一化；前端按 `retrieval_strategy` 控制可输入范围，避免量纲误配。
 

@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+from qdrant_client.models import SparseVector
 
 from app.business.rag import BM25Strategy, SemanticStrategy, HybridStrategy
 from app.business.rag.retrieval.models import Document
@@ -39,15 +40,20 @@ class TestQdrantClient:
 class TestRetrievalStrategy:
     """测试检索策略。"""
 
+    @pytest.fixture(autouse=True)
+    def _patch_sparse(self, monkeypatch):
+        # BM25 / Hybrid 现由 Qdrant 原生稀疏检索打分，策略内部会调用
+        # build_sparse_vector（FastEmbed）。单测不拉真实模型，mock 成占位稀疏向量。
+        from app.business.rag.retrieval import bm25 as bm25_mod
+        from app.business.rag.retrieval import hybrid as hybrid_mod
+        dummy = SparseVector(indices=[1, 2], values=[0.5, 0.5])
+        monkeypatch.setattr(bm25_mod, "build_sparse_vector", lambda text: dummy)
+        monkeypatch.setattr(hybrid_mod, "build_sparse_vector", lambda text: dummy)
+
     def setup_method(self):
         self.client = _fake_client()
-        # 手搓 BM25 策略在索引为空时，从 Qdrant 一次性重建（lazy rebuild）。
-        # 测试用假 client 不连真实 Qdrant，故把 scroll_all mock 成空召回（安全 no-op），
-        # 单个用例再按需改 return_value 喂入数据。同时重置索引导单例避免用例间污染。
-        self.client.scroll_all = MagicMock(return_value=[])
-        from app.business.rag.retrieval.bm25 import get_bm25_store
-        get_bm25_store()._indexes.clear()
-        get_bm25_store()._doc_map.clear()
+        # BM25 / hybrid 现在都走 Qdrant（search_sparse / search_hybrid），
+        # 用假底层 client 的 query_points 喂入命中数据。
         self.bm25_strategy = BM25Strategy(client=self.client, min_score_threshold=0.0)
         self.semantic_strategy = SemanticStrategy(
             client=self.client,
@@ -55,13 +61,15 @@ class TestRetrievalStrategy:
             min_score_threshold=0.0,
         )
         self.hybrid_strategy = HybridStrategy(
-            strategies=[self.bm25_strategy, self.semantic_strategy],
+            client=self.client,
+            embedding_client=MagicMock(**{"embed_one.return_value": [0.1, 0.2, 0.3, 0.4]}),
+            rrf_k=60,
         )
 
     def test_bm25_strategy_should_retrieve(self):
-        # 用 scroll_all 喂入一条命中 query 的数据，rebuild 后内存索引可检索。
-        self.client.scroll_all.return_value = [
-            {"id": "1", "payload": {"content": "测试查询 c1", "doc_type": "faq"}}
+        # BM25 走 search_sparse（using="bm25"），mock 底层 query_points 返回命中。
+        self.client._client.query_points.return_value.points = [
+            MagicMock(id="1", score=5.0, payload={"content": "测试查询 c1", "doc_type": "faq"})
         ]
         docs = self.bm25_strategy.retrieve(query="测试查询")
         assert isinstance(docs, list)
@@ -76,6 +84,7 @@ class TestRetrievalStrategy:
         assert len(docs) > 0
 
     def test_hybrid_strategy_should_retrieve(self):
+        # 混合检索走 search_hybrid（prefetch + RRF 融合），mock 返回融合后命中。
         self.client._client.query_points.return_value.points = [
             MagicMock(id="3", score=0.7, payload={"content": "c3", "doc_type": "faq"})
         ]

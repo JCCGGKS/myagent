@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -72,12 +73,48 @@ def _build_ingestion_service() -> KnowledgeIngestionService:
 
 
 def _delete_vectors(doc_id: int) -> None:
-    """清理某文档的全部 Qdrant 向量（按 doc_id）。删除 / 更新接口共用。"""
-    get_qdrant_client().delete_by_doc_id(doc_id)
-    # 同步清掉手搓 BM25 倒排索引里该文档的所有 chunk
-    from app.business.rag.retrieval.bm25 import get_bm25_store
+    """清理某文档的全部 Qdrant 向量（按 doc_id）。删除 / 更新接口共用。
 
-    get_bm25_store().delete_doc(doc_id)
+    dense 与 bm25 稀疏向量均由 Qdrant 承载，delete_by_doc_id 一并清理，
+    不再依赖进程内手搓 BM25 倒排索引（多 worker 下不一致的老问题已消除）。
+    """
+    get_qdrant_client().delete_by_doc_id(doc_id)
+
+
+def _ensure_ingest_ready() -> None:
+    """文件上传 / 更新前校验入库所需依赖与配置是否齐全（共用，fail-fast）。
+
+    入库统一写 bm25 稀疏向量 + dense 稠密向量，因此必须同时具备：
+      - fastembed 已安装（生成 bm25 稀疏向量，本地 CPU 推理，无需 API）；
+      - embedding 配置完整（base_url / api_key / model，生成 dense 稠密向量）。
+
+    任一缺失直接 400，避免产出「只有一半向量」的残缺文档。检索策略只影响
+    召回方式、不影响存储，故此处与 retrieval_strategy 无关。
+    """
+    if importlib.util.find_spec("fastembed") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="RAG 依赖 fastembed 未安装，无法生成 BM25 稀疏向量（请 pip install fastembed）。",
+        )
+    if build_embedding_client() is None:
+        raise HTTPException(
+            status_code=400,
+            detail="未配置 embedding（base_url/api_key/model），无法生成稠密向量，请先在配置中补全。",
+        )
+
+
+async def _read_upload_content(file: UploadFile) -> tuple[str, int]:
+    """读取上传文件为 UTF-8 文本，返回 (content, file_size)。
+
+    上传与更新接口共用；文件名/后缀/格式一致性由前端校验。非 UTF-8 直接 400。
+    """
+    raw_bytes = await file.read()
+    file_size = len(raw_bytes)
+    try:
+        content = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
+    return content, file_size
 
 
 def _compute_content_hash(user_id: int, content: str) -> str:
@@ -120,7 +157,7 @@ async def _ingest_document(
     """对 doc_id 做向量化入库并落最终状态，返回 chunk_count。
 
     上传（新记录 / 重传 / 失败重试）与更新（重建向量）共用的核心步骤：
-    - 检索策略预检失败 → 置 ERROR + 抛 400；
+    - 配置齐全性已在上游 ``_ensure_ingest_ready`` 校验（入库统一写双向量）；
     - 向量化异常 → 置 ERROR + 上抛；
     - 成功 → 置 SUCCESS 并记录 chunk_count。
 
@@ -128,18 +165,6 @@ async def _ingest_document(
     刷新 created_at 为当前时间，使失败的上传在列表中按最新时间排序、方便重试定位。
     """
     ingestion = _build_ingestion_service()
-    # 检索策略感知的向量模型预检：semantic/hybrid 需向量模型，否则提前拦截
-    if (
-        get_rag_config_service().get_config().retrieval_strategy in ("semantic", "hybrid")
-        and ingestion.embedding_client is None
-    ):
-        await file_dao.update_status(
-            doc_id,
-            KNOWLEDGE_FILE_STATUS_ERROR,
-            error_message="选择的检索策略需要配置向量模型",
-            refresh_created_at=refresh_created_at,
-        )
-        raise HTTPException(status_code=400, detail="选择的检索策略需要配置向量模型")
 
     suffix = Path(filename).suffix.lower()
     try:
@@ -196,19 +221,9 @@ async def knowledge_upload(
     （支持 .md / .markdown / .json / .word / .excel / .csv / .pdf / .ppt）；
     后端按所选文档类型路由到对应分块策略，未知格式回退 DefaultTextStrategy。
     """
-
-    raw_bytes = await file.read()
-    file_size = len(raw_bytes)
-    try:
-        content = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        log_warning(
-            "rag",
-            "knowledge_upload non_utf8 user=%s file=%s",
-            current_user.id,
-            file.filename,
-        )
-        raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
+    # 入库前先校验依赖与配置齐全（双向量入库要求 BM25+embedding 均可用），fail-fast
+    _ensure_ingest_ready()
+    content, file_size = await _read_upload_content(file)
 
     # 幂等键：user_id + 文件内容（严格按内容去重，doc_type 不入哈希）。
     # 同用户上传相同内容 → 命中已有记录，跳过向量化，避免重复向量与冗余记录。
@@ -323,13 +338,9 @@ async def update_knowledge_file(
     if record["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="无权更新该文件")
 
-    raw_bytes = await file.read()
-    file_size = len(raw_bytes)
-    try:
-        content = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        log_warning("rag", "update_knowledge_file non_utf8 user=%s file=%s", current_user.id, file.filename)
-        raise HTTPException(status_code=400, detail="文件编码非 UTF-8，无法解析")
+    # 入库前先校验依赖与配置齐全（与上传共用同一校验），fail-fast
+    _ensure_ingest_ready()
+    content, file_size = await _read_upload_content(file)
 
     # 幂等键：与上传一致（user_id + 内容）
     content_hash = _compute_content_hash(current_user.id, content)

@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import io
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from app.api import rag as rag_module
 from app.dao import MemoryKnowledgeFileDAO
@@ -53,12 +54,32 @@ def env(monkeypatch):
     qdrant.collection_name = "test"
     qdrant.vector_size = 4
 
+    # 入库时统一写 bm25 稀疏向量（Qdrant 原生 BM25）+ dense 稠密向量：
+    # - bm25 由 build_sparse_vector 产出，单测不拉真实 FastEmbed，mock 成占位稀疏向量；
+    # - dense 由 embedding_client 产出，mock 成与文本数等长、维度=4 的占位向量。
+    from qdrant_client.models import SparseVector
+
+    dummy_sparse = SparseVector(indices=[0], values=[1.0])
+    monkeypatch.setattr(
+        "app.business.rag.retrieval.bm25.build_sparse_vector",
+        lambda text: dummy_sparse,
+    )
+    monkeypatch.setattr(
+        "app.business.rag.ingestion.build_sparse_vector",
+        lambda text: dummy_sparse,
+    )
+    emb_client = MagicMock()
+    emb_client.embed.side_effect = lambda texts: [[0.1, 0.2, 0.3, 0.4] for _ in texts]
+    emb_client.embed_one.return_value = [0.1, 0.2, 0.3, 0.4]
+    monkeypatch.setattr(rag_module, "build_embedding_client", lambda: emb_client)
+    # 配置齐全性校验（fastembed 可用性 + embedding 配置）单测中跳过，聚焦入库幂等逻辑
+    monkeypatch.setattr(rag_module, "_ensure_ingest_ready", lambda: None)
+
     monkeypatch.setattr(rag_module, "get_knowledge_file_dao", lambda: dao)
     monkeypatch.setattr(rag_module, "get_qdrant_client", lambda: qdrant)
     monkeypatch.setattr(
         rag_module, "get_rag_config_service", lambda: SimpleNamespace(get_config=_fake_config)
     )
-    monkeypatch.setattr(rag_module, "build_embedding_client", lambda: None)
     return SimpleNamespace(dao=dao, qdrant=qdrant)
 
 
@@ -206,4 +227,28 @@ def test_update_knowledge_file_duplicate_content_409(env):
             )
         )
     assert exc.value.status_code == 409
+
+
+class TestIngestReady:
+    """`_ensure_ingest_ready`：入库前统一校验 fastembed + embedding 双依赖齐全。"""
+
+    def test_ok_when_both_ready(self, monkeypatch):
+        monkeypatch.setattr(rag_module, "build_embedding_client", lambda: MagicMock())
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+        # fastembed 可用 + embedding 已配置 → 不抛
+        rag_module._ensure_ingest_ready()
+
+    def test_missing_embedding_raises(self, monkeypatch):
+        monkeypatch.setattr(rag_module, "build_embedding_client", lambda: None)
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+        with pytest.raises(HTTPException) as exc:
+            rag_module._ensure_ingest_ready()
+        assert exc.value.status_code == 400
+
+    def test_missing_fastembed_raises(self, monkeypatch):
+        monkeypatch.setattr(rag_module, "build_embedding_client", lambda: MagicMock())
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+        with pytest.raises(HTTPException) as exc:
+            rag_module._ensure_ingest_ready()
+        assert exc.value.status_code == 400
 

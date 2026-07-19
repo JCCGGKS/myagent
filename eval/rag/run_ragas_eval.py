@@ -86,10 +86,8 @@ def build_strategies(client, cfg):
     )
     strategies["semantic"] = sem
     strategies["hybrid"] = HybridStrategy(
-        strategies=[
-            BM25Strategy(client=client, min_score_threshold=threshold, top_k=top_k),
-            sem,
-        ],
+        client=client,
+        embedding_client=emb,
         min_score_threshold=threshold,
         top_k=top_k,
         rrf_k=cfg.rrf_k,

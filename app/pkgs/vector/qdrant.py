@@ -25,10 +25,9 @@ _DISTANCE_MAP = {
 class QdrantClient:
     """Qdrant 客户端封装（基于 qdrant-client，连接真实 Qdrant 实例）。
 
-    集合保存稠密向量（语义召回）以及纯 BM25 模式下的稀疏向量载体。
-    BM25 关键词召回走内存手搓倒排索引（rag/retrieval/bm25.py），
-    不再依赖 Qdrant 原生稀疏检索；稀疏向量仅作为「无 embedding 的纯 BM25
-    模式」下文档 point 的持久化载体（供跨 worker 经 rebuild_from_qdrant 重建）。
+    集合保存稠密向量（语义召回，dense 命名向量）与稀疏向量（BM25 关键词召回，
+    bm25 命名向量）。BM25 关键词召回走 Qdrant 原生稀疏检索（Modifier.IDF），
+    打分在服务端完成，无需进程内倒排索引，天然跨多 worker 一致。
     """
 
     def __init__(
@@ -223,6 +222,66 @@ class QdrantClient:
         )
         return [_hit_to_dict(h) for h in result.points]
 
+    def search_sparse(
+        self,
+        query_sparse: Any,
+        limit: int = 10,
+        score_threshold: float | None = None,
+        user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """在 `bm25` 稀疏向量字段上做原生 BM25 检索（Qdrant Modifier.IDF 打分）。
+
+        与 `search_semantic`（dense）并列；混合检索由 `search_hybrid` 融合。
+        `query_sparse` 为 `SparseVector`（由 `build_sparse_vector` 产出）。
+        """
+        self._ensure_collection()
+        from qdrant_client.models import SparseVector
+
+        if not isinstance(query_sparse, SparseVector):
+            query_sparse = SparseVector(indices=query_sparse[0], values=query_sparse[1])
+        result = self._client.query_points(
+            collection_name=self.collection_name,
+            query=query_sparse,
+            using=SPARSE_VECTOR_NAME,
+            limit=limit,
+            score_threshold=score_threshold,
+            query_filter=self._user_filter(user_id),
+            with_payload=True,
+        )
+        return [_hit_to_dict(h) for h in result.points]
+
+    def search_hybrid(
+        self,
+        dense_vec: list[float],
+        sparse_vec: Any,
+        limit: int = 10,
+        rrf_k: int = 60,
+        user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """混合检索：dense + bm25 两路 prefetch，服务端 RRF 融合（Qdrant 原生）。
+
+        单次请求完成语义与关键词召回的融合，避免客户端分两路 + 自写 RRF。
+        `sparse_vec` 为 `SparseVector`（由 `build_sparse_vector` 产出）。
+        `rrf_k` 经 `Rrf(k=...)` 下发到 Qdrant 的服务端 RRF 融合。
+        """
+        self._ensure_collection()
+        from qdrant_client.models import Prefetch, Rrf, RrfQuery, SparseVector
+
+        if not isinstance(sparse_vec, SparseVector):
+            sparse_vec = SparseVector(indices=sparse_vec[0], values=sparse_vec[1])
+        result = self._client.query_points(
+            collection_name=self.collection_name,
+            prefetch=[
+                Prefetch(query=dense_vec, using=DENSE_VECTOR_NAME, limit=limit),
+                Prefetch(query=sparse_vec, using=SPARSE_VECTOR_NAME, limit=limit),
+            ],
+            query=RrfQuery(rrf=Rrf(k=rrf_k)),
+            limit=limit,
+            query_filter=self._user_filter(user_id),
+            with_payload=True,
+        )
+        return [_hit_to_dict(h) for h in result.points]
+
     def scroll_all(
         self,
         user_id: int | None = None,
@@ -230,7 +289,7 @@ class QdrantClient:
     ) -> list[dict[str, Any]]:
         """滚动读取集合内全部点（按 user_id 可选过滤），返回 {id, payload} 列表。
 
-        用于手搓 BM25 倒排索引在进程重启后的从 Qdrant 重建。
+        用于存量集合的稀疏向量回补 / 数据巡检等离线场景。
         """
         self._ensure_collection()
         from qdrant_client.models import Filter, FieldCondition, MatchValue

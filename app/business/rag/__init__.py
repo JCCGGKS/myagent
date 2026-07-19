@@ -13,7 +13,7 @@ from app.business.rag.ingestion import (
     EmbeddingClient,
     build_embedding_client,
 )
-from app.business.rag.retrieval.bm25 import BM25Strategy, build_sparse_vector, tokenize, get_bm25_store
+from app.business.rag.retrieval.bm25 import BM25Strategy, build_sparse_vector
 from app.business.rag.retrieval.rerank import RerankClient, build_rerank_client
 
 __all__ = [
@@ -30,8 +30,6 @@ __all__ = [
     "EmbeddingClient",
     "build_embedding_client",
     "build_sparse_vector",
-    "tokenize",
-    "get_bm25_store",
     "RerankClient",
     "build_rerank_client",
 ]
