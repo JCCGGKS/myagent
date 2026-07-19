@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,9 +19,9 @@ class Session(Base):
     channel: Mapped[str] = mapped_column(String(32), default="web")
     title: Mapped[str] = mapped_column(String(128), default="新会话")
     status: Mapped[int] = mapped_column(SmallInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -38,7 +38,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sanitized_content: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_no: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class EventLog(Base):
@@ -57,4 +57,4 @@ class EventLog(Base):
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)  # intent/state/tool_result/final/error/policy
     node: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payload: Mapped[str] = mapped_column(Text, nullable=False)  # 完整事件 JSON
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

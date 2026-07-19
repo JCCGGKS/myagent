@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select, update
@@ -118,8 +118,8 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
             "chunk_count": chunk_count,
             "status": status,
             "error_message": error_message,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
             "deleted_at": None,
         }
         self._by_id[self._seq] = record
@@ -167,13 +167,13 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         if rec is None:
             return
         rec["status"] = status
-        rec["updated_at"] = datetime.now(UTC)
+        rec["updated_at"] = datetime.now(timezone.utc)
         if chunk_count is not None:
             rec["chunk_count"] = chunk_count
         if error_message is not None:
             rec["error_message"] = error_message
         if refresh_created_at:
-            rec["created_at"] = datetime.now(UTC)
+            rec["created_at"] = datetime.now(timezone.utc)
 
     async def delete(self, file_id: int) -> None:
         rec = self._by_id.get(file_id)
@@ -182,7 +182,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
             # 既不触发 NOT NULL 约束，也不会在多文件删除时撞 (user_id, content_hash) 唯一键。
             # 删除后重传相同内容：查重查不到哨兵，自然新建一条记录重新向量化。
             rec["content_hash"] = f"DELETED:{file_id}"
-            rec["deleted_at"] = datetime.now(UTC)
+            rec["deleted_at"] = datetime.now(timezone.utc)
 
     async def update_content(
         self, file_id: int, content_hash: str, filename: str, file_size: int, doc_type: str
@@ -205,7 +205,7 @@ class MemoryKnowledgeFileDAO(KnowledgeFileDAO):
         rec["filename"] = filename
         rec["file_size"] = file_size
         rec["doc_type"] = doc_type
-        rec["updated_at"] = datetime.now(UTC)
+        rec["updated_at"] = datetime.now(timezone.utc)
 
 
 class SqlKnowledgeFileDAO(KnowledgeFileDAO):
@@ -328,7 +328,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
             if error_message is not None:
                 row.error_message = error_message
             if refresh_created_at:
-                row.created_at = datetime.now(UTC)
+                row.created_at = datetime.now(timezone.utc)
             await db.commit()
 
     async def delete(self, file_id: int) -> None:
@@ -341,7 +341,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
             await db.execute(
                 update(KnowledgeFile)
                 .where(KnowledgeFile.id == file_id)
-                .values(deleted_at=datetime.now(UTC), content_hash=f"DELETED:{file_id}")
+                .values(deleted_at=datetime.now(timezone.utc), content_hash=f"DELETED:{file_id}")
             )
             await db.commit()
 
@@ -362,7 +362,7 @@ class SqlKnowledgeFileDAO(KnowledgeFileDAO):
                         filename=filename,
                         file_size=file_size,
                         doc_type=doc_type,
-                        updated_at=datetime.now(UTC),
+                        updated_at=datetime.now(timezone.utc),
                     )
                 )
                 await db.commit()

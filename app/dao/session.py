@@ -4,7 +4,7 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -20,7 +20,7 @@ SESSION_STATUS_HANDOFF = 1
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 class SessionStore(ABC):
@@ -404,7 +404,7 @@ class SqlSessionStore(SessionStore):
             await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
-                .values(updated_at=datetime.now(UTC))
+                .values(updated_at=datetime.now(timezone.utc))
             )
             await db.commit()
 
@@ -479,7 +479,7 @@ class SqlSessionStore(SessionStore):
             await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
-                .values(title=title, updated_at=datetime.now(UTC))
+                .values(title=title, updated_at=datetime.now(timezone.utc))
             )
             await db.commit()
 
@@ -492,6 +492,6 @@ class SqlSessionStore(SessionStore):
             await db.execute(
                 update(SessionRow)
                 .where(SessionRow.session_id == session_id)
-                .values(deleted_at=datetime.now(UTC))
+                .values(deleted_at=datetime.now(timezone.utc))
             )
             await db.commit()
