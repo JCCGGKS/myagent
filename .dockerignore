@@ -1,0 +1,32 @@
+# 版本控制 / 本地环境
+.git
+.gitignore
+.dockerignore
+.venv
+venv
+env
+.env
+.envrc
+
+# 前端（独立 npm 构建，不进后端镜像）
+frontend
+node_modules
+
+# 测试 / 评估 / 文档 / 调研草稿（运行时不需要）
+tests
+eval
+docs
+wiki
+template
+interview
+logs
+plans
+
+# 密钥配置：不烘焙进镜像，运行时以只读卷挂载（见 docker-compose.yml）
+config/llm_config.local.yml
+config/llm_config.local.example.yml
+
+# 镜像自身与编排文件
+Dockerfile
+docker-compose.yml
+*.md

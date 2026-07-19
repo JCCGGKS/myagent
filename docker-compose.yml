@@ -65,27 +65,36 @@ services:
     networks:
       - myagent-net
 
-  # 后端服务（可选，如需一并编排可放开注释，并复制一份 .env / 配置）
-  # app:
-  #   build: .
-  #   container_name: myagent-backend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     APP_ENV: test
-  #     MYSQL_HOST: mysql
-  #     REDIS_HOST: redis
-  #     QDRANT_HOST: qdrant
-  #   depends_on:
-  #     mysql:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     qdrant:
-  #       condition: service_healthy
-  #   networks:
-  #     - myagent-net
+  # 后端服务：构建 Dockerfile 镜像并接入同一网络
+  app:
+    build: .
+    container_name: myagent-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 加载 config/llm_config.local.yml（下方以只读卷挂载，不烘焙进镜像）
+      APP_ENV: local
+      # 图态 checkpointer 走 redis 服务（app 仅读 REDIS_URL 这个环境变量）
+      REDIS_URL: redis://redis:6379
+      # BM25 稀疏向量依赖 fastembed 的 Qdrant/bm25 模型，底层走 huggingface_hub。
+      # 容器无法直连 huggingface.co，故指向可达镜像，首次启动从镜像拉取并缓存到
+      # hf_cache 卷（见下方 volumes），避免每次重建容器重复下载、也避免卡死在连 HF。
+      HF_ENDPOINT: https://hf-mirror.com
+    volumes:
+      # 密钥配置：宿主机已存在的 config/llm_config.local.yml 只读挂入容器
+      - ./config/llm_config.local.yml:/app/config/llm_config.local.yml:ro
+      # HF 模型缓存：跨容器重建保留，首次下载后不再联网
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - myagent-net
 
   # 可观测：自托管 Prometheus（抓取） + Grafana（可视化），均免费、数据不出本机
   prometheus:
@@ -132,3 +141,4 @@ volumes:
   qdrant_data:
   prometheus_data:
   grafana_data:
+  hf_cache:
